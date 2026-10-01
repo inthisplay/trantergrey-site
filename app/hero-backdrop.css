@@ -452,6 +452,17 @@ main#top.has-film-texture > .contact {
   font-size: clamp(3.75rem, 6.5vw, 6.4rem);
 }
 
+.client-work-filter select {
+  min-width: 180px;
+  border: 1px solid rgba(245, 242, 237, 0.4);
+  border-radius: 2px;
+  background: #111;
+  color: var(--paper);
+  padding: 9px 32px 9px 11px;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 720px) {
   .library-hero {
     min-height: 270px;
@@ -459,4 +470,5 @@ main#top.has-film-texture > .contact {
   }
 
   .library-hero h1 { font-size: clamp(3.35rem, 15vw, 4.6rem); }
+  .client-work-filter select { width: 100%; min-height: 42px; }
 }

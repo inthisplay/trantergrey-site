@@ -39,10 +39,7 @@ try {
 
   const workPath = path.join(staging, 'app/work/page.tsx');
   const work = readFileSync(workPath, 'utf8')
-    .replace("import { toPublicVideo } from '@/lib/videos';\n", '')
-    .replace("import { getVimeoLibrary } from '@/lib/vimeo-library';\n", "import { videos } from '@/lib/videos';\n")
-    .replace("export const dynamic = 'force-dynamic';\n\n", '')
-    .replace("export default async function WorkPage() {\n  const library = await getVimeoLibrary();\n  const published = library?.videos.filter((video) => video.libraryStatus === 'published').map(toPublicVideo) ?? [];", "export default function WorkPage() {\n  const published = videos;");
+    .replace("export const dynamic = 'force-dynamic';\n\n", '');
   writeFileSync(workPath, work);
 
   writeFileSync(path.join(staging, 'next.config.mjs'), "export default { output: 'export', images: { unoptimized: true } };\n");

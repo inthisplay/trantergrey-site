@@ -11,14 +11,16 @@ export function VideoGallery({ videos, featured = false }: Props) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('All');
   const [industry, setIndustry] = useState('All');
+  const [client, setClient] = useState('All');
   const [railScroll, setRailScroll] = useState({ size: 100, position: 0 });
   const gridRef = useRef<HTMLDivElement>(null);
   const kinds = ['All', ...Array.from(new Set(videos.map((video) => video.kind).filter(Boolean)))];
   const industries = ['All', ...Array.from(new Set(videos.map((video) => video.industry).filter(Boolean)))];
+  const clients = ['All', ...Array.from(new Set(videos.map((video) => video.client).filter(Boolean))).sort()];
   const visible = useMemo(() => videos.filter((video) => {
     const haystack = `${video.title} ${video.client} ${video.kind} ${video.industry} ${video.searchTerms ?? ''}`.toLowerCase();
-    return haystack.includes(query.toLowerCase()) && (kind === 'All' || video.kind === kind) && (industry === 'All' || video.industry === industry);
-  }), [videos, query, kind, industry]);
+    return haystack.includes(query.toLowerCase()) && (kind === 'All' || video.kind === kind) && (industry === 'All' || video.industry === industry) && (client === 'All' || video.client === client);
+  }), [videos, query, kind, industry, client]);
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -51,7 +53,7 @@ export function VideoGallery({ videos, featured = false }: Props) {
   }, [featured, visible.length]);
   const cards = visible.map((video) => <button className={featured ? 'project' : 'library-card'} onClick={() => setActive(video)} key={video.id}><div className="project-media"><img src={video.thumbnail} alt="" /><span className="play">Play film ↗</span></div><div className="project-meta"><span>{video.kind || 'Selected work'}</span><h3>{video.client ? `${video.client} — ` : ''}{video.title}</h3><span>{video.year} / {video.duration}</span></div></button>);
   return <>
-    {!featured && <div className="gallery-controls"><label><span>Search work</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Client, project, or keyword" /></label>{kinds.length > 2 && <div className="filter-group"><span>Format</span><div>{kinds.map((item) => <button className={kind === item ? 'active' : ''} onClick={() => setKind(item)} key={item}>{item}</button>)}</div></div>}{industries.length > 2 && <div className="filter-group"><span>Industry</span><div>{industries.map((item) => <button className={industry === item ? 'active' : ''} onClick={() => setIndustry(item)} key={item}>{item}</button>)}</div></div>}<p className="result-count">{visible.length} films</p></div>}
+    {!featured && <div className="gallery-controls"><label><span>Search work</span><input value={query} onInput={(event) => setQuery(event.currentTarget.value)} placeholder="Client, project, or keyword" /></label>{clients.length > 2 && <label className="filter-group client-work-filter"><span>Client</span><select aria-label="Filter work by client" value={client} onChange={(event) => setClient(event.target.value)}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select></label>}{kinds.length > 2 && <div className="filter-group"><span>Format</span><div>{kinds.map((item) => <button className={kind === item ? 'active' : ''} onClick={() => setKind(item)} key={item}>{item}</button>)}</div></div>}{industries.length > 2 && <div className="filter-group"><span>Industry</span><div>{industries.map((item) => <button className={industry === item ? 'active' : ''} onClick={() => setIndustry(item)} key={item}>{item}</button>)}</div></div>}<p className="result-count" aria-live="polite">{visible.length} films</p></div>}
     {featured ? <div className="featured-rail-shell"><div ref={gridRef} className="work-grid featured-work-rail" aria-label="Selected work gallery">{cards}</div><div className="featured-scrollbar" aria-hidden="true"><span style={{ width: `${railScroll.size}%`, left: `${railScroll.position}%` }} /></div></div> : <div ref={gridRef} className="library-grid">{cards}</div>}
     {active && <div className="video-modal" role="dialog" aria-modal="true" aria-label={active.title} onMouseDown={(event) => { if (event.target === event.currentTarget) setActive(null); }}><div className="modal-shell"><div className="modal-bar"><p>{active.client} — {active.title}</p><button onClick={() => setActive(null)}>Close ×</button></div><div className="modal-player"><iframe src={vimeoPlayerUrl(active, true)} title={active.title} allow="autoplay; fullscreen; picture-in-picture" allowFullScreen /></div></div></div>}
   </>;
