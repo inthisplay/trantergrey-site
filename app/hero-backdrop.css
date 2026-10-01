@@ -400,3 +400,57 @@ main#top.has-film-texture > .contact {
   .film-texture-backdrop,
   .film-texture-backdrop.is-visible { transition: none; }
 }
+
+/* The work library gets its own understated film loop, separate from the homepage reel. */
+.library-hero {
+  isolation: isolate;
+  width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  min-height: 330px;
+  overflow: hidden;
+  background: #151011;
+  padding: 130px 7vw 48px;
+}
+
+.library-hero-video,
+.library-hero-wash {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.library-hero-video { z-index: -2; background: #151011; }
+
+.library-hero-video iframe {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 177.78vh;
+  min-width: 100%;
+  height: 56.25vw;
+  min-height: 100%;
+  transform: translate(-50%, -50%);
+  border: 0;
+  pointer-events: none;
+}
+
+.library-hero-wash {
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(10, 8, 8, 0.88), rgba(35, 14, 18, 0.67) 58%, rgba(27, 11, 15, 0.76)), linear-gradient(0deg, rgba(9, 7, 7, 0.56), rgba(9, 7, 7, 0.18));
+}
+
+.library-hero-content { position: relative; z-index: 1; }
+
+.library-hero h1 {
+  margin: 0;
+  font-size: clamp(3.75rem, 6.5vw, 6.4rem);
+}
+
+@media (max-width: 720px) {
+  .library-hero {
+    min-height: 270px;
+    padding: 122px 6vw 38px;
+  }
+
+  .library-hero h1 { font-size: clamp(3.35rem, 15vw, 4.6rem); }
+}
