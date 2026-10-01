@@ -453,14 +453,46 @@ main#top.has-film-texture > .contact {
 }
 
 .client-work-filter select {
+  width: 100%;
   min-width: 180px;
-  border: 1px solid rgba(245, 242, 237, 0.4);
-  border-radius: 2px;
-  background: #111;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-bottom: 1px solid rgba(245, 242, 237, 0.66);
+  border-radius: 0;
+  background: transparent;
   color: var(--paper);
-  padding: 9px 32px 9px 11px;
+  padding: 9px 30px 10px 0;
   font: 500 11px var(--mono);
   letter-spacing: 0.04em;
+  cursor: pointer;
+  outline: 0;
+  transition: border-color .2s ease, color .2s ease;
+}
+
+.work-select-wrap {
+  position: relative;
+  display: block;
+}
+
+.work-select-wrap i {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  color: var(--bright);
+  font: 500 15px/1 var(--mono);
+  pointer-events: none;
+  transform: translateY(-55%);
+}
+
+.client-work-filter:focus-within > span:first-child,
+.client-work-filter:focus-within .work-select-wrap i {
+  color: var(--bright);
+}
+
+.client-work-filter:focus-within select,
+.client-work-filter:hover select {
+  border-color: var(--bright);
 }
 
 @media (max-width: 720px) {
@@ -470,5 +502,5 @@ main#top.has-film-texture > .contact {
   }
 
   .library-hero h1 { font-size: clamp(3.35rem, 15vw, 4.6rem); }
-  .client-work-filter select { width: 100%; min-height: 42px; }
+  .client-work-filter select { min-height: 42px; }
 }
