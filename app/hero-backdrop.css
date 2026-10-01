@@ -412,12 +412,14 @@ main#top.has-film-texture > .contact {
   padding: 130px 7vw 48px;
 }
 
-.library-hero-video,
-.library-hero-wash {
+.library-hero > .library-hero-video,
+.library-hero > .library-hero-wash {
   position: absolute;
   inset: 0;
   overflow: hidden;
   max-width: none;
+  animation: none;
+  transform: none;
 }
 
 .library-hero-video { z-index: 0; background: #151011; }
