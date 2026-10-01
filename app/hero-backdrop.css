@@ -419,7 +419,7 @@ main#top.has-film-texture > .contact {
   overflow: hidden;
 }
 
-.library-hero-video { z-index: -2; background: #151011; }
+.library-hero-video { z-index: 0; background: #151011; }
 
 .library-hero-video iframe {
   position: absolute;
@@ -435,11 +435,12 @@ main#top.has-film-texture > .contact {
 }
 
 .library-hero-wash {
-  z-index: -1;
+  z-index: 1;
   background: linear-gradient(90deg, rgba(10, 8, 8, 0.88), rgba(35, 14, 18, 0.67) 58%, rgba(27, 11, 15, 0.76)), linear-gradient(0deg, rgba(9, 7, 7, 0.56), rgba(9, 7, 7, 0.18));
 }
 
-.library-hero-content { position: relative; z-index: 1; }
+.library-hero > .site-header { z-index: 3; }
+.library-hero-content { position: relative; z-index: 2; }
 
 .library-hero h1 {
   margin: 0;
