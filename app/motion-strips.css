@@ -20,8 +20,9 @@
 .motion-strip.is-expanded { height: min(56.25vw, 900px); }
 .motion-strip-trigger { position: absolute; z-index: 3; inset: 0; width: 100%; padding: 0; overflow: hidden; border: 0; background: #111; color: var(--paper); cursor: pointer; text-align: left; }
 .motion-strip-thumb { position: absolute; inset: -24px 0; width: 100%; height: calc(100% + 48px); object-fit: cover; transform: translateY(var(--strip-parallax, 0px)) scale(1.045); transition: transform 160ms linear; }
-.motion-strip-wash { position: absolute; inset: 0; background: rgba(7, 7, 7, 0.17); transition: background-color 250ms ease; }
-.motion-strip-meta { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 17px 7vw; color: var(--paper); font: 500 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.motion-strip-wash { position: absolute; z-index: 1; inset: 0; background: rgba(7, 7, 7, 0.17); transition: background-color 250ms ease; }
+.motion-strip-vignette { position: absolute; z-index: 2; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(5, 5, 5, 0.64) 0%, rgba(5, 5, 5, 0.3) 14%, transparent 38%, transparent 62%, rgba(5, 5, 5, 0.3) 86%, rgba(5, 5, 5, 0.64) 100%); transition: opacity 250ms ease; }
+.motion-strip-meta { position: absolute; z-index: 3; inset: 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 17px 7vw; color: var(--paper); font: 500 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
 .motion-strip-meta span { color: rgba(245, 242, 237, 0.78); }
 .motion-strip-meta i { border-bottom: 1px solid rgba(245, 242, 237, 0.72); padding-bottom: 4px; font-style: normal; }
 .motion-strip-trigger:hover .motion-strip-wash,
@@ -30,6 +31,7 @@
 .motion-strip.is-active.is-ready .motion-strip-trigger { background: transparent; }
 .motion-strip.is-expanded .motion-strip-trigger { pointer-events: none; }
 .motion-strip.is-expanded .motion-strip-wash,
+.motion-strip.is-expanded .motion-strip-vignette,
 .motion-strip.is-expanded .motion-strip-meta { opacity: 0; }
 
 .motion-strip-player { position: absolute; inset: 0; z-index: 2; overflow: hidden; background: #000; opacity: 0; pointer-events: none; transition: opacity 220ms ease; }

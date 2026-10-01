@@ -66,6 +66,7 @@ export function MotionStrips({ videos }: { videos: Video[] }) {
           <button className="motion-strip-trigger" type="button" onClick={() => openFilm(video.id)} aria-expanded={expanded} aria-label={`Play ${video.title}`}>
             <img className="motion-strip-thumb" src={video.thumbnail} alt="" />
             <span className="motion-strip-wash" />
+            <span className="motion-strip-vignette" />
             <span className="motion-strip-meta"><span>{String(index + 1).padStart(2, '0')} / {video.client || 'TranterGrey'}</span><i>Play film ↗</i></span>
           </button>
           {preloaded && <div className={`motion-strip-player ${active ? 'is-visible' : ''}`} aria-hidden="true"><iframe ref={(frame) => { if (frame) playerRefs.current.set(video.id, frame); else playerRefs.current.delete(video.id); }} src={`${vimeoPlayerUrl(video, true)}&background=1&muted=1&loop=1&autopause=0`} title="" allow="autoplay" onLoad={() => { setReadyIds((ids) => ids.has(video.id) ? ids : new Set(ids).add(video.id)); setPlayerMuted(video.id, true); }} /></div>}
