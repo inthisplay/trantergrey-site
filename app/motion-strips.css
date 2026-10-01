@@ -1,0 +1,58 @@
+.motion-strips {
+  background: #0b0a0a;
+  /* Keep a clear pause after the films without doubling the work section's own lead-in. */
+  padding: 0 0 clamp(40px, 3.75vw, 60px);
+}
+
+.motion-strips-list { border-block: 1px solid rgba(245, 242, 237, 0.2); }
+
+.motion-strip {
+  position: relative;
+  height: clamp(82px, 8.2vw, 132px);
+  overflow: hidden;
+  border-bottom: 1px solid rgba(245, 242, 237, 0.2);
+  background: #111;
+  transition: height 560ms cubic-bezier(0.2, 0.72, 0.22, 1);
+}
+
+.motion-strip:last-child { border-bottom: 0; }
+.motion-strip.is-active { height: clamp(164px, 16.4vw, 264px); }
+.motion-strip.is-expanded { height: min(56.25vw, 900px); }
+.motion-strip-trigger { position: absolute; z-index: 3; inset: 0; width: 100%; padding: 0; overflow: hidden; border: 0; background: #111; color: var(--paper); cursor: pointer; text-align: left; }
+.motion-strip-thumb { position: absolute; inset: -24px 0; width: 100%; height: calc(100% + 48px); object-fit: cover; transform: translateY(var(--strip-parallax, 0px)) scale(1.045); transition: transform 160ms linear; }
+.motion-strip-wash { position: absolute; inset: 0; background: rgba(7, 7, 7, 0.17); transition: background-color 250ms ease; }
+.motion-strip-meta { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 17px 7vw; color: var(--paper); font: 500 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.motion-strip-meta span { color: rgba(245, 242, 237, 0.78); }
+.motion-strip-meta i { border-bottom: 1px solid rgba(245, 242, 237, 0.72); padding-bottom: 4px; font-style: normal; }
+.motion-strip-trigger:hover .motion-strip-wash,
+.motion-strip-trigger:focus-visible .motion-strip-wash { background: rgba(7, 7, 7, 0.02); }
+.motion-strip.is-active.is-ready .motion-strip-thumb { opacity: 0; }
+.motion-strip.is-active.is-ready .motion-strip-trigger { background: transparent; }
+.motion-strip.is-expanded .motion-strip-trigger { pointer-events: none; }
+.motion-strip.is-expanded .motion-strip-wash,
+.motion-strip.is-expanded .motion-strip-meta { opacity: 0; }
+
+.motion-strip-player { position: absolute; inset: 0; z-index: 2; overflow: hidden; background: #000; opacity: 0; pointer-events: none; transition: opacity 220ms ease; }
+.motion-strip-player.is-visible { opacity: 1; }
+.motion-strip-player iframe { position: absolute; top: 50%; left: 50%; display: block; width: 100%; height: max(100%, 56.25vw); min-height: 100%; transform: translate(-50%, -50%); border: 0; pointer-events: none; }
+.motion-strip-controls { position: absolute; z-index: 4; top: 18px; right: 7vw; display: flex; align-items: center; gap: 9px; }
+.motion-strip-controls button { height: 38px; border: 1px solid rgba(245, 242, 237, 0.72); border-radius: 99px; background: rgba(8, 8, 8, 0.35); color: var(--paper); padding: 0 14px; font: 500 10px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.motion-strip-controls button:first-child { width: 38px; padding: 0; font: 300 27px / 34px var(--sans); }
+.motion-strip-controls button:hover { background: rgba(8, 8, 8, 0.72); }
+
+@media (max-width: 720px) {
+  .motion-strip { height: 88px; }
+  .motion-strip.is-active { height: 176px; }
+  .motion-strip.is-expanded { height: 56.25vw; min-height: 230px; }
+  .motion-strip-meta { padding: 13px 6vw; font-size: 9px; }
+  .motion-strip-controls { top: 10px; right: 6vw; }
+  .motion-strip-controls button { height: 34px; padding-inline: 11px; font-size: 9px; }
+  .motion-strip-controls button:first-child { width: 34px; font-size: 24px; line-height: 30px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-strip,
+  .motion-strip-thumb { transition: none; }
+  .motion-strip-thumb { transform: scale(1.045); }
+  .motion-strip-player { transition: none; }
+}

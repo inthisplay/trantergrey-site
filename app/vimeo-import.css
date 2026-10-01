@@ -1,0 +1,15 @@
+.import-buttons { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
+.import-buttons .connect-button { margin-top: 0; }
+.full-import-button { border: 1px solid rgba(245, 242, 237, 0.32); background: transparent; color: rgba(245, 242, 237, 0.74); padding: 14px 15px; font: 500 10px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer; }
+.full-import-button:hover:not(:disabled) { border-color: var(--paper); color: var(--paper); }
+.full-import-button:disabled { cursor: wait; opacity: 0.55; }
+
+.library-status-actions { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; }
+.library-status-actions > a { border-bottom: 1px solid rgba(245, 242, 237, 0.42); padding-bottom: 3px; color: rgba(245, 242, 237, 0.7); font: 500 9px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.library-status-actions > a:hover { border-color: var(--bright); color: var(--paper); }
+.vimeo-quick-links { display: flex; flex-wrap: wrap; gap: 22px; }
+.vimeo-quick-links .secondary-link { margin-top: 18px; }
+
+@media (max-width: 720px) {
+  .library-status-actions { align-items: flex-start; flex-direction: column; gap: 8px; }
+}

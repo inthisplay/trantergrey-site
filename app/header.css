@@ -1,0 +1,35 @@
+.site-header--return {
+  position: fixed;
+  z-index: 20;
+  background: rgba(8, 8, 9, 0.72);
+  border-bottom: 1px solid rgba(245, 242, 237, 0.07);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+  pointer-events: none;
+  transform: translateY(-110%);
+  animation: none !important;
+  will-change: transform;
+}
+
+.site-header--return.is-return-visible {
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.site-header .wordmark img {
+  width: 300px;
+}
+
+@media (max-width: 720px) {
+  .site-header .wordmark img { width: 148px; }
+
+  .site-header--return nav.open {
+    background: rgba(8, 8, 9, 0.9);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: blur(18px) saturate(135%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header--return { will-change: auto; }
+}

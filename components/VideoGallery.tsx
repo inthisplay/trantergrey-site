@@ -1,0 +1,58 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Video } from '@/lib/videos';
+import { vimeoPlayerUrl } from '@/lib/videos';
+
+type Props = { videos: Video[]; featured?: boolean };
+
+export function VideoGallery({ videos, featured = false }: Props) {
+  const [active, setActive] = useState<Video | null>(null);
+  const [query, setQuery] = useState('');
+  const [kind, setKind] = useState('All');
+  const [industry, setIndustry] = useState('All');
+  const [railScroll, setRailScroll] = useState({ size: 100, position: 0 });
+  const gridRef = useRef<HTMLDivElement>(null);
+  const kinds = ['All', ...Array.from(new Set(videos.map((video) => video.kind).filter(Boolean)))];
+  const industries = ['All', ...Array.from(new Set(videos.map((video) => video.industry).filter(Boolean)))];
+  const visible = useMemo(() => videos.filter((video) => {
+    const haystack = `${video.title} ${video.client} ${video.kind} ${video.industry} ${video.searchTerms ?? ''}`.toLowerCase();
+    return haystack.includes(query.toLowerCase()) && (kind === 'All' || video.kind === kind) && (industry === 'All' || video.industry === industry);
+  }), [videos, query, kind, industry]);
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('.library-card'));
+    if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      cards.forEach((card) => card.classList.add('is-visible'));
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      if (entry.isIntersecting) { entry.target.classList.add('is-visible'); observer.unobserve(entry.target); }
+    }), { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    cards.forEach((card) => observer.observe(card));
+    return () => observer.disconnect();
+  }, [visible]);
+  useEffect(() => {
+    if (!featured) return;
+    const rail = gridRef.current;
+    if (!rail) return;
+    const update = () => {
+      const maxScroll = rail.scrollWidth - rail.clientWidth;
+      const size = Math.max(12, (rail.clientWidth / rail.scrollWidth) * 56);
+      const position = maxScroll > 0 ? (rail.scrollLeft / maxScroll) * (100 - size) : 0;
+      setRailScroll({ size, position });
+    };
+    update();
+    rail.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(rail);
+    return () => { rail.removeEventListener('scroll', update); observer.disconnect(); };
+  }, [featured, visible.length]);
+  const cards = visible.map((video) => <button className={featured ? 'project' : 'library-card'} onClick={() => setActive(video)} key={video.id}><div className="project-media"><img src={video.thumbnail} alt="" /><span className="play">Play film ↗</span></div><div className="project-meta"><span>{video.kind || 'Selected work'}</span><h3>{video.client ? `${video.client} — ` : ''}{video.title}</h3><span>{video.year} / {video.duration}</span></div></button>);
+  return <>
+    {!featured && <div className="gallery-controls"><label><span>Search work</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Client, project, or keyword" /></label>{kinds.length > 2 && <div className="filter-group"><span>Format</span><div>{kinds.map((item) => <button className={kind === item ? 'active' : ''} onClick={() => setKind(item)} key={item}>{item}</button>)}</div></div>}{industries.length > 2 && <div className="filter-group"><span>Industry</span><div>{industries.map((item) => <button className={industry === item ? 'active' : ''} onClick={() => setIndustry(item)} key={item}>{item}</button>)}</div></div>}<p className="result-count">{visible.length} films</p></div>}
+    {featured ? <div className="featured-rail-shell"><div ref={gridRef} className="work-grid featured-work-rail" aria-label="Selected work gallery">{cards}</div><div className="featured-scrollbar" aria-hidden="true"><span style={{ width: `${railScroll.size}%`, left: `${railScroll.position}%` }} /></div></div> : <div ref={gridRef} className="library-grid">{cards}</div>}
+    {active && <div className="video-modal" role="dialog" aria-modal="true" aria-label={active.title} onMouseDown={(event) => { if (event.target === event.currentTarget) setActive(null); }}><div className="modal-shell"><div className="modal-bar"><p>{active.client} — {active.title}</p><button onClick={() => setActive(null)}>Close ×</button></div><div className="modal-player"><iframe src={vimeoPlayerUrl(active, true)} title={active.title} allow="autoplay; fullscreen; picture-in-picture" allowFullScreen /></div></div></div>}
+  </>;
+}

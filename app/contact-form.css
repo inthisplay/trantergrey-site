@@ -1,0 +1,91 @@
+/* The inquiry form is intentionally open to the red contact field, not carded. */
+.project-inquiry {
+  min-height: 505px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+@media (min-width: 721px) {
+  .contact {
+    align-items: center;
+  }
+}
+
+.inquiry-kicker,
+.inquiry-prompt,
+.inquiry-progress,
+.inquiry-fields label span,
+.inquiry-choice-group > span,
+.inquiry-message > span {
+  color: #171313;
+}
+
+.inquiry-progress-line {
+  background: rgba(20, 13, 14, 0.62);
+}
+
+.inquiry-progress-line span {
+  background: var(--paper);
+}
+
+.inquiry-fields input,
+.inquiry-message textarea {
+  border-color: rgba(245, 242, 237, 0.65);
+}
+
+.inquiry-fields input:focus,
+.inquiry-message textarea:focus {
+  border-color: #fff;
+}
+
+.inquiry-choice-group button {
+  border-color: rgba(245, 242, 237, 0.48);
+  color: var(--paper);
+}
+
+.inquiry-choice-group button i {
+  color: rgba(245, 242, 237, 0.74);
+}
+
+.inquiry-choice-group button:hover {
+  border-color: var(--paper);
+  background: rgba(20, 13, 14, 0.13);
+}
+
+.inquiry-choice-group button.selected {
+  border-color: #171313;
+  background: #171313;
+}
+
+.inquiry-next {
+  background: #171313;
+  color: var(--paper);
+}
+
+.inquiry-next:hover:not(:disabled) {
+  background: #070606;
+}
+
+.inquiry-error {
+  color: var(--paper);
+}
+
+.inquiry-success-mark {
+  border-color: #171313;
+  color: #171313;
+}
+
+.inquiry-success button:hover {
+  color: #171313;
+  border-color: #171313;
+}
+
+@media (max-width: 720px) {
+  .project-inquiry {
+    min-height: 480px;
+    padding: 0;
+    box-shadow: none;
+  }
+}

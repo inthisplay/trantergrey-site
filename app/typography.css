@@ -1,0 +1,17 @@
+/* Applied by AxisXTracking to Axis ExtraBold glyphs only. */
+.axis-tracked-text {
+  display: inline;
+}
+
+/* The capability summary styles its number label through a broad span selector. */
+.capability-list summary > .axis-tracked-text,
+.capability-list summary > .axis-tracked-text .axis-tracked-glyph {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.axis-x-tracked,
+.axis-double-t-tracked {
+  display: inline-block;
+  padding-right: 0.045em;
+}
