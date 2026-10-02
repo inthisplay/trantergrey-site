@@ -73,7 +73,7 @@ export default async function Home() {
           <div>
             <h2>We turn a good story into <em>something people remember.</em></h2>
             <p className="intro-copy">TranterGrey is a multi-Emmy award-winning creative agency built around one simple idea: a business grows faster when its marketing has a point of view. We bring strategy, video, design, and digital execution together under one roof.</p>
-            <a className="text-link" href="mailto:hello@trantergrey.com">Tell us about your brand ↗</a>
+            <a className="text-link" href="/#contact">Tell us about your brand ↗</a>
           </div>
         </section>
 

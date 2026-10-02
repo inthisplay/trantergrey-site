@@ -1,0 +1,90 @@
+.case-studies-simple {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-height: 100svh;
+  padding: 165px 7vw 140px;
+  overflow: hidden;
+  background: var(--ink);
+}
+
+.case-studies-simple::before,
+.case-studies-simple::after {
+  position: absolute;
+  z-index: 0;
+  right: 0;
+  left: 0;
+  height: clamp(120px, 18vw, 260px);
+  content: '';
+  pointer-events: none;
+}
+
+.case-studies-simple::before {
+  top: 0;
+  background: linear-gradient(180deg, #171012 0%, rgba(11, 10, 10, 0) 100%);
+}
+
+.case-studies-simple::after {
+  bottom: 0;
+  background: linear-gradient(0deg, #171012 0%, rgba(11, 10, 10, 0) 100%);
+}
+
+.case-studies-simple > .section-index {
+  position: relative;
+  z-index: 1;
+  justify-self: center;
+  margin: 0 0 clamp(34px, 5vw, 68px);
+  color: rgba(245, 242, 237, 0.58);
+}
+
+.case-studies-simple-list {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: min(1180px, 100%);
+  margin: auto;
+}
+
+.case-studies-simple-list a {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: clamp(22px, 3vw, 44px) 0;
+  color: var(--paper);
+  text-align: center;
+}
+
+.case-studies-simple-list a:first-child { padding-top: 0; }
+
+.case-studies-simple-list a + a {
+  border-top: 1px solid var(--line);
+}
+
+.case-studies-simple-list a > span {
+  color: rgba(245, 242, 237, 0.52);
+  font: 500 11px var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  transition: color 220ms ease;
+}
+
+.case-studies-simple-list a > strong {
+  max-width: 15ch;
+  font: 400 clamp(3rem, 6.4vw, 7.5rem) / 0.9 var(--display);
+  letter-spacing: -0.075em;
+  transition: color 220ms ease, transform 220ms cubic-bezier(.2, .72, .22, 1);
+}
+
+.case-studies-simple-list a:hover > span { color: var(--bright); }
+.case-studies-simple-list a:hover > strong { color: var(--bright); transform: translateY(-4px); }
+
+@media (max-width: 720px) {
+  .case-studies-simple { min-height: 100svh; padding: 130px 6vw 100px; }
+  .case-studies-simple-list a { padding-block: 32px; }
+  .case-studies-simple-list a > strong { font-size: clamp(2.8rem, 12vw, 4.8rem); }
+}

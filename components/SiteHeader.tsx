@@ -14,9 +14,10 @@ function HeaderLinks({ open, onMenuToggle }: HeaderLinksProps) {
     <button className="menu-toggle" onClick={onMenuToggle} aria-expanded={open}>Menu <span /></button>
     <nav className={open ? 'open' : ''}>
       <a href="/work">Work</a>
+      <a href="/case-studies">Case studies</a>
       <a href="/#capabilities">Capabilities</a>
       <a href="/#about">About</a>
-      <a className="nav-cta" href="mailto:hello@trantergrey.com?subject=Let's%20work%20together">Start a project</a>
+      <a className="nav-cta" href="/#contact">Start a project</a>
     </nav>
   </>;
 }
