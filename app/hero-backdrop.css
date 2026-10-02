@@ -302,7 +302,11 @@ main#top.has-film-texture > .contact {
 .statement-copy .statement-word:not(.statement-word--muted) { color: var(--paper); }
 
 .capabilities {
-  padding-top: clamp(82px, 9vw, 145px);
+  padding-top: 36px;
+}
+
+.capability-list {
+  border-top: 0;
 }
 
 .capabilities > .section-index {
