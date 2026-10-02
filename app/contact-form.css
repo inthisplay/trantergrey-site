@@ -7,6 +7,28 @@
   box-shadow: none;
 }
 
+/* A quiet red bloom carries the final section into the footer. */
+.contact {
+  overflow: hidden;
+}
+
+.contact::after {
+  position: absolute;
+  z-index: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: min(42%, 390px);
+  background: radial-gradient(ellipse 72% 78% at 50% 100%, rgba(102, 35, 43, 0.28), rgba(102, 35, 43, 0.07) 45%, rgba(11, 10, 10, 0) 75%);
+  content: '';
+  pointer-events: none;
+}
+
+.contact > * {
+  position: relative;
+  z-index: 1;
+}
+
 @media (min-width: 721px) {
   .contact {
     align-items: center;
