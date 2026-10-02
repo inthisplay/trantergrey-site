@@ -10,6 +10,7 @@ import './vimeo-import.css';
 import './hero-backdrop.css';
 import './motion-strips.css';
 import './homepage-motion.css';
+import './case-studies.css';
 
 export const metadata: Metadata = {
   title: 'TranterGrey — Marketing in motion.',
