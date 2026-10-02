@@ -537,7 +537,7 @@ main#top.has-film-texture > .contact {
 }
 
 .capabilities .case-studies-teaser {
-  padding-top: 30px;
+  padding-top: 40px;
 }
 
 .capabilities:has(.case-studies-teaser)::after {
