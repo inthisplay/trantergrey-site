@@ -513,3 +513,21 @@ main#top.has-film-texture > .contact {
 .library-card .project-media {
   border-radius: 0;
 }
+
+.library-card .project-media img {
+  --work-thumbnail-shift: 0px;
+  --work-thumbnail-scale: 1.07;
+  transform: translate3d(0, var(--work-thumbnail-shift), 0) scale(var(--work-thumbnail-scale));
+  transition: transform .5s cubic-bezier(.2,.72,.22,1), filter .35s ease;
+  will-change: transform;
+}
+
+.library-card:hover .project-media img {
+  --work-thumbnail-scale: 1.11;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-card .project-media img {
+    transform: scale(1.04);
+  }
+}
