@@ -532,11 +532,11 @@ main#top.has-film-texture > .contact {
 /* Keep the case-study teaser visually tied to the capability list while
    leaving a deliberate runout for the shared vertical section rule. */
 .capabilities:has(.case-studies-teaser) {
-  padding-bottom: 210px;
+  padding-bottom: 90px;
 }
 
 .capabilities .case-studies-teaser {
-  padding-top: 54px;
+  padding-top: 30px;
 }
 
 .capabilities:has(.case-studies-teaser)::after {
