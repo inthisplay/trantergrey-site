@@ -163,7 +163,7 @@ export default async function Home() {
             </details>
           </div>
           <div className="case-studies-teaser">
-            <div className="case-studies-teaser-heading"><p className="section-index">Selected case studies</p><h3>See what the work <em>moves.</em></h3><p>Three stories ready for a closer look.</p></div>
+            <div className="case-studies-teaser-heading"><p className="section-index">Selected case studies</p></div>
             <div className="case-studies-teaser-grid">{caseStudies.map((study) => <a className="case-study-poster" href={`/case-studies/${study.slug}`} key={study.slug}><div className="case-study-poster-image"><img src={study.image} alt="" /><span>{study.number} / Case study</span></div><div className="case-study-poster-copy"><p>{study.client}</p><h4>{study.title}</h4><span>View case study</span></div></a>)}</div>
             <a className="case-studies-all" href="/case-studies">Browse all case studies</a>
           </div>
