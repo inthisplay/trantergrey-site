@@ -537,7 +537,7 @@ main#top.has-film-texture > .contact {
    leaving a deliberate runout for the shared vertical section rule. */
 .capabilities:has(.case-studies-teaser) {
   row-gap: 0;
-  padding-bottom: 90px;
+  padding-bottom: 125px;
 }
 
 .capabilities .case-studies-teaser {
