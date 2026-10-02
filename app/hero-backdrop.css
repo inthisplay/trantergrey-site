@@ -528,3 +528,31 @@ main#top.has-film-texture > .contact {
     transform: translate3d(0, var(--media-parallax-y), 0) scale(1.19);
   }
 }
+
+/* Keep the case-study teaser visually tied to the capability list while
+   leaving a deliberate runout for the shared vertical section rule. */
+.capabilities:has(.case-studies-teaser) {
+  padding-bottom: 210px;
+}
+
+.capabilities .case-studies-teaser {
+  padding-top: 54px;
+}
+
+.capabilities:has(.case-studies-teaser)::after {
+  bottom: 34px;
+}
+
+@media (max-width: 720px) {
+  .capabilities:has(.case-studies-teaser) {
+    padding-bottom: 122px;
+  }
+
+  .capabilities .case-studies-teaser {
+    padding-top: 48px;
+  }
+
+  .capabilities:has(.case-studies-teaser)::after {
+    bottom: 26px;
+  }
+}
