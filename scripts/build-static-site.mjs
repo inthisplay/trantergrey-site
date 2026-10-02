@@ -32,9 +32,7 @@ try {
 
   const homePath = path.join(staging, 'app/page.tsx');
   const home = readFileSync(homePath, 'utf8')
-    .replace("import { getVimeoLibrary } from '@/lib/vimeo-library';\n", '')
-    .replace("export const dynamic = 'force-dynamic';\n\n", '')
-    .replace(/  const library = await getVimeoLibrary\(\);\n  const stripVideos = library\?\.videos\n    \.filter\(\(video\) => video\.libraryStatus === 'published' && \(video\.localTags \?\? \[\]\)\.some\(\(tag\) => tag\.toLocaleLowerCase\(\) === 'homepage-strip'\)\)\n    \.map\(toPublicVideo\) \?\? videos\.slice\(0, 5\);/, '  const stripVideos = videos.slice(0, 5);');
+    .replace("export const dynamic = 'force-dynamic';\n\n", '');
   writeFileSync(homePath, home);
 
   const workPath = path.join(staging, 'app/work/page.tsx');
