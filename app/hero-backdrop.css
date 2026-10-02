@@ -504,3 +504,12 @@ main#top.has-film-texture > .contact {
   .library-hero h1 { font-size: clamp(3.35rem, 15vw, 4.6rem); }
   .client-work-filter select { min-height: 42px; }
 }
+
+/* Keep the work library aligned to the site gutters, with a tight editorial grid. */
+.library-grid {
+  gap: 20px;
+}
+
+.library-card .project-media {
+  border-radius: 0;
+}
