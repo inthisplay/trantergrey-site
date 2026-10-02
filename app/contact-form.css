@@ -19,7 +19,7 @@
   bottom: 0;
   left: 0;
   height: min(42%, 390px);
-  background: radial-gradient(ellipse 72% 78% at 50% 100%, rgba(102, 35, 43, 0.28), rgba(102, 35, 43, 0.07) 45%, rgba(11, 10, 10, 0) 75%);
+  background: radial-gradient(ellipse 92% 78% at 50% 100%, rgba(102, 35, 43, 0.28), rgba(102, 35, 43, 0.07) 45%, rgba(11, 10, 10, 0) 75%);
   content: '';
   pointer-events: none;
 }
