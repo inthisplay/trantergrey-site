@@ -514,20 +514,17 @@ main#top.has-film-texture > .contact {
   border-radius: 0;
 }
 
-.library-card .project-media img {
-  --work-thumbnail-shift: 0px;
-  --work-thumbnail-scale: 1.07;
-  transform: translate3d(0, var(--work-thumbnail-shift), 0) scale(var(--work-thumbnail-scale));
-  transition: transform .5s cubic-bezier(.2,.72,.22,1), filter .35s ease;
-  will-change: transform;
+.library-card .project-media {
+  --media-parallax-y: 0px;
 }
 
-.library-card:hover .project-media img {
-  --work-thumbnail-scale: 1.11;
-}
-
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: no-preference) {
   .library-card .project-media img {
-    transform: scale(1.04);
+    transform: translate3d(0, var(--media-parallax-y), 0) scale(1.14);
+    transition: transform 380ms cubic-bezier(.2, .72, .22, 1), filter 380ms ease;
+  }
+
+  .library-card:hover .project-media img {
+    transform: translate3d(0, var(--media-parallax-y), 0) scale(1.19);
   }
 }

@@ -51,6 +51,35 @@ export function VideoGallery({ videos, featured = false }: Props) {
     observer.observe(rail);
     return () => { rail.removeEventListener('scroll', update); observer.disconnect(); };
   }, [featured, visible.length]);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || featured || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const media = Array.from(grid.querySelectorAll<HTMLElement>('.project-media'));
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const viewportCenter = window.innerHeight / 2;
+      media.forEach((item) => {
+        const bounds = item.getBoundingClientRect();
+        const distance = (viewportCenter - (bounds.top + bounds.height / 2)) / window.innerHeight;
+        const shift = Math.max(-34, Math.min(34, distance * 54));
+        item.style.setProperty('--media-parallax-y', `${shift.toFixed(2)}px`);
+      });
+    };
+    const requestUpdate = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener('scroll', requestUpdate, { passive: true });
+    window.addEventListener('resize', requestUpdate);
+    return () => {
+      window.removeEventListener('scroll', requestUpdate);
+      window.removeEventListener('resize', requestUpdate);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [featured, visible.length]);
   const cards = visible.map((video) => <button className={featured ? 'project' : 'library-card'} onClick={() => setActive(video)} key={video.id}><div className="project-media"><img src={video.thumbnail} alt="" /><span className="play">Play film ↗</span></div><div className="project-meta"><span>{video.kind || 'Selected work'}</span><h3>{video.client ? `${video.client} — ` : ''}{video.title}</h3><span>{video.year} / {video.duration}</span></div></button>);
   return <>
     {!featured && <div className="gallery-controls"><label><span>Search work</span><input value={query} onInput={(event) => setQuery(event.currentTarget.value)} placeholder="Client, project, or keyword" /></label>{clients.length > 2 && <label className="filter-group client-work-filter"><span>Client</span><span className="work-select-wrap"><select aria-label="Filter work by client" value={client} onChange={(event) => setClient(event.target.value)}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select><i aria-hidden="true">⌄</i></span></label>}{kinds.length > 2 && <div className="filter-group"><span>Format</span><div>{kinds.map((item) => <button className={kind === item ? 'active' : ''} onClick={() => setKind(item)} key={item}>{item}</button>)}</div></div>}{industries.length > 2 && <div className="filter-group"><span>Industry</span><div>{industries.map((item) => <button className={industry === item ? 'active' : ''} onClick={() => setIndustry(item)} key={item}>{item}</button>)}</div></div>}<p className="result-count" aria-live="polite">{visible.length} films</p></div>}
