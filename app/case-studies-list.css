@@ -83,6 +83,25 @@
 .case-studies-simple-list a:hover > span { color: var(--bright); }
 .case-studies-simple-list a:hover > strong { color: var(--bright); transform: translateY(-4px); }
 
+.capabilities .case-studies-all {
+  margin-top: 40px;
+  padding: 13px 17px;
+  border: 1px solid var(--bright);
+  background: var(--bright);
+  color: #fff;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.capabilities .case-studies-all:hover {
+  border-color: #7d2d35;
+  background: #7d2d35;
+  color: #fff;
+  transform: translateY(-2px);
+}
+
 @media (max-width: 720px) {
   .case-studies-simple { min-height: 100svh; padding: 130px 6vw 100px; }
   .case-studies-simple-list a { padding-block: 32px; }
