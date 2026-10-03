@@ -100,6 +100,52 @@ main#top > section,
 .intro h2 em { color: var(--bright); }
 .intro-copy { color: rgba(245, 242, 237, 0.74); }
 
+.intro-services {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: clamp(58px, 7vw, 105px);
+  border-top: 1px solid var(--line);
+}
+
+.intro-services article {
+  display: flex;
+  min-height: 184px;
+  padding: 24px clamp(20px, 2.4vw, 42px) 25px 0;
+  flex-direction: column;
+  border-bottom: 1px solid var(--line);
+}
+
+.intro-services article:nth-child(odd) {
+  margin-right: clamp(20px, 3vw, 48px);
+  border-right: 1px solid var(--line);
+}
+
+.intro-services article:nth-child(even) {
+  padding-left: clamp(20px, 3vw, 48px);
+}
+
+.intro-services p {
+  margin: 0 0 auto;
+  color: rgba(245, 242, 237, 0.56);
+  font: 500 10px var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.intro-services h3 {
+  max-width: 300px;
+  margin: 20px 0 8px;
+  color: var(--paper);
+  font: 400 clamp(1.45rem, 2.3vw, 2.35rem) / 0.98 var(--display);
+  letter-spacing: -0.055em;
+  text-transform: uppercase;
+}
+
+.intro-services span {
+  color: rgba(245, 242, 237, 0.64);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .client-roster {
   align-items: start;
 }
@@ -396,6 +442,24 @@ main#top.has-film-texture > .contact {
 
   .capability-list .capability-detail p { font-size: 14px; }
   .capability-list .capability-detail ul { grid-template-columns: 1fr; gap: 8px; }
+
+  .intro-services {
+    grid-template-columns: 1fr;
+    margin-top: 54px;
+  }
+
+  .intro-services article {
+    min-height: 142px;
+    padding: 20px 0 22px;
+  }
+
+  .intro-services article:nth-child(odd) {
+    margin-right: 0;
+    border-right: 0;
+  }
+
+  .intro-services article:nth-child(even) { padding-left: 0; }
+  .intro-services h3 { margin: 17px 0 7px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

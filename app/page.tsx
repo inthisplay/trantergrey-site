@@ -70,10 +70,32 @@ export default async function Home() {
 
         <section className="intro" id="about">
           <p className="section-index">01 / Who we are</p>
-          <div>
+          <div className="intro-body">
             <h2>We turn a good story into <em>something people remember.</em></h2>
             <p className="intro-copy">TranterGrey is a multi-Emmy award-winning creative agency built around one simple idea: a business grows faster when its marketing has a point of view. We bring strategy, video, design, and digital execution together under one roof.</p>
             <a className="text-link" href="/#contact">Tell us about your brand ↗</a>
+            <div className="intro-services" aria-label="What we do">
+              <article>
+                <p>01</p>
+                <h3>Brand strategy</h3>
+                <span>Find the point of view.</span>
+              </article>
+              <article>
+                <p>02</p>
+                <h3>Video production</h3>
+                <span>Make it move.</span>
+              </article>
+              <article>
+                <p>03</p>
+                <h3>Campaign creative</h3>
+                <span>Build the idea out.</span>
+              </article>
+              <article>
+                <p>04</p>
+                <h3>Digital experiences</h3>
+                <span>Give it somewhere to land.</span>
+              </article>
+            </div>
           </div>
         </section>
 
