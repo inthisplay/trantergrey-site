@@ -74,27 +74,29 @@ export default async function Home() {
             <h2>We turn a good story into <em>something people remember.</em></h2>
             <p className="intro-copy">TranterGrey is a multi-Emmy award-winning creative agency built around one simple idea: a business grows faster when its marketing has a point of view. We bring strategy, video, design, and digital execution together under one roof.</p>
             <a className="text-link" href="/#contact">Tell us about your brand ↗</a>
-            <div className="intro-services" aria-label="What we do">
-              <article>
-                <p>01</p>
-                <h3>Brand strategy</h3>
-                <span>Find the point of view.</span>
-              </article>
-              <article>
-                <p>02</p>
-                <h3>Video production</h3>
-                <span>Make it move.</span>
-              </article>
-              <article>
-                <p>03</p>
-                <h3>Campaign creative</h3>
-                <span>Build the idea out.</span>
-              </article>
-              <article>
-                <p>04</p>
-                <h3>Digital experiences</h3>
-                <span>Give it somewhere to land.</span>
-              </article>
+            <div className="intro-services-layout">
+              <div className="intro-services-aside" aria-hidden="true">
+                <p>(What we do)</p>
+                <span>↘</span>
+              </div>
+              <div className="intro-services" aria-label="What we do">
+                <article>
+                  <h3>Think first.</h3>
+                  <span>Strategy without the 97-slide deck.</span>
+                </article>
+                <article>
+                  <h3>Make it move.</h3>
+                  <span>Films people don&apos;t want to skip.</span>
+                </article>
+                <article>
+                  <h3>Make a big deal.</h3>
+                  <span>Ideas with enough legs to go places.</span>
+                </article>
+                <article>
+                  <h3>Make the web behave.</h3>
+                  <span>Useful, beautiful, and not a pain to use.</span>
+                </article>
+              </div>
             </div>
           </div>
         </section>

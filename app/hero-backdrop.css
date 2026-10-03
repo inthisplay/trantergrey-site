@@ -100,18 +100,33 @@ main#top > section,
 .intro h2 em { color: var(--bright); }
 .intro-copy { color: rgba(245, 242, 237, 0.74); }
 
+.intro-services-layout {
+  display: grid;
+  grid-template-columns: 20% 1fr;
+  gap: 5%;
+  margin-top: clamp(58px, 7vw, 105px);
+}
+
+.intro-services-aside {
+  display: flex;
+  justify-content: space-between;
+  color: rgba(245, 242, 237, 0.64);
+  font: 500 11px var(--mono);
+  letter-spacing: 0.04em;
+}
+
+.intro-services-aside p { margin: 0; }
+.intro-services-aside span { color: var(--paper); font-size: 20px; line-height: 0.7; }
+
 .intro-services {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: clamp(58px, 7vw, 105px);
   border-top: 1px solid var(--line);
 }
 
 .intro-services article {
-  display: flex;
-  min-height: 184px;
-  padding: 24px clamp(20px, 2.4vw, 42px) 25px 0;
-  flex-direction: column;
+  min-height: 132px;
+  padding: 23px clamp(18px, 2.2vw, 36px) 22px 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -124,18 +139,11 @@ main#top > section,
   padding-left: clamp(20px, 3vw, 48px);
 }
 
-.intro-services p {
-  margin: 0 0 auto;
-  color: rgba(245, 242, 237, 0.56);
-  font: 500 10px var(--mono);
-  letter-spacing: 0.1em;
-}
-
 .intro-services h3 {
-  max-width: 300px;
-  margin: 20px 0 8px;
+  max-width: 250px;
+  margin: 0 0 8px;
   color: var(--paper);
-  font: 400 clamp(1.45rem, 2.3vw, 2.35rem) / 0.98 var(--display);
+  font: 400 clamp(1.25rem, 1.8vw, 1.9rem) / 1 var(--display);
   letter-spacing: -0.055em;
   text-transform: uppercase;
 }
@@ -445,8 +453,14 @@ main#top.has-film-texture > .contact {
 
   .intro-services {
     grid-template-columns: 1fr;
+  }
+
+  .intro-services-layout {
+    display: block;
     margin-top: 54px;
   }
+
+  .intro-services-aside { margin-bottom: 24px; }
 
   .intro-services article {
     min-height: 142px;
@@ -459,7 +473,7 @@ main#top.has-film-texture > .contact {
   }
 
   .intro-services article:nth-child(even) { padding-left: 0; }
-  .intro-services h3 { margin: 17px 0 7px; }
+  .intro-services h3 { margin: 0 0 7px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
