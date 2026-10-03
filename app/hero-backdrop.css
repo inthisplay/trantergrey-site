@@ -103,6 +103,7 @@ main#top > section,
 .intro-services {
   --intro-rule-gap: 18px;
   --intro-row-gap: 30px;
+  --intro-text-inset: 2.15vw;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 0;
@@ -145,13 +146,11 @@ main#top > section,
 }
 
 .intro-services article:nth-child(even) {
-  padding-left: clamp(34px, 4vw, 68px);
+  padding-left: var(--intro-text-inset);
 }
 
 .intro-services h3 {
   max-width: 250px;
-  /* Reserve the same two-line title field in every card so each text group shares a baseline. */
-  min-height: 2em;
   margin: 0 0 8px;
   color: var(--paper);
   font: 400 clamp(1.25rem, 1.8vw, 1.9rem) / 1 var(--display);
@@ -475,7 +474,7 @@ main#top.has-film-texture > .contact {
   .intro-services article:nth-child(odd)::after { display: none; }
   .intro-services article:nth-child(odd),
   .intro-services article:nth-child(even) { padding-inline: 0; }
-  .intro-services h3 { min-height: 0; margin: 0 0 7px; }
+  .intro-services h3 { margin: 0 0 7px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
