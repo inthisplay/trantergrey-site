@@ -101,10 +101,12 @@ main#top > section,
 .intro-copy { color: rgba(245, 242, 237, 0.74); }
 
 .intro-services {
+  --intro-rule-gap: 18px;
+  --intro-row-gap: 30px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 0;
-  row-gap: 30px;
+  row-gap: var(--intro-row-gap);
   margin-top: clamp(58px, 7vw, 105px);
 }
 
@@ -126,13 +128,17 @@ main#top > section,
 
 .intro-services article:nth-child(odd)::after {
   position: absolute;
-  top: 18px;
+  top: var(--intro-rule-gap);
   right: 0;
-  bottom: 18px;
+  /* Extend into the row gap so both clearances to the horizontal rules are 18px. */
+  bottom: calc(var(--intro-rule-gap) - var(--intro-row-gap));
   width: 1px;
   background: var(--line);
   content: '';
 }
+
+/* The final divider has no following rule, so keep the same clear space at its end. */
+.intro-services article:nth-child(3)::after { bottom: var(--intro-rule-gap); }
 
 .intro-services article:nth-child(odd) {
   padding-right: clamp(34px, 4vw, 68px);
