@@ -601,6 +601,19 @@ main#top.has-film-texture > .contact {
   --media-parallax-y: 0px;
 }
 
+/* A barely-there lift keeps very dark thumbnails distinct from a black page. */
+.library-card .project-media::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: rgba(245, 242, 237, 0.045);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.library-card .play { z-index: 2; }
+
 @media (prefers-reduced-motion: no-preference) {
   .library-card .project-media img {
     transform: translate3d(0, var(--media-parallax-y), 0) scale(1.14);
