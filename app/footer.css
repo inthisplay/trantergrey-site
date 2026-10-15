@@ -20,6 +20,19 @@
   object-fit: cover;
 }
 
+/* Blend the TV field into the black footer so there is no visible seam. */
+.footer-media::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 3px;
+  background: #000;
+  pointer-events: none;
+}
+
 .footer-body {
   position: relative;
   min-height: 190px;
