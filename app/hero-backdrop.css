@@ -71,6 +71,7 @@ main#top > section,
   z-index: 0;
   pointer-events: none;
   background: linear-gradient(180deg, rgba(8, 8, 8, 0.08) 0%, rgba(8, 8, 8, 0.14) 40%, #0b0a0a 100%);
+  transition: opacity 420ms ease;
 }
 
 /* Keep the opening statement in the lower-left field of the reel. */
@@ -88,6 +89,41 @@ main#top > section,
 .hero-bottom {
   justify-content: flex-start;
 }
+
+.hero-content {
+  transition: opacity 360ms ease, transform 420ms cubic-bezier(0.16, 0.8, 0.24, 1);
+}
+
+.hero.is-reel-playing .hero-content {
+  opacity: 0;
+  transform: translateY(18px);
+  pointer-events: none;
+}
+
+.hero.is-reel-playing .hero-wash { opacity: 0.42; }
+
+.video-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.video-label button {
+  margin-left: 5px;
+  padding: 2px 0 2px 11px;
+  border: 0;
+  border-left: 1px solid rgba(245, 242, 237, 0.48);
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  transition: color 180ms ease;
+}
+
+.video-label button:hover { color: var(--bright); }
+.video-label button i { margin-left: 5px; font-size: 9px; font-style: normal; }
 
 .intro {
   z-index: 1;
