@@ -113,13 +113,13 @@
 .footer-contact {
   left: 7vw;
   right: auto;
-  bottom: 30px;
+  bottom: 52px;
   font-size: 11px;
   text-align: left;
 }
 
 .footer-contact address {
-  font: 500 12px/1.6 var(--mono);
+  font: 500 12px/1.85 var(--mono);
   letter-spacing: 0.06em;
   color: rgba(245, 242, 237, 0.9);
 }
@@ -127,7 +127,7 @@
 .footer-link-groups {
   right: 7vw;
   left: auto;
-  bottom: 30px;
+  bottom: 52px;
   display: flex;
   gap: clamp(28px, 4vw, 72px);
   align-items: flex-start;
@@ -135,6 +135,10 @@
 }
 
 .footer-link-groups .footer-socials { align-items: flex-start; }
+.footer-link-groups .footer-nav,
+.footer-link-groups .footer-socials { line-height: 1.85; }
+
+.footer-media .footer-label { margin-bottom: 7px; }
 
 .footer-signoff {
   margin: 0;
@@ -171,6 +175,8 @@
 }
 
 .footer-meta .top-link { color: var(--paper); }
+.footer-login { margin-left: 10px; color: rgba(245, 242, 237, 0.4); }
+.footer-login:hover { color: var(--paper); }
 
 @media (max-width: 720px) {
   .footer-media { height: 275px; }

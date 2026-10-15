@@ -22,7 +22,7 @@ export async function SiteFooter() {
       </nav>}
       <p className="footer-signoff">Make something worth <em>watching.</em></p>
       <a className="footer-project" href="/#contact">Start a project <span>↗</span></a>
-      <div className="footer-meta"><span>Strategy · Video · Campaigns · Digital</span><a className="top-link" href="#top">Back to top ↑</a><span>© {new Date().getFullYear()} TranterGrey</span></div>
+      <div className="footer-meta"><span>Strategy · Video · Campaigns · Digital</span><a className="top-link" href="#top">Back to top ↑</a><span className="footer-copyright">© {new Date().getFullYear()} TranterGrey <a className="footer-login" href="/login">Login</a></span></div>
     </div>
   </footer>;
 }
