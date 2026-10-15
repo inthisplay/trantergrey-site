@@ -52,7 +52,7 @@ export default async function Home() {
       <main id="top">
         <HomepageMotion />
         <div className="hero-video site-video-backdrop">
-          <iframe id="hero-reel" src="https://player.vimeo.com/video/1221238592?h=04f77f8a73&background=1&autoplay=1&loop=1&muted=1&autopause=0&title=0&byline=0&portrait=0" allow="autoplay" title="TG Demo Reel 2026" />
+          <iframe id="hero-reel" src="https://player.vimeo.com/video/1236332256?h=9e76772a88&background=1&autoplay=1&loop=1&muted=1&autopause=0&title=0&byline=0&portrait=0" allow="autoplay" title="TG Demo Reel 2026" />
         </div>
         <div className="film-texture-backdrop" aria-hidden="true">
           <video src="/assets/film-grain-overlay.mp4" loop muted playsInline preload="auto" />
