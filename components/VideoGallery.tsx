@@ -22,6 +22,11 @@ export function VideoGallery({ videos, featured = false }: Props) {
     return haystack.includes(query.toLowerCase()) && (kind === 'All' || video.kind === kind) && (industry === 'All' || video.industry === industry) && (client === 'All' || video.client === client);
   }), [videos, query, kind, industry, client]);
   useEffect(() => {
+    const requestedId = new URLSearchParams(window.location.search).get('play');
+    const requestedVideo = videos.find((video) => video.id === requestedId);
+    if (requestedVideo) setActive(requestedVideo);
+  }, [videos]);
+  useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
     const cards = Array.from(grid.querySelectorAll<HTMLElement>('.library-card'));
