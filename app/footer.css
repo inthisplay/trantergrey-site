@@ -25,7 +25,6 @@
   min-height: 190px;
   padding: 31px 7vw 26px;
   background: #000;
-  border-top: 1px solid rgba(245, 242, 237, 0.13);
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 18px 44px;
