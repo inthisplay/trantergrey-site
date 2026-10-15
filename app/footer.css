@@ -34,9 +34,10 @@
 
 .footer-long-wordmark {
   grid-column: 1 / -1;
-  width: min(1100px, 90vw);
+  width: 100%;
   overflow: hidden;
-  display: block;
+  display: flex;
+  justify-content: center;
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 13%, #000 87%, transparent 100%);
   mask-image: linear-gradient(90deg, transparent 0%, #000 13%, #000 87%, transparent 100%);
 }
@@ -168,7 +169,7 @@
     grid-template-columns: 1fr;
     align-content: center;
   }
-  .footer-long-wordmark { width: min(100%, 430px); }
+  .footer-long-wordmark { width: 100%; }
   .footer-reel { padding-block: 12px; }
   .footer-reel a { padding-inline: 16px; font-size: 9px; }
   .footer-reel a::after { margin-left: 16px; }
