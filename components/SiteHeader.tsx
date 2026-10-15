@@ -10,7 +10,7 @@ type HeaderLinksProps = {
 
 function HeaderLinks({ open, onMenuToggle }: HeaderLinksProps) {
   return <>
-    <a className="wordmark" href="/"><img src="/assets/tg-logo-long-white.png" alt="TranterGrey" /></a>
+    <a className="wordmark" href="/"><img src="/assets/tg-logo-dark.png" alt="TranterGrey" /></a>
     <button className="menu-toggle" onClick={onMenuToggle} aria-expanded={open}>Menu <span /></button>
     <nav className={open ? 'open' : ''}>
       <a href="/work">Work</a>
