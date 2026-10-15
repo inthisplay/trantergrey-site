@@ -36,23 +36,26 @@ export function HeroReelTimer() {
     const hero = document.querySelector<HTMLElement>('.hero');
     if (!player || !hero) return;
 
-    try {
-      if (isAudible) {
-        await player.setMuted(true);
-        hero.classList.remove('is-reel-playing');
-        setIsAudible(false);
-        return;
-      }
+    if (isAudible) {
+      hero.classList.remove('is-reel-playing');
+      setIsAudible(false);
+      void player.setMuted(true);
+      return;
+    }
 
+    // Update the site immediately; Vimeo's play promise can resolve a beat later.
+    hero.classList.add('is-reel-playing');
+    setIsAudible(true);
+    try {
       await player.setMuted(false);
       await player.setVolume(1);
       await player.play();
-      hero.classList.add('is-reel-playing');
-      setIsAudible(true);
     } catch {
-      // Vimeo only permits sound after a direct visitor action; leave the quiet reel intact if unavailable.
+      // Keep the regular, quiet treatment if Vimeo rejects the requested sound state.
+      hero.classList.remove('is-reel-playing');
+      setIsAudible(false);
     }
   };
 
-  return <p className="video-label"><span /> TG Demo Reel / <time>{formatTime(elapsed)}</time><button type="button" onClick={() => void toggleAudio()} aria-pressed={isAudible}>{isAudible ? 'Mute' : 'Play'} <i aria-hidden="true">{isAudible ? 'Ⅱ' : '▶'}</i></button></p>;
+  return <p className="video-label"><span /> TG Demo Reel / <time>{formatTime(elapsed)}</time><button type="button" onClick={() => void toggleAudio()} aria-pressed={isAudible}>{isAudible ? 'Exit reel' : 'Play'} <i aria-hidden="true">{isAudible ? 'Ⅱ' : '▶'}</i></button></p>;
 }
