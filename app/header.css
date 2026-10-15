@@ -18,30 +18,17 @@
 
 .site-header .wordmark img {
   display: block;
-  width: 152px;
-  filter: brightness(0) invert(1);
+  width: 200px;
 }
 
 .site-header .wordmark {
-  position: relative;
   display: block;
-  width: 152px;
-}
-
-/* Recolor the supplied dark two-line mark for the dark navigation treatment. */
-.site-header .wordmark::after {
-  position: absolute;
-  top: 59.5%;
-  left: 1.25%;
-  width: 39.2%;
-  height: 29.4%;
-  background: var(--bright);
-  content: '';
+  width: 200px;
 }
 
 @media (max-width: 720px) {
   .site-header .wordmark,
-  .site-header .wordmark img { width: 118px; }
+  .site-header .wordmark img { width: 142px; }
 
   .site-header--return nav.open {
     background: rgba(8, 8, 9, 0.9);

@@ -1,0 +1,33 @@
+/* Keep the supplied footer artwork intact, then give the footer a clean black field to grow into. */
+.site-footer {
+  min-height: 0;
+  padding: 0;
+  background: #000;
+}
+
+.footer-media {
+  position: relative;
+  height: clamp(240px, 23vw, 360px);
+  overflow: hidden;
+  background: #080808;
+}
+
+.footer-media .footer-glitch {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.footer-body {
+  position: relative;
+  min-height: 310px;
+  padding: 44px 7vw;
+  background: #000;
+}
+
+@media (max-width: 720px) {
+  .footer-media { height: 230px; }
+  .footer-body { min-height: 360px; padding-inline: 6vw; }
+}

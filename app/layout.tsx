@@ -12,6 +12,7 @@ import './motion-strips.css';
 import './homepage-motion.css';
 import './case-studies.css';
 import './case-studies-list.css';
+import './footer.css';
 
 export const metadata: Metadata = {
   title: 'TranterGrey — Marketing in motion.',
