@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { dataDirectory } from './data-directory';
+import publishedLibrarySeed from './published-vimeo-library.json';
 
 export type VimeoLibraryVideo = {
   vimeoUri: string;
@@ -32,12 +33,15 @@ export type VimeoLibrary = {
 };
 
 const libraryFile = path.join(dataDirectory, 'vimeo-library.json');
+const publishedLibrary = publishedLibrarySeed as VimeoLibrary;
 
 export async function getVimeoLibrary(): Promise<VimeoLibrary | null> {
   try {
     return JSON.parse(await fs.readFile(libraryFile, 'utf8')) as VimeoLibrary;
   } catch {
-    return null;
+    // A fresh deployment has no persistent library yet. Keep the public work
+    // page populated without exposing the complete internal Vimeo catalog.
+    return publishedLibrary;
   }
 }
 
