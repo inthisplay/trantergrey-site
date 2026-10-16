@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { setVimeoLibraryStatus, type VimeoLibraryVideo } from '@/lib/vimeo-library';
+import { requireAdminApi } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
 const allowedStatuses = new Set<VimeoLibraryVideo['libraryStatus']>(['unreviewed', 'published', 'hidden']);
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Curation requires the protected admin area.' }, { status: 403 });
-  }
+  const denied = await requireAdminApi();
+  if (denied) return denied;
   try {
     const body = await request.json() as { id?: unknown; status?: unknown };
     if (typeof body.id !== 'string' || typeof body.status !== 'string' || !allowedStatuses.has(body.status as VimeoLibraryVideo['libraryStatus'])) {

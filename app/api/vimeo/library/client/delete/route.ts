@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { deleteVimeoLibraryClient } from '@/lib/vimeo-library';
+import { requireAdminApi } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === 'production') return NextResponse.json({ error: 'Curation requires the protected admin area.' }, { status: 403 });
+  const denied = await requireAdminApi();
+  if (denied) return denied;
   try {
     const body = await request.json() as { client?: unknown };
     if (typeof body.client !== 'string' || !body.client.trim()) return NextResponse.json({ error: 'Invalid client.' }, { status: 400 });

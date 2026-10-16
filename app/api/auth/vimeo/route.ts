@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { requireAdminApi } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
+  const denied = await requireAdminApi();
+  if (denied) return denied;
   const clientId = process.env.VIMEO_CLIENT_ID;
   const redirectUri = process.env.VIMEO_REDIRECT_URI;
   if (!clientId || !redirectUri) return NextResponse.json({ error: 'Vimeo OAuth is not configured.' }, { status: 500 });

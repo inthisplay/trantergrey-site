@@ -1,10 +1,13 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { saveVimeoConnection } from '@/lib/vimeo-connection';
+import { requireAdminApi } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
+  const denied = await requireAdminApi();
+  if (denied) return denied;
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');

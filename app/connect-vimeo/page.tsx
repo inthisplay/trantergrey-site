@@ -2,10 +2,12 @@ import Link from 'next/link';
 import { hasVimeoConnection } from '@/lib/vimeo-connection';
 import { getVimeoLibrarySummary } from '@/lib/vimeo-library';
 import { VimeoImportButton } from '@/components/VimeoImportButton';
+import { requireAdminPage } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ConnectVimeoPage({ searchParams }: { searchParams: Promise<{ connected?: string }> }) {
+  await requireAdminPage('/connect-vimeo');
   const params = await searchParams;
   const connected = params.connected === '1' || await hasVimeoConnection();
   const summary = connected ? await getVimeoLibrarySummary() : null;

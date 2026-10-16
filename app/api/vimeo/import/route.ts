@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getVimeoConnection } from '@/lib/vimeo-connection';
 import { appendNewVimeoLibraryVideos, getVimeoLibrary, preserveLibraryEdits, saveVimeoLibrary, type VimeoLibraryVideo } from '@/lib/vimeo-library';
+import { requireAdminApi } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
@@ -71,7 +72,8 @@ async function readImportMode(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === 'production') return NextResponse.json({ error: 'Library import requires the protected admin area.' }, { status: 403 });
+  const denied = await requireAdminApi();
+  if (denied) return denied;
 
   const connection = await getVimeoConnection();
   if (!connection) return NextResponse.json({ error: 'Connect Vimeo before importing.' }, { status: 401 });

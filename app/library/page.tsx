@@ -3,6 +3,7 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { VimeoLibraryReview } from '@/components/VimeoLibraryReview';
 import { VimeoPublishedRefreshButton } from '@/components/VimeoPublishedRefreshButton';
 import { getVimeoLibrary } from '@/lib/vimeo-library';
+import { requireAdminPage } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,7 @@ const pageSize = 48;
 type Search = { q?: string; status?: string; client?: string; page?: string };
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<Search> }) {
+  await requireAdminPage('/library');
   const params = await searchParams;
   const library = await getVimeoLibrary();
   const query = params.q?.trim().toLowerCase() || '';
