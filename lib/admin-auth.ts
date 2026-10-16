@@ -27,6 +27,13 @@ export function safeAdminDestination(value: string | null | undefined) {
   return value?.startsWith('/') && !value.startsWith('//') ? value : '/admin';
 }
 
+export function publicOrigin(request: Request) {
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+  const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  if (forwardedHost) return `${forwardedProtocol || 'https'}://${forwardedHost}`;
+  return new URL(request.url).origin;
+}
+
 export async function isAdmin() {
   return matchesSession((await cookies()).get(cookieName)?.value);
 }

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { safeAdminDestination, setAdminSession } from '@/lib/admin-auth';
+import { publicOrigin, safeAdminDestination, setAdminSession } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
@@ -8,13 +8,6 @@ function matchesPassword(value: string, password: string) {
   const supplied = Buffer.from(value);
   const expected = Buffer.from(password);
   return expected.length === supplied.length && timingSafeEqual(expected, supplied);
-}
-
-function publicOrigin(request: Request) {
-  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
-  const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
-  if (forwardedHost) return `${forwardedProtocol || 'https'}://${forwardedHost}`;
-  return new URL(request.url).origin;
 }
 
 export async function POST(request: Request) {
