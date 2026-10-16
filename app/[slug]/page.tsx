@@ -12,7 +12,7 @@ type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const collection = await getWorkCollectionBySlug(slug);
-  return { title: collection ? `${collection.name} — TranterGrey` : 'Collection — TranterGrey', robots: { index: false, follow: false } };
+  return { title: collection ? `${collection.name} — TranterGrey` : 'TranterGrey', robots: { index: false, follow: false } };
 }
 
 export default async function CollectionPage({ params }: Props) {

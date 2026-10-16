@@ -17,6 +17,7 @@ export type WorkCollection = {
 
 type CollectionInput = Pick<WorkCollection, 'name' | 'slug' | 'includePublished'>;
 const collectionsFile = path.join(dataDirectory, 'work-collections.json');
+const reservedSlugs = new Set(['admin', 'api', 'assets', 'case-studies', 'collections', 'connect-vimeo', 'favicon', 'library', 'login', 'robots', 'sitemap', 'work']);
 
 export function collectionSlug(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 72);
@@ -58,6 +59,7 @@ function validateInput(input: CollectionInput) {
   const slug = collectionSlug(input.slug || name);
   if (!name) throw new Error('Give this collection a name.');
   if (!slug) throw new Error('Use letters or numbers in the collection URL.');
+  if (reservedSlugs.has(slug)) throw new Error('That URL is reserved for the main site. Try something more specific.');
   return { name, slug, includePublished: Boolean(input.includePublished) };
 }
 

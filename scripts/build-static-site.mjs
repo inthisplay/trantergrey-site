@@ -31,7 +31,7 @@ try {
   rmSync(path.join(staging, 'app/library'), { recursive: true, force: true });
   rmSync(path.join(staging, 'app/login'), { recursive: true, force: true });
   rmSync(path.join(staging, 'app/admin'), { recursive: true, force: true });
-  rmSync(path.join(staging, 'app/collections'), { recursive: true, force: true });
+  rmSync(path.join(staging, 'app/[slug]'), { recursive: true, force: true });
 
   const homePath = path.join(staging, 'app/page.tsx');
   const home = readFileSync(homePath, 'utf8')
