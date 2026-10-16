@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { dataDirectory } from './data-directory';
 
 export type VimeoLibraryVideo = {
   vimeoUri: string;
@@ -30,7 +31,7 @@ export type VimeoLibrary = {
   videos: VimeoLibraryVideo[];
 };
 
-const libraryFile = path.join(process.cwd(), 'data', 'vimeo-library.json');
+const libraryFile = path.join(dataDirectory, 'vimeo-library.json');
 
 export async function getVimeoLibrary(): Promise<VimeoLibrary | null> {
   try {

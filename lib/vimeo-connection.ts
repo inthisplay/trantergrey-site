@@ -1,8 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { dataDirectory } from './data-directory';
 
 type VimeoConnection = { accessToken: string; scope?: string; connectedAt: string };
-const connectionFile = path.join(process.cwd(), 'data', 'vimeo-connection.json');
+const connectionFile = path.join(dataDirectory, 'vimeo-connection.json');
 
 export async function saveVimeoConnection(connection: VimeoConnection) {
   await fs.mkdir(path.dirname(connectionFile), { recursive: true, mode: 0o700 });

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { dataDirectory } from '@/lib/data-directory';
 
 export const runtime = 'nodejs';
 
@@ -15,7 +16,6 @@ type SavedInquiry = {
   message: string;
 };
 
-const dataDirectory = join(process.cwd(), 'data');
 const inquiriesFile = join(dataDirectory, 'contact-inquiries.json');
 const limited = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 
