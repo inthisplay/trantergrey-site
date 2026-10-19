@@ -10,16 +10,29 @@ type HeaderLinksProps = {
 
 function HeaderLinks({ open, onMenuToggle }: HeaderLinksProps) {
   return <>
-    <a className="wordmark" href="/"><img src="/assets/tg-logo-white-red.png" alt="TranterGrey" /></a>
-    <button className="menu-toggle" onClick={onMenuToggle} aria-expanded={open}>Menu <span /></button>
+    <a className={`wordmark${open ? ' is-menu-open' : ''}`} href="/"><img src="/assets/tg-logo-white-red.png" alt="TranterGrey" /></a>
+    <button className="menu-toggle" onClick={onMenuToggle} aria-expanded={open}>{open ? 'Close' : 'Menu'} <span aria-hidden="true" /></button>
     <nav className={open ? 'open' : ''}>
       <a href="/work">Work</a>
       <a href="/case-studies">Case Studies</a>
       <a href="/#capabilities">Capabilities</a>
       <a href="/#about">About</a>
       <a className="nav-cta" href="/#contact">Start a project</a>
+      <p className="mobile-menu-note">Make something worth watching.</p>
     </nav>
   </>;
+}
+
+function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return <nav className={`mobile-menu-panel${open ? ' open' : ''}`} aria-label="Primary">
+    <button className="mobile-menu-close" onClick={onClose} aria-label="Close menu">Close <span aria-hidden="true" /></button>
+    <a href="/work">Work</a>
+    <a href="/case-studies">Case Studies</a>
+    <a href="/#capabilities">Capabilities</a>
+    <a href="/#about">About</a>
+    <a className="nav-cta" href="/#contact">Start a project</a>
+    <p className="mobile-menu-note">Make something worth watching.</p>
+  </nav>;
 }
 
 export function SiteHeader() {
@@ -71,6 +84,10 @@ export function SiteHeader() {
     <header ref={heroHeaderRef} className="site-header" aria-hidden={returnOffset === 0}>
       <HeaderLinks open={heroMenuOpen} onMenuToggle={() => setHeroMenuOpen((open) => !open)} />
     </header>
+    {isMounted && createPortal(<MobileMenu open={heroMenuOpen || returnMenuOpen} onClose={() => {
+      setHeroMenuOpen(false);
+      setReturnMenuOpen(false);
+    }} />, document.body)}
     {isMounted && createPortal(<header
       ref={returnHeaderRef}
       className={`site-header site-header--return ${returnOffset === 0 ? 'is-return-visible' : ''}`}

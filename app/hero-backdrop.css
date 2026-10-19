@@ -531,12 +531,30 @@ main#top.has-film-texture > .contact {
   .hero-wash { background: linear-gradient(180deg, rgba(8, 8, 8, 0.12) 0%, rgba(8, 8, 8, 0.2) 38%, #0b0a0a 100%); }
 
   .hero-content {
-    padding: 145px 6vw 72px;
+    padding: 116px 6vw clamp(118px, 17vh, 148px);
   }
 
   .hero-content h1 {
     max-width: 100%;
-    margin-bottom: 28px;
+    margin: 0;
+  }
+
+  .hero-bottom {
+    order: -1;
+    margin: 0 0 16px;
+  }
+
+  .hero-bottom .hero-location {
+    font-size: 10px;
+    letter-spacing: .09em;
+  }
+
+  .video-label {
+    left: 6vw;
+    right: auto;
+    bottom: 36px;
+    max-width: 88vw;
+    white-space: nowrap;
   }
 
   .client-roster > .client-roster-logo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 18px; }
@@ -553,19 +571,55 @@ main#top.has-film-texture > .contact {
   .capability-list .capability-detail ul { grid-template-columns: 1fr; gap: 8px; }
 
   .intro-services {
-    grid-template-columns: 1fr;
+    --intro-rule-gap: 14px;
+    --intro-row-gap: 24px;
+    --intro-text-inset: 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 22px;
   }
 
   .intro-services article {
-    min-height: 142px;
-    padding: 20px 0 22px;
+    min-height: 152px;
+    padding: 18px 0 20px;
   }
 
-  .intro-services article:nth-child(odd)::after { display: none; }
-  .intro-services article:nth-child(odd),
-  .intro-services article:nth-child(even) { padding-inline: 0; }
-  .intro-services h3 { margin: 0 0 7px; }
+  .intro-services article:nth-child(odd)::after { display: block; }
+  .intro-services article:nth-child(odd) { padding-right: 22px; }
+  .intro-services article:nth-child(even) { padding-left: var(--intro-text-inset); }
+  .intro-services h3 { margin: 0 0 7px; font-size: clamp(1rem, 5vw, 1.25rem); }
+  .intro-services span { font-size: 13px; }
+
+  .work .featured-rail-shell .featured-work-rail > .project {
+    flex: 0 0 76vw;
+    width: 76vw;
+    min-width: 0;
+    max-width: 76vw;
+    overflow: hidden;
+  }
+
+  .work .featured-rail-shell .featured-work-rail > .project .project-media {
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+  }
+
+  .work .featured-rail-shell .featured-work-rail > .project .project-meta {
+    display: block;
+    min-width: 0;
+    padding: 10px 3px 0;
+  }
+
+  .work .featured-rail-shell .featured-work-rail > .project .project-meta h3 {
+    display: -webkit-box;
+    margin-top: 5px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .work .featured-rail-shell .featured-work-rail > .project .project-meta span:last-child {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -577,6 +631,7 @@ main#top.has-film-texture > .contact {
 
 /* The work library gets its own understated film loop, separate from the homepage reel. */
 .library-hero {
+  position: relative;
   isolation: isolate;
   width: 100vw;
   margin-inline: calc(50% - 50vw);
@@ -606,11 +661,20 @@ main#top.has-film-texture > .contact {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: max(100cqw, 177.777cqh);
-  height: max(100cqh, 56.25cqw);
-  transform: translate(-50%, -50%);
+  width: 177.777cqh;
+  height: 100cqh;
+  /* The source reel includes a cinematic matte; crop it out for this background use. */
+  transform: translate(-50%, -50%) scale(1.34);
   border: 0;
   pointer-events: none;
+}
+
+/* Keep the 16:9 Vimeo frame larger than either dimension of its section. */
+@container (min-aspect-ratio: 16 / 9) {
+  .library-hero-video iframe {
+    width: 100cqw;
+    height: 56.25cqw;
+  }
 }
 
 .library-hero-wash {
