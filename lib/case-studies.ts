@@ -12,7 +12,7 @@ export type CaseStudy = {
   story?: CaseStudyStoryBlock[];
 };
 
-export type CaseStudyStoryBlock =
+export type CaseStudyTextBlock =
   | {
       type: 'section';
       label: string;
@@ -26,12 +26,43 @@ export type CaseStudyStoryBlock =
       emphasis: string;
     }
   | {
-      type: 'video';
-      id: string;
-      hash: string;
-      title: string;
+      type: 'flow-statement';
       label: string;
-      description: string;
+      before: string;
+      emphasis: string;
+      paragraphs: string[];
+    }
+;
+
+export type CaseStudyFilm = {
+  id: string;
+  hash: string;
+  title: string;
+  label: string;
+  description: string;
+};
+
+export type CaseStudyPairedCopy = Exclude<CaseStudyTextBlock, { type: 'statement' }>;
+
+export type CaseStudyStoryBlock =
+  | CaseStudyTextBlock
+  | {
+      type: 'interlude';
+      text: string;
+      attribution?: string;
+    }
+  | {
+      type: 'full-bleed';
+      label: string;
+      title: string;
+      paragraphs: string[];
+    }
+  | ({ type: 'video' } & CaseStudyFilm)
+  | {
+      type: 'film-pair';
+      playerSide: 'left' | 'right';
+      film: CaseStudyFilm;
+      copy: CaseStudyPairedCopy;
     };
 
 export const caseStudies: CaseStudy[] = [
@@ -66,68 +97,88 @@ export const caseStudies: CaseStudy[] = [
         details: ['Five-film campaign', 'Client-supplied scripts', 'Family at the center'],
       },
       {
-        type: 'video',
-        id: '1204536993',
-        hash: '02cf81e62c',
-        title: 'The Nest',
-        label: '01 / Featured film',
-        description: 'One of the finished stories in the Navy Mutual family campaign.',
-      },
-      {
-        type: 'statement',
-        before: 'Believability lives in ',
-        emphasis: 'the details.',
-      },
-      {
-        type: 'section',
-        label: 'The challenge',
-        heading: 'Make every moment feel lived in.',
+        type: 'full-bleed',
+        label: 'Family, on screen',
+        title: 'The strongest family stories do not feel performed.',
         paragraphs: [
-          'A campaign about family depends on people, places, and small visual details that feel credible—not staged. Casting had to meet the client’s criteria, while locations and props had to give every scene a sense of place.',
-          'Military wardrobe required especially close coordination. It needed to follow military guidelines and Navy Mutual’s requirements while still looking natural on screen. Across all five films, the stories also had to remain clear, engaging, and concise enough for their commercial format.',
+          'They feel noticed. The small dynamics, familiar spaces, and everyday details do the heavy lifting long before the message arrives.',
         ],
-        details: ['Casting', 'Locations + props', 'Military wardrobe'],
       },
       {
-        type: 'video',
-        id: '1199857515',
-        hash: '9419771e0c',
-        title: 'Bedtime Drill Sergeant',
-        label: '02 / Featured film',
-        description: 'A second story shaped around the people and details that make a family feel real.',
+        type: 'film-pair',
+        playerSide: 'left',
+        film: {
+          id: '1204536993',
+          hash: '02cf81e62c',
+          title: 'The Nest',
+          label: '01 / Featured film',
+          description: 'One of the finished stories in the Navy Mutual family campaign.',
+        },
+        copy: {
+          type: 'flow-statement',
+          label: 'The challenge',
+          before: 'Believability lives in ',
+          emphasis: 'the details.',
+          paragraphs: [
+            'A campaign about family depends on people, places, and small visual details that feel credible—not staged. Casting had to meet the client’s criteria, while locations and props had to give every scene a sense of place.',
+            'Military wardrobe required especially close coordination. It needed to follow military guidelines and Navy Mutual’s requirements while still looking natural on screen. Across all five films, the stories also had to remain clear, engaging, and concise enough for their commercial format.',
+          ],
+        },
       },
       {
-        type: 'section',
-        label: 'The approach',
-        heading: 'Do the homework before the shoot.',
+        type: 'interlude',
+        text: 'One more for safety.',
+        attribution: '— Tyler, probably',
+      },
+      {
+        type: 'film-pair',
+        playerSide: 'right',
+        film: {
+          id: '1199857515',
+          hash: '9419771e0c',
+          title: 'Bedtime Drill Sergeant',
+          label: '02 / Featured film',
+          description: 'A second story shaped around the people and details that make a family feel real.',
+        },
+        copy: {
+          type: 'section',
+          label: 'The approach',
+          heading: 'Do the homework before the shoot.',
+          paragraphs: [
+            'We started with light script revisions to improve flow without losing the client’s message. From there, we coordinated casting, locations, wardrobe, props, and filming dates so the production had the right pieces in place before cameras rolled.',
+            'The preparation continued into the shot list. Before each shoot, the team studied and practiced the planned coverage, arriving with a shared understanding of the scene, the performance, and the footage the edit would need.',
+          ],
+          details: ['Script flow', 'Shot planning', 'Production coordination'],
+        },
+      },
+      {
+        type: 'full-bleed',
+        label: 'On set',
+        title: 'A plan for every frame. Room for every real moment.',
         paragraphs: [
-          'We started with light script revisions to improve flow without losing the client’s message. From there, we coordinated casting, locations, wardrobe, props, and filming dates so the production had the right pieces in place before cameras rolled.',
-          'The preparation continued into the shot list. Before each shoot, the team studied and practiced the planned coverage, arriving with a shared understanding of the scene, the performance, and the footage the edit would need.',
+          'The best preparation gives a crew a shared plan—and enough confidence to stay present when the human moments are the ones worth keeping.',
         ],
-        details: ['Script flow', 'Shot planning', 'Production coordination'],
       },
       {
-        type: 'statement',
-        before: 'A plan for every frame. ',
-        emphasis: 'Room for every real moment.',
-      },
-      {
-        type: 'section',
-        label: 'The creative work',
-        heading: 'Bring the plan to life. Then shape the story.',
-        paragraphs: [
-          'On set, the prepared cast, locations, wardrobe, and props gave the crew a practical foundation. The shot list kept everyone aligned around the performances and details each edit would require.',
-          'In post, our three editors shaped the footage for pacing, clarity, and commercial-length storytelling. Navy Mutual’s reviews guided the refinements, keeping the finished work close to the client’s vision without losing the human feel of the campaign.',
-        ],
-        details: ['Production', 'Three-editor post team', 'Client-reviewed revisions'],
-      },
-      {
-        type: 'video',
-        id: '1181639716',
-        hash: '93947cc90d',
-        title: 'Home Front',
-        label: '03 / Featured film',
-        description: 'The campaign continues to grow, one family story at a time.',
+        type: 'film-pair',
+        playerSide: 'left',
+        film: {
+          id: '1181639716',
+          hash: '93947cc90d',
+          title: 'Home Front',
+          label: '03 / Featured film',
+          description: 'The campaign continues to grow, one family story at a time.',
+        },
+        copy: {
+          type: 'section',
+          label: 'The creative work',
+          heading: 'Bring the plan to life. Then shape the story.',
+          paragraphs: [
+            'On set, the prepared cast, locations, wardrobe, and props gave the crew a practical foundation. The shot list kept everyone aligned around the performances and details each edit would require.',
+            'In post, our three editors shaped the footage for pacing, clarity, and commercial-length storytelling. Navy Mutual’s reviews guided the refinements, keeping the finished work close to the client’s vision without losing the human feel of the campaign.',
+          ],
+          details: ['Production', 'Three-editor post team', 'Client-reviewed revisions'],
+        },
       },
       {
         type: 'section',

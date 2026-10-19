@@ -1,0 +1,80 @@
+.case-study-interlude {
+  width: 100vw;
+  margin: -38px 0 -38px calc(-7vw - 33.3334%);
+  padding-block: 70px;
+  background: #0b0a0a;
+  text-align: center;
+}
+
+.case-study-interlude-panel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: min(820px, 72vw);
+  margin: 0 auto;
+  padding: 42px 24px;
+  border-block: 1px solid var(--line);
+}
+
+.case-study-interlude-image {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: url('/assets/navy-mutual-quote-background.jpg') center 55% / cover;
+  filter: grayscale(1) contrast(.82) brightness(.56);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%);
+  opacity: .62;
+}
+
+.case-study-interlude p {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  color: var(--paper);
+  font: 600 clamp(1.4rem, 2.25vw, 2.5rem)/1.1 var(--sans);
+  letter-spacing: -.055em;
+}
+
+.case-study-interlude p::before,
+.case-study-interlude p::after {
+  color: var(--paper);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.55em;
+  font-weight: 400;
+  line-height: .1;
+}
+
+.case-study-interlude p::before {
+  margin-right: .08em;
+  content: '“';
+}
+
+.case-study-interlude p::after {
+  margin-left: .08em;
+  content: '”';
+}
+
+.case-study-interlude-attribution {
+  display: block;
+  position: relative;
+  z-index: 1;
+  margin-top: 12px;
+  color: var(--paper);
+  font: 500 10px var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .case-study-interlude {
+    margin: -20px 0 -20px -6vw;
+    padding-block: 52px;
+  }
+
+  .case-study-interlude-panel {
+    width: min(620px, 76vw);
+    padding: 32px 18px;
+  }
+}
