@@ -7,6 +7,8 @@ export type CaseStudy = {
   image: string;
   summary: string;
   focus: string[];
+  sections?: Array<{ title: string; paragraphs: string[] }>;
+  videos?: Array<{ id: string; hash: string; title: string }>;
 };
 
 export const caseStudies: CaseStudy[] = [
@@ -24,11 +26,22 @@ export const caseStudies: CaseStudy[] = [
     slug: 'navy-mutual',
     number: '02',
     client: 'Navy Mutual',
-    title: 'A legacy told in the present tense.',
-    category: 'Financial services · Campaign',
+    title: 'Five videos. One focus: family.',
+    category: 'Financial services · Video campaign',
     image: 'https://i.vimeocdn.com/video/2172888129-c4781015a82d2e8ce7e253c53f95f5031be2b7acccb1e1f2898fb7d7c943bcb8-d_1920x1080?&r=pad&region=us',
-    summary: 'A placeholder for a case study about connecting a long-standing mission to the everyday lives it protects.',
-    focus: ['Positioning', 'Creative platform', 'Integrated video'],
+    summary: 'Navy Mutual wanted a campaign of five videos connected by a shared theme: family. Working from scripts supplied by the client, TranterGrey Media handled the planning, casting, filming, and editing needed to bring those stories to life.',
+    focus: ['Campaign production', 'Casting', 'Post-production'],
+    sections: [
+      { title: 'The challenge', paragraphs: ['The campaign needed believable people, settings, and details to support its family theme. Military wardrobe presented a particular challenge, requiring careful coordination to ensure the outfits followed both military guidelines and Navy Mutual’s requirements while looking authentic on screen.', 'Casting also needed to meet the client’s criteria, with suitable locations and props bringing each scene together. Across all five videos, the storytelling had to remain engaging and concise within its commercial format.'] },
+      { title: 'The approach', paragraphs: ['Our pre-production team began with light script revisions to improve flow while preserving the client’s message. We then coordinated casting, arranged locations, sourced the required wardrobe and props, and scheduled the filming dates.', 'That preparation extended to the shot list. Before each shoot, our production team studied and practiced the planned shots, arriving with a clear understanding of the scenes and the footage needed to tell each story.'] },
+      { title: 'The creative work', paragraphs: ['Production brought together the cast, locations, wardrobe, and props prepared for each scene. The shot list gave the crew a shared plan for capturing the performances and visual details needed for the edit.', 'In post-production, TGM drew on the expertise of our three editors to shape the footage. Editing choices focused on pacing, clarity, and keeping each story engaging without losing the concise delivery required for commercial use.', 'Navy Mutual’s reviews guided revisions throughout the process, helping the team refine the videos around the client’s vision.'] },
+      { title: 'The result', paragraphs: ['A five-video campaign connected by a consistent family theme. From refining the supplied scripts to completing client-reviewed edits, TGM coordinated the production details that carried Navy Mutual’s message through the series.'] },
+    ],
+    videos: [
+      { id: '1204536993', hash: '02cf81e62c', title: 'The Nest' },
+      { id: '1199857515', hash: '9419771e0c', title: 'Bedtime Drill Sergeant' },
+      { id: '1181639716', hash: '93947cc90d', title: 'Home Front' },
+    ],
   },
   {
     slug: 'taylor-bmw',

@@ -11,6 +11,7 @@ import './hero-backdrop.css';
 import './motion-strips.css';
 import './homepage-motion.css';
 import './case-studies.css';
+import './case-study-content.css';
 import './case-studies-list.css';
 import './admin.css';
 import './collections.css';
