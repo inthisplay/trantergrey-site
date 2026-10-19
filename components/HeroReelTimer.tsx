@@ -57,5 +57,5 @@ export function HeroReelTimer() {
     }
   };
 
-  return <p className="video-label"><span /> TG Demo Reel / <time>{formatTime(elapsed)}</time><button type="button" onClick={() => void toggleAudio()} aria-pressed={isAudible}>{isAudible ? 'Exit reel' : 'Play'} <i aria-hidden="true">{isAudible ? 'Ⅱ' : '▶'}</i></button></p>;
+  return <p className="video-label">TG Demo Reel / <time>{formatTime(elapsed)}</time><button className={`hero-audio-toggle${isAudible ? ' is-audible' : ''}`} type="button" onClick={() => void toggleAudio()} aria-pressed={isAudible} aria-label={isAudible ? 'Mute TG Demo Reel' : 'Unmute TG Demo Reel'}><span className="hero-audio-bars" aria-hidden="true"><i /><i /><i /></span><svg className="hero-audio-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M4 10v4h4l5 4V6L8 10H4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />{isAudible ? <><path d="M16 9.5a4 4 0 0 1 0 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M18.8 6.7a8 8 0 0 1 0 10.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></> : <path d="m16 9 5 6m0-6-5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />}</svg></button></p>;
 }
