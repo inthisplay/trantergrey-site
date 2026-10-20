@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeader } from '@/components/SiteHeader';
+import { CaseStudyVimeoStrip } from '@/components/CaseStudyVimeoStrip';
 import { VimeoPlayGate } from '@/components/VimeoPlayGate';
 import { caseStudies, getCaseStudy } from '@/lib/case-studies';
 
@@ -23,7 +24,7 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
 
   return (
     <>
-      <main id="top" className="case-study-page">
+      <main id="top" className="case-study-page" data-case-study={study.slug}>
         <section className="case-study-hero">
           <img src={study.image} alt="" />
           <div className="case-study-hero-wash" />
@@ -49,6 +50,13 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
               <div className="case-study-story">
                 {study.story.map((block, index) => {
                   if (block.type === 'statement') {
+                    if (study.slug === 'batesburg-leesville-schools' || study.slug === 'taylor-bmw') {
+                      return <blockquote className="case-study-statement case-study-statement--ghosted" key={`${block.emphasis}-${index}`}>
+                        <p className="case-study-statement-ghost" aria-hidden="true">{block.ghost ?? 'Every story'}</p>
+                        <p className="case-study-statement-foreground"><span>{block.before}</span><em>{block.emphasis}</em></p>
+                      </blockquote>;
+                    }
+
                     return <blockquote className="case-study-statement" key={`${block.emphasis}-${index}`}><p>{block.before}<em>{block.emphasis}</em></p></blockquote>;
                   }
 
@@ -76,15 +84,35 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
                     </section>;
                   }
 
+                  if (block.type === 'campaign-map') {
+                    return <section className="case-study-campaign-map" key={block.heading}>
+                      <div className="case-study-campaign-map-intro"><p className="section-index">{block.label}</p><h2>{block.heading}</h2><p>{block.intro}</p></div>
+                      <div className="case-study-campaign-map-items">{block.items.map((item, itemIndex) => <article key={item.title}><span>{String(itemIndex + 1).padStart(2, '0')}</span><h3>{item.title}</h3><p>{item.copy}</p></article>)}</div>
+                    </section>;
+                  }
+
+                  if (block.type === 'bts-gallery') {
+                    return <section className="case-study-bts-gallery" key={block.label}>
+                      <p className="section-index">{block.label}</p>
+                      <div>{block.images.map((image, imageIndex) => <figure key={image.src} className={`case-study-bts-gallery-image case-study-bts-gallery-image--${imageIndex + 1}`}><img src={image.src} alt={image.alt} /></figure>)}</div>
+                    </section>;
+                  }
+
                   if (block.type === 'film-pair') {
                     const { film, copy } = block;
-                    return <section className="case-study-film-pair" data-player-side={block.playerSide} key={film.id}>
+                    return <section className="case-study-film-pair" data-player-side={block.playerSide} data-layout={block.layout} key={film.id}>
                       <figure className="case-study-featured-video">
-                        <div className="case-study-video-frame"><VimeoPlayGate id={film.id} hash={film.hash} title={`${study.client}: ${film.title}`} /></div>
+                        {film.thumbnail ? <CaseStudyVimeoStrip id={film.id} hash={film.hash} thumbnail={film.thumbnail} title={`${study.client}: ${film.title}`} /> : <div className="case-study-video-frame"><VimeoPlayGate id={film.id} hash={film.hash} title={`${study.client}: ${film.title}`} /></div>}
                         <figcaption><p className="section-index">{film.label}</p><strong>{film.title}</strong><p className="case-study-video-description">{film.description}</p></figcaption>
                       </figure>
-                      <section className="case-study-film-pair-copy">
-                        {copy.type === 'flow-statement' ? <><p className="section-index">{copy.label}</p><h2>{copy.before}<em>{copy.emphasis}</em></h2><div>{copy.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div></> : <><p className="section-index">{copy.label}</p>{copy.details && <ul>{copy.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>}<h2>{copy.heading}</h2><div>{copy.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div></>}
+                      <section className={`case-study-film-pair-copy ${copy.type === 'section' && copy.details ? 'has-details' : 'no-details'}`}>
+                        <div className="case-study-film-copy-aside">
+                          <p className="section-index">{copy.label}</p>
+                          {copy.type === 'section' && copy.details && <ul>{copy.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>}
+                        </div>
+                        <div className="case-study-film-copy-content">
+                          {copy.type === 'flow-statement' ? <><h2>{copy.before}<em>{copy.emphasis}</em></h2><div>{copy.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div></> : <><h2>{copy.heading}</h2><div>{copy.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div></>}
+                        </div>
                       </section>
                     </section>;
                   }
@@ -96,7 +124,7 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
                     </figure>;
                   }
 
-                  return <section className="case-study-story-section" key={block.label}>
+                  return <section className={`case-study-story-section ${block.details ? 'has-details' : 'no-details'}${block.label === 'The result' ? ' is-result' : ''}`} key={block.label}>
                     <div><p className="section-index">{block.label}</p>{block.details && <ul>{block.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>}</div>
                     <div>{block.heading && <h2>{block.heading}</h2>}{block.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
                   </section>;
@@ -110,7 +138,7 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
 
             {study.videos && <section className="case-study-videos"><p className="section-index">Featured films</p><div>{study.videos.map((video) => <figure key={video.id}><div><VimeoPlayGate id={video.id} hash={video.hash} title={`${study.client}: ${video.title}`} /></div><figcaption>{video.title}</figcaption></figure>)}</div></section>}
 
-            {(study.story || study.sections) && <section className="case-study-closing"><p className="section-index">Campaign ongoing</p><h2>The work<br /><em>continues.</em></h2><p>More family stories are still taking shape.</p></section>}
+            {(study.story || study.sections) && <section className="case-study-closing"><p className="section-index">{study.closing?.label ?? 'Case study'}</p><h2>{study.closing ? <>{study.closing.before}<br /><em>{study.closing.emphasis}</em></> : <>The story<br /><em>continues.</em></>}</h2><p>{study.closing?.copy ?? 'More work is still taking shape.'}</p></section>}
             <a className="case-study-back" href="/case-studies">Back to all case studies</a>
           </div>
         </article>

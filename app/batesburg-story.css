@@ -1,0 +1,514 @@
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  gap: clamp(38px, 7vw, 108px);
+  width: 100vw;
+  margin: 100px 0 0 calc(-7vw - 33.3334%);
+  padding: clamp(64px, 8vw, 118px) 7vw;
+  background: linear-gradient(122deg, #191415 0%, #0d0c0c 54%, #211013 100%);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-intro .section-index {
+  margin: 0 0 28px;
+  color: var(--bright);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-intro h2 {
+  max-width: 510px;
+  margin: 0 0 28px;
+  font: 400 clamp(3rem, 5vw, 5.8rem)/.88 var(--display);
+  letter-spacing: -.078em;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-intro > p:last-child {
+  max-width: 360px;
+  margin: 0;
+  color: rgba(245, 242, 237, .67);
+  font-size: 15px;
+  line-height: 1.62;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid rgba(245, 242, 237, .18);
+  border-left: 1px solid rgba(245, 242, 237, .18);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items article {
+  min-height: 182px;
+  padding: 22px 24px 26px;
+  border-right: 1px solid rgba(245, 242, 237, .18);
+  border-bottom: 1px solid rgba(245, 242, 237, .18);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items span {
+  display: block;
+  margin-bottom: 40px;
+  color: var(--bright);
+  font: 500 10px var(--mono);
+  letter-spacing: .09em;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items h3 {
+  margin: 0 0 9px;
+  font: 400 clamp(1.8rem, 2.4vw, 2.7rem)/.92 var(--display);
+  letter-spacing: -.06em;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items p {
+  max-width: 220px;
+  margin: 0;
+  color: rgba(245, 242, 237, .62);
+  font-size: 13px;
+  line-height: 1.48;
+}
+
+/* Let the campaign copy move around its headline instead of stopping beneath it. */
+[data-case-study='batesburg-leesville-schools'] .case-study-story-section > div:last-child {
+  display: block;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-story-section > div:last-child::after {
+  display: block;
+  clear: both;
+  content: '';
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-story-section h2,
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-content h2 {
+  font-size: clamp(2.1rem, 3.2vw, 3.65rem);
+  line-height: .9;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-content h2 {
+  font-size: clamp(1.9rem, 2.75vw, 3.1rem);
+}
+
+/* The three-point campaign sections lead with a right-hand headline. */
+[data-case-study='batesburg-leesville-schools'] .has-details h2 {
+  float: right;
+  width: min(70%, 680px);
+  margin: 0 0 30px 24px;
+}
+
+/* Narrative-only sections invert the composition and borrow a little of the label gutter. */
+[data-case-study='batesburg-leesville-schools'] .no-details h2 {
+  float: left;
+  width: min(62%, 640px);
+  margin: 0 24px 30px -92px;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-story-section.is-result h2 {
+  float: none;
+  width: auto;
+  margin: 0 0 24px;
+}
+
+/* The later text chapters need a little more room to arrive after the film above. */
+[data-case-study='batesburg-leesville-schools'] .case-study-story-section.is-result {
+  padding-top: 106px;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-story-section > div:last-child > p {
+  margin: 0 0 16px;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-pair-copy {
+  display: grid;
+  grid-template-columns: minmax(150px, .36fr) minmax(0, 1fr);
+  gap: 56px;
+  box-sizing: border-box;
+  width: min(1000px, 64.5vw);
+  margin: 0 7vw 0 28.5vw;
+  padding: 96px 0 0;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-aside {
+  padding-top: 7px;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-aside .section-index {
+  margin: 0;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-aside ul {
+  margin-top: 21px;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-content {
+  display: block;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-content::after {
+  display: block;
+  clear: both;
+  content: '';
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-content > div {
+  display: block;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-copy-content > div > p {
+  margin: 0 0 16px;
+}
+
+/* The school films read as one continuous campaign: wide, quiet thumbnail strips
+   that open into Vimeo only when a visitor chooses one. */
+[data-case-study='batesburg-leesville-schools'] .case-study-film-pair {
+  display: block;
+  width: 100vw;
+  margin: 138px 0 128px calc(-7vw - 33.3334%);
+  background: transparent;
+}
+
+/* Full-width visual surfaces meet directly; the next text chapter creates its own space. */
+[data-case-study='batesburg-leesville-schools'] .case-study-campaign-map + .case-study-film-pair,
+[data-case-study='batesburg-leesville-schools'] .case-study-full-bleed + .case-study-film-pair {
+  margin-top: 0;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-full-bleed {
+  margin-bottom: 0;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-pair > .case-study-featured-video {
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip {
+  position: relative;
+  height: 25vw;
+  max-height: 450px;
+  overflow: hidden;
+  background: #111;
+  transition: height 560ms cubic-bezier(.2, .72, .22, 1);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip.is-active {
+  height: 28vw;
+  max-height: 505px;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip.is-expanded {
+  height: 56.25vw;
+  max-height: none;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-trigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: #111;
+  color: var(--paper);
+  cursor: pointer;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-trigger img {
+  position: absolute;
+  inset: -24px 0;
+  width: 100%;
+  height: calc(100% + 48px);
+  object-fit: cover;
+  transform: scale(1.045);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-wash,
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-vignette {
+  position: absolute;
+  inset: 0;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-wash {
+  background: rgba(7, 7, 7, .18);
+  transition: background-color .25s ease;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-vignette {
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(5, 5, 5, .64) 0%, rgba(5, 5, 5, .27) 18%, transparent 46%, transparent 54%, rgba(5, 5, 5, .27) 82%, rgba(5, 5, 5, .64) 100%);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 1px solid rgba(245, 242, 237, .88);
+  border-radius: 50%;
+  background: rgba(10, 10, 10, .23);
+  color: var(--paper);
+  transform: translate(-50%, -50%);
+  transition: transform .22s ease, background .22s ease, border-color .22s ease;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-play i {
+  display: block;
+  width: 0;
+  height: 0;
+  margin-left: 4px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 12px solid currentColor;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-trigger:hover .case-study-vimeo-strip-play,
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-trigger:focus-visible .case-study-vimeo-strip-play {
+  border-color: var(--bright);
+  background: var(--bright);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip.is-active .case-study-vimeo-strip-wash {
+  background: rgba(7, 7, 7, .03);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip iframe {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: max(100%, 56.25vw);
+  min-height: 100%;
+  border: 0;
+  transform: translate(-50%, -50%);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-close {
+  position: absolute;
+  z-index: 1;
+  top: 17px;
+  right: 7vw;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(245, 242, 237, .72);
+  border-radius: 50%;
+  background: rgba(8, 8, 8, .35);
+  color: var(--paper);
+  font: 300 26px/1 var(--sans);
+  cursor: pointer;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-film-pair .case-study-featured-video figcaption {
+  grid-template-columns: max-content max-content minmax(220px, 560px);
+  max-width: none;
+  margin: 0;
+  padding: 17px clamp(14px, 2vw, 32px) 0;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-statement {
+  max-width: 1010px;
+  margin: 150px auto 136px;
+  text-align: center;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-statement p {
+  font-size: clamp(3.3rem, 6.2vw, 6.8rem);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  max-width: none;
+  margin: 120px 0 166px calc(-7vw - 33.3334%);
+  padding: clamp(76px, 9vw, 132px) 7vw;
+  overflow: hidden;
+  text-align: center;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-ghost {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max-content;
+  margin: 0;
+  color: rgba(245, 242, 237, .028);
+  font: 400 clamp(10rem, 19vw, 22rem)/.75 var(--display);
+  letter-spacing: -.085em;
+  text-transform: uppercase;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+@supports (animation-timeline: scroll()) {
+  [data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-ghost {
+    animation: batesburg-ghost-drift 1s linear both;
+    animation-timeline: scroll(root block);
+    animation-range: entry 0% exit 100%;
+  }
+
+  @keyframes batesburg-ghost-drift {
+    from { transform: translate(-36%, -50%); }
+    to { transform: translate(-64%, -50%); }
+  }
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-foreground {
+  position: relative;
+  margin: 0;
+  color: var(--paper);
+  font-size: clamp(2rem, 3.3vw, 3.6rem);
+  line-height: .92;
+  text-align: center;
+  transform: translateY(1.42em);
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-foreground span,
+[data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-foreground em {
+  display: block;
+}
+
+[data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-foreground em {
+  color: var(--bright);
+  font-style: normal;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-ghost {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map {
+    display: block;
+    margin: 74px 0 0 -6vw;
+    padding: 62px 6vw;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-intro h2 {
+    font-size: clamp(2.8rem, 11.6vw, 4.4rem);
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-intro > p:last-child {
+    margin-bottom: 40px;
+    font-size: 15px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items article {
+    min-height: 150px;
+    padding: 17px 14px 19px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items span {
+    margin-bottom: 28px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items h3 {
+    font-size: 1.65rem;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map-items p {
+    font-size: 11px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-story-section h2 {
+    float: none;
+    width: auto;
+    margin: 0 0 24px;
+    font-size: clamp(2.25rem, 10vw, 3.7rem);
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-film-copy-content h2 {
+    float: none;
+    width: auto;
+    margin: 0 0 24px;
+    font-size: clamp(2.25rem, 10vw, 3.7rem);
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-film-pair {
+    margin: 86px 0 80px -6vw;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-campaign-map + .case-study-film-pair,
+  [data-case-study='batesburg-leesville-schools'] .case-study-full-bleed + .case-study-film-pair {
+    margin-top: 0;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip {
+    height: 25vw;
+    max-height: none;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip.is-active {
+    height: 30vw;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip.is-expanded {
+    height: 56.25vw;
+    min-height: 230px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-film-pair .case-study-featured-video figcaption {
+    grid-template-columns: 1fr;
+    gap: 9px;
+    padding: 13px 6vw 0;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-film-pair > .case-study-film-pair-copy,
+  [data-case-study='batesburg-leesville-schools'] .case-study-film-pair[data-player-side='right'] > .case-study-film-pair-copy {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 68px 6vw 0;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-story-section.is-result {
+    padding-top: 72px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-film-copy-aside {
+    margin-bottom: 20px;
+    padding-top: 0;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-close {
+    top: 10px;
+    right: 6vw;
+    width: 34px;
+    height: 34px;
+    font-size: 23px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-play {
+    width: 56px;
+    height: 56px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-vimeo-strip-play i {
+    border-top-width: 7px;
+    border-bottom-width: 7px;
+    border-left-width: 11px;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-statement {
+    margin: 91px 0 84px;
+    text-align: left;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-statement p {
+    font-size: clamp(3rem, 13.3vw, 4.9rem);
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted {
+    margin: 91px 0 84px -6vw;
+    padding: 68px 6vw;
+  }
+
+  [data-case-study='batesburg-leesville-schools'] .case-study-statement--ghosted .case-study-statement-foreground {
+    font-size: clamp(2.15rem, 9vw, 3.7rem);
+  }
+}

@@ -55,6 +55,8 @@
 .inquiry-fields input,
 .inquiry-message textarea {
   border-color: rgba(245, 242, 237, 0.65);
+  background: rgba(245, 242, 237, 0.045);
+  padding: 9px 12px;
 }
 
 .inquiry-fields input:focus,

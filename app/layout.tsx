@@ -27,6 +27,8 @@ import './navy-mutual-full-bleed-followup.css';
 import './navy-mutual-first-story-rule.css';
 import './navy-mutual-film-pairs.css';
 import './navy-mutual-interlude.css';
+import './batesburg-story.css';
+import './taylor-bmw-story.css';
 import './case-studies-list.css';
 import './admin.css';
 import './collections.css';
