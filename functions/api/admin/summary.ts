@@ -1,8 +1,8 @@
 import { adminResponse, type AdminEnvironment } from '../../_lib/admin';
+import { readVimeoLibrary } from '../../_lib/vimeo-state';
 
 type Context = { request: Request; env: AdminEnvironment };
 type Count = { count: number };
-type LibraryState = { value: string };
 
 export async function onRequestGet({ request, env }: Context): Promise<Response> {
   const denied = await adminResponse(request, env);
@@ -11,9 +11,8 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   const [contacts, collections, library] = await Promise.all([
     env.TG_DATA.prepare('SELECT COUNT(*) AS count FROM contact_inquiries').first<Count>(),
     env.TG_DATA.prepare('SELECT COUNT(*) AS count FROM work_collections').first<Count>(),
-    env.TG_DATA.prepare("SELECT value FROM vimeo_state WHERE key = 'library'").first<LibraryState>(),
+    readVimeoLibrary(env),
   ]);
-  let videos = 0;
-  try { videos = (JSON.parse(library?.value || '{"videos":[]}').videos || []).length; } catch { /* leave as zero */ }
+  const videos = Array.isArray(library?.videos) ? library.videos.length : 0;
   return Response.json({ contacts: contacts?.count || 0, collections: collections?.count || 0, videos });
 }
