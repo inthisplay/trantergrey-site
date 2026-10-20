@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "trantergrey-site-git",
+  "pages_build_output_dir": "./out",
+  "compatibility_date": "2026-10-20",
+  "d1_databases": [
+    {
+      "binding": "TG_DATA",
+      "database_name": "trantergrey-site-data",
+      "database_id": "a7a66fec-71a4-464a-9c14-104d2e820c17"
+    }
+  ]
+}
