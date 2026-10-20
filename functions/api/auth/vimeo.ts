@@ -15,7 +15,11 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   authorize.searchParams.set('redirect_uri', env.VIMEO_REDIRECT_URI);
   authorize.searchParams.set('state', state);
   authorize.searchParams.set('scope', 'public private');
-  const response = Response.redirect(authorize, 302);
-  response.headers.append('Set-Cookie', `tg_vimeo_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);
-  return response;
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorize.toString(),
+      'Set-Cookie': `tg_vimeo_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
+    },
+  });
 }

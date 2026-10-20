@@ -18,7 +18,11 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
     return Response.redirect(location, 303);
   }
 
-  const response = Response.redirect(new URL(destination, origin(request)), 303);
-  response.headers.append('Set-Cookie', await adminCookie(env));
-  return response;
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: new URL(destination, origin(request)).toString(),
+      'Set-Cookie': await adminCookie(env),
+    },
+  });
 }

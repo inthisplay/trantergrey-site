@@ -16,9 +16,13 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   const state = url.searchParams.get('state');
   const clearState = 'tg_vimeo_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
   if (!code || !state || state !== cookie(request, 'tg_vimeo_state')) {
-    const response = Response.redirect(new URL('/connect-vimeo?error=verify', request.url), 303);
-    response.headers.append('Set-Cookie', clearState);
-    return response;
+    return new Response(null, {
+      status: 303,
+      headers: {
+        Location: new URL('/connect-vimeo?error=verify', request.url).toString(),
+        'Set-Cookie': clearState,
+      },
+    });
   }
   if (!env.VIMEO_CLIENT_ID || !env.VIMEO_CLIENT_SECRET || !env.VIMEO_REDIRECT_URI || !env.VIMEO_TOKEN_KEY) return Response.json({ error: 'Vimeo OAuth is not configured yet.' }, { status: 503 });
 
@@ -32,7 +36,11 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   const token = await tokenResponse.json() as { access_token?: string; scope?: string };
   if (!token.access_token) return Response.json({ error: 'Vimeo did not return an access token.' }, { status: 502 });
   await saveVimeoConnection(env, { accessToken: token.access_token, scope: token.scope, connectedAt: new Date().toISOString() });
-  const response = Response.redirect(new URL('/connect-vimeo?connected=1', request.url), 303);
-  response.headers.append('Set-Cookie', clearState);
-  return response;
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: new URL('/connect-vimeo?connected=1', request.url).toString(),
+      'Set-Cookie': clearState,
+    },
+  });
 }
