@@ -11,7 +11,7 @@ export type AdminEnvironment = {
 };
 
 const sessionCookie = 'tg_admin';
-const sessionMessage = 'trantergrey-admin-session-v1';
+const sessionLifetimeSeconds = 60 * 60 * 12;
 
 function cookie(request: Request, name: string) {
   const value = request.headers.get('cookie') || '';
@@ -27,26 +27,19 @@ function sameValue(first: string, second: string) {
   return different === 0;
 }
 
-function base64Url(bytes: Uint8Array) {
-  let value = '';
-  for (const byte of bytes) value += String.fromCharCode(byte);
-  return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-async function sign(value: string, secret: string) {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return base64Url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value))));
-}
-
 export function configured(env: AdminEnvironment) {
   return Boolean(env.ADMIN_PASSWORD);
 }
 
 export async function hasAdminSession(request: Request, env: AdminEnvironment) {
   if (!env.ADMIN_PASSWORD) return false;
-  const actual = cookie(request, sessionCookie);
-  const expected = await sign(sessionMessage, env.ADMIN_PASSWORD);
-  return Boolean(actual && sameValue(actual, expected));
+  const value = cookie(request, sessionCookie);
+  if (!value) return false;
+  const session = await env.TG_DATA
+    .prepare('SELECT id FROM admin_sessions WHERE id = ? AND expires_at > ?')
+    .bind(value, new Date().toISOString())
+    .first<{ id: string }>();
+  return Boolean(session);
 }
 
 export async function adminResponse(request: Request, env: AdminEnvironment) {
@@ -56,8 +49,13 @@ export async function adminResponse(request: Request, env: AdminEnvironment) {
 
 export async function adminCookie(env: AdminEnvironment) {
   if (!env.ADMIN_PASSWORD) return '';
-  const value = await sign(sessionMessage, env.ADMIN_PASSWORD);
-  return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=43200`;
+  const value = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + sessionLifetimeSeconds * 1000).toISOString();
+  await env.TG_DATA
+    .prepare('INSERT INTO admin_sessions (id, expires_at) VALUES (?, ?)')
+    .bind(value, expiresAt)
+    .run();
+  return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${sessionLifetimeSeconds}`;
 }
 
 export function clearAdminCookie() {
