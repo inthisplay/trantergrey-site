@@ -27,7 +27,6 @@ try {
   // The public deployment contains the marketing site and work reel. Local-only
   // Vimeo curation and its Node/file-backed routes remain available in this checkout.
   rmSync(path.join(staging, 'app/api'), { recursive: true, force: true });
-  rmSync(path.join(staging, 'app/connect-vimeo'), { recursive: true, force: true });
   rmSync(path.join(staging, 'app/library'), { recursive: true, force: true });
   // These two entry points are static shells backed by Pages Functions. Keep
   // them in the export while the Node-only management sub-pages stay local.
