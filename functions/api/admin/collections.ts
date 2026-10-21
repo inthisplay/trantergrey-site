@@ -21,10 +21,10 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
 export async function onRequestPatch({ request, env }: Context): Promise<Response> {
   const denied = await adminResponse(request, env);
   if (denied) return denied;
-  const body = await request.json().catch(() => null) as { id?: unknown; videoIds?: unknown; isPrivate?: unknown } | null;
+  const body = await request.json().catch(() => null) as { id?: unknown; name?: unknown; videoIds?: unknown; isPrivate?: unknown } | null;
   if (!body || typeof body.id !== 'string') return Response.json({ error: 'Choose a collection first.' }, { status: 400 });
   try {
-    const collection = await updateCollection(env, body.id, { videoIds: body.videoIds, isPrivate: body.isPrivate });
+    const collection = await updateCollection(env, body.id, { name: body.name, videoIds: body.videoIds, isPrivate: body.isPrivate });
     return collection ? Response.json({ collection }) : Response.json({ error: 'Collection not found.' }, { status: 404 });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not save this collection.' }, { status: 400 }); }
 }

@@ -39,9 +39,14 @@ export async function createCollection(env: AdminEnvironment, input: { name: str
   return collection;
 }
 
-export async function updateCollection(env: AdminEnvironment, id: string, input: { videoIds?: unknown; isPrivate?: unknown }) {
+export async function updateCollection(env: AdminEnvironment, id: string, input: { name?: unknown; videoIds?: unknown; isPrivate?: unknown }) {
   const collection = await readCollection(env, id);
   if (!collection) return null;
+  let name = collection.name;
+  if (input.name !== undefined) {
+    if (typeof input.name !== 'string' || !input.name.trim()) throw new Error('Give this collection a name.');
+    name = input.name.trim().slice(0, 100);
+  }
   let videoIds = collection.videoIds;
   if (input.videoIds !== undefined) {
     if (!Array.isArray(input.videoIds) || input.videoIds.some((videoId) => typeof videoId !== 'string')) throw new Error('Choose valid videos from the library.');
@@ -50,7 +55,7 @@ export async function updateCollection(env: AdminEnvironment, id: string, input:
   }
   if (input.isPrivate !== undefined && typeof input.isPrivate !== 'boolean') throw new Error('Choose whether this collection appears in the directory.');
   const updatedAt = new Date().toISOString();
-  const next: Collection = { ...collection, videoIds, isPrivate: typeof input.isPrivate === 'boolean' ? input.isPrivate : collection.isPrivate, updatedAt };
+  const next: Collection = { ...collection, name, videoIds, isPrivate: typeof input.isPrivate === 'boolean' ? input.isPrivate : collection.isPrivate, updatedAt };
   await env.TG_DATA.prepare('UPDATE work_collections SET value = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(next), updatedAt, id).run();
   return next;
 }
