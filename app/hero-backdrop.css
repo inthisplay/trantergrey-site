@@ -791,6 +791,44 @@ main#top.has-film-texture > .contact {
   padding-top: 40px;
 }
 
+.home-bts-gallery {
+  padding: 0 7vw;
+  background: #0b0a0a;
+}
+
+.home-bts-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 3px;
+  height: clamp(104px, 10vw, 148px);
+  overflow: hidden;
+}
+
+.home-bts-gallery figure {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  background: #171313;
+}
+
+.home-bts-gallery img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(.82) contrast(1.05);
+  transition: transform 500ms cubic-bezier(.2, .72, .22, 1), filter 300ms ease;
+}
+
+.home-bts-gallery figure:hover img {
+  transform: scale(1.06);
+  filter: saturate(1) contrast(1.05);
+}
+
+main#top > .contact::before {
+  display: none;
+}
+
 .capabilities:has(.case-studies-teaser)::after {
   bottom: 34px;
 }
@@ -802,6 +840,21 @@ main#top.has-film-texture > .contact {
 
   .capabilities .case-studies-teaser {
     padding-top: 48px;
+  }
+
+  .home-bts-gallery {
+    padding: 0 6vw;
+  }
+
+  .home-bts-gallery-grid {
+    grid-template-columns: repeat(6, 118px);
+    height: 82px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .home-bts-gallery-grid::-webkit-scrollbar {
+    display: none;
   }
 
   .capabilities:has(.case-studies-teaser)::after {

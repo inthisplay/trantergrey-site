@@ -187,6 +187,17 @@ export default async function Home() {
           </div>
         </section>
 
+        <section className="home-bts-gallery" aria-label="Behind the scenes at TranterGrey productions">
+          <div className="home-bts-gallery-grid">
+            <figure><img src="/assets/home-bts/golf-silhouette.jpg" alt="Camera operator filming on a hill at sunset" /></figure>
+            <figure><img src="/assets/home-bts/pilates-production.jpg" alt="Production crew filming in a Pilates studio" /></figure>
+            <figure><img src="/assets/home-bts/camera-kit.jpg" alt="Cinema camera equipment prepared for a shoot" /></figure>
+            <figure><img src="/assets/home-bts/sail-production.jpg" alt="Production team filming aboard a sailboat at sunset" /></figure>
+            <figure><img src="/assets/home-bts/office-production.jpg" alt="Camera and lighting setup in an office" /></figure>
+            <figure><img src="/assets/home-bts/water-production.jpg" alt="Camera operator filming from the water" /></figure>
+          </div>
+        </section>
+
         <section className="contact" id="contact">
           <div className="contact-intro"><p className="section-index">04 / Let&apos;s talk</p><h2>What are we<br /><em>making next?</em></h2><p>Start with a few quick signals. We&apos;ll bring the questions, the thinking, and the momentum.</p><a className="contact-link" href="mailto:hello@trantergrey.com">Prefer email? hello@trantergrey.com ↗</a></div>
           <ProjectInquiryForm />
