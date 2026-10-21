@@ -183,14 +183,18 @@
   }
 
   .site-header nav .nav-work-trigger span {
-    font-size: 12px;
-    line-height: 1;
+    width: 7px;
+    height: 7px;
+    margin-top: -4px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
     transition: transform .2s ease;
   }
 
   .nav-work-dropdown {
     position: absolute;
-    top: 100%;
+    top: calc(100% + 14px);
     left: -14px;
     min-width: 166px;
     padding: 8px;
@@ -209,7 +213,7 @@
     top: 100%;
     left: -18px;
     width: 205px;
-    height: 16px;
+    height: 30px;
     content: '';
   }
 
@@ -234,7 +238,7 @@
   }
 
   .nav-work-group:hover .nav-work-trigger span,
-  .nav-work-group:focus-within .nav-work-trigger span { transform: rotate(180deg); }
+  .nav-work-group:focus-within .nav-work-trigger span { transform: rotate(225deg); }
 }
 .mobile-menu-note { display: none; }
 
