@@ -791,69 +791,6 @@ main#top.has-film-texture > .contact {
   padding-top: 40px;
 }
 
-.home-bts-gallery {
-  width: 100%;
-  background: #0b0a0a;
-  overflow: hidden;
-}
-
-.home-bts-gallery-grid {
-  display: flex;
-  gap: 3px;
-  height: clamp(82px, 7.1vw, 126px);
-  overflow: hidden;
-}
-
-.home-bts-gallery figure {
-  flex: 0 0 calc((100vw - 33px) / 12);
-  margin: 0;
-  overflow: hidden;
-  background: #171313;
-  opacity: 1;
-  transition: flex-basis 720ms cubic-bezier(.2, .72, .22, 1), opacity 480ms ease;
-}
-
-.home-bts-gallery figure.is-leaving {
-  flex-basis: 0;
-  opacity: 0;
-}
-
-.home-bts-gallery img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: saturate(.82) contrast(1.05);
-  transition: transform 500ms cubic-bezier(.2, .72, .22, 1), filter 300ms ease;
-}
-
-.home-bts-gallery figure:hover img {
-  transform: scale(1.06);
-  filter: saturate(1) contrast(1.05);
-}
-
-.home-bts-gallery.is-entering-from-left .home-bts-gallery-grid {
-  animation: home-bts-shift-from-left 720ms cubic-bezier(.2, .72, .22, 1);
-}
-
-.home-bts-gallery.is-entering-from-right .home-bts-gallery-grid {
-  animation: home-bts-shift-from-right 720ms cubic-bezier(.2, .72, .22, 1);
-}
-
-@keyframes home-bts-shift-from-left {
-  from { transform: translateX(-4vw); }
-  to { transform: translateX(0); }
-}
-
-@keyframes home-bts-shift-from-right {
-  from { transform: translateX(4vw); }
-  to { transform: translateX(0); }
-}
-
-main#top > .contact::before {
-  display: none;
-}
-
 .capabilities:has(.case-studies-teaser)::after {
   bottom: 34px;
 }
@@ -867,30 +804,7 @@ main#top > .contact::before {
     padding-top: 48px;
   }
 
-  .home-bts-gallery {
-    width: 100%;
-  }
-
-  .home-bts-gallery-grid {
-    height: 74px;
-    gap: 2px;
-  }
-
-  .home-bts-gallery figure {
-    flex-basis: calc((100vw - 10px) / 6);
-  }
-
   .capabilities:has(.case-studies-teaser)::after {
     bottom: 26px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-bts-gallery figure,
-  .home-bts-gallery img,
-  .home-bts-gallery.is-entering-from-left .home-bts-gallery-grid,
-  .home-bts-gallery.is-entering-from-right .home-bts-gallery-grid {
-    animation: none;
-    transition: none;
   }
 }

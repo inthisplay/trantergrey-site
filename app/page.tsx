@@ -7,7 +7,6 @@ import { FixedReelVisibility } from '@/components/FixedReelVisibility';
 import { HeroReelTimer } from '@/components/HeroReelTimer';
 import { MotionStrips } from '@/components/MotionStrips';
 import { HomepageMotion } from '@/components/HomepageMotion';
-import { HomeBtsGallery } from '@/components/HomeBtsGallery';
 import { toPublicVideo, videos } from '@/lib/videos';
 import { getVimeoLibrary } from '@/lib/vimeo-library';
 import { caseStudies } from '@/lib/case-studies';
@@ -187,8 +186,6 @@ export default async function Home() {
             <a className="case-studies-all" href="/case-studies">Browse all case studies</a>
           </div>
         </section>
-
-        <HomeBtsGallery />
 
         <section className="contact" id="contact">
           <div className="contact-intro"><p className="section-index">04 / Let&apos;s talk</p><h2>What are we<br /><em>making next?</em></h2><p>Start with a few quick signals. We&apos;ll bring the questions, the thinking, and the momentum.</p><a className="contact-link" href="mailto:hello@trantergrey.com">Prefer email? hello@trantergrey.com ↗</a></div>
