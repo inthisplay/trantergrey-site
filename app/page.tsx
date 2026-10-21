@@ -103,7 +103,7 @@ export default async function Home() {
             <div className="work-summary">
               <h2>Stories with <em>movement.</em></h2>
               <p>Commercials, campaigns, and brand films built to move an audience—and leave your brand with more than a moment of attention. Every frame has a job to do.</p>
-              <a className="all-work" href="/work">Explore more work ↗</a>
+              <a className="all-work" href="/our-work">Explore more work ↗</a>
             </div>
           </div>
           <VideoGallery videos={videos.slice(0, 6)} featured />

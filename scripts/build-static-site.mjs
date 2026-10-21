@@ -38,7 +38,7 @@ try {
     .replace("export const dynamic = 'force-dynamic';\n\n", '');
   writeFileSync(homePath, home);
 
-  const workPath = path.join(staging, 'app/work/page.tsx');
+  const workPath = path.join(staging, 'app/our-work/page.tsx');
   const work = readFileSync(workPath, 'utf8')
     .replace("export const dynamic = 'force-dynamic';\n\n", '');
   writeFileSync(workPath, work);

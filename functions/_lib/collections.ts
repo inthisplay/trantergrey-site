@@ -21,6 +21,11 @@ export async function readCollections(env: AdminEnvironment) {
   return rows.results.map(parse).filter((item): item is Collection => Boolean(item));
 }
 
+export async function readCollection(env: AdminEnvironment, id: string) {
+  const row = await env.TG_DATA.prepare('SELECT id, slug, value, created_at, updated_at FROM work_collections WHERE id = ?').bind(id).first<Row>();
+  return row ? parse(row) : null;
+}
+
 export async function createCollection(env: AdminEnvironment, input: { name: string; slug: string; includePublished: boolean }) {
   const name = input.name.trim().slice(0, 100);
   const slug = normalizeSlug(input.slug || name);
@@ -32,4 +37,16 @@ export async function createCollection(env: AdminEnvironment, input: { name: str
     await env.TG_DATA.prepare('INSERT INTO work_collections (id, slug, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').bind(collection.id, slug, JSON.stringify(collection), now, now).run();
   } catch { throw new Error('That share URL is already in use.'); }
   return collection;
+}
+
+export async function updateCollectionVideos(env: AdminEnvironment, id: string, videoIds: unknown) {
+  if (!Array.isArray(videoIds) || videoIds.some((videoId) => typeof videoId !== 'string')) throw new Error('Choose valid videos from the library.');
+  const ids = [...new Set(videoIds.map((videoId) => videoId.trim()).filter(Boolean))];
+  if (ids.length > 5000 || ids.some((videoId) => videoId.length > 80)) throw new Error('That selection is too large.');
+  const collection = await readCollection(env, id);
+  if (!collection) return null;
+  const updatedAt = new Date().toISOString();
+  const next: Collection = { ...collection, videoIds: ids, updatedAt };
+  await env.TG_DATA.prepare('UPDATE work_collections SET value = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(next), updatedAt, id).run();
+  return next;
 }
