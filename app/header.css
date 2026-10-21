@@ -238,7 +238,7 @@
   }
 
   .nav-work-group:hover .nav-work-trigger span,
-  .nav-work-group:focus-within .nav-work-trigger span { transform: rotate(225deg); }
+  .nav-work-group:focus-within .nav-work-trigger span { transform: translateY(2px) rotate(225deg); }
 }
 .mobile-menu-note { display: none; }
 
