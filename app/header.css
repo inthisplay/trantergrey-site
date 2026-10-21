@@ -26,7 +26,30 @@
   width: 200px;
 }
 
+/* The homepage reel can run bright at the top edge. Give its navigation a
+   restrained fade without changing the headers used anywhere else. */
+.hero > .site-header {
+  height: 148px;
+  isolation: isolate;
+}
+
+.hero > .site-header::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .58) 0%, rgba(0, 0, 0, .32) 42%, transparent 100%);
+  content: '';
+  pointer-events: none;
+}
+
+.hero > .site-header > * {
+  position: relative;
+  z-index: 1;
+}
+
 @media (max-width: 720px) {
+  .hero > .site-header { height: 124px; }
+
   .site-header .wordmark,
   .site-header .wordmark img { width: 142px; }
 
