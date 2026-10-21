@@ -190,7 +190,7 @@
 
   .nav-work-dropdown {
     position: absolute;
-    top: calc(100% + 15px);
+    top: 100%;
     left: -14px;
     min-width: 166px;
     padding: 8px;
@@ -202,6 +202,15 @@
     pointer-events: none;
     transform: translateY(-5px);
     transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s;
+  }
+
+  .nav-work-group::after {
+    position: absolute;
+    top: 100%;
+    left: -18px;
+    width: 205px;
+    height: 16px;
+    content: '';
   }
 
   .nav-work-dropdown a {
