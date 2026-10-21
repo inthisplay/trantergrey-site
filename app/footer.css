@@ -143,7 +143,6 @@
 
 .footer-meta {
   grid-column: 1 / -1;
-  border-top: 1px solid rgba(245, 242, 237, 0.13);
   padding-top: 15px;
   display: flex;
   justify-content: space-between;
