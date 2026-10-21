@@ -13,7 +13,7 @@ function HeaderLinks({ open, onMenuToggle }: HeaderLinksProps) {
     <a className={`wordmark${open ? ' is-menu-open' : ''}`} href="/"><img src="/assets/tg-logo-white-red.png" alt="TranterGrey" /></a>
     <button className="menu-toggle" onClick={onMenuToggle} aria-expanded={open}>{open ? 'Close' : 'Menu'} <span aria-hidden="true" /></button>
     <nav className={open ? 'open' : ''}>
-      <div className="nav-work-group"><a className="nav-work-trigger" href="/our-work">Our Work <span aria-hidden="true" /></a><div className="nav-work-dropdown"><a href="/our-work/collections">Collections</a></div></div>
+      <div className="nav-work-group"><a className="nav-work-trigger" href="/our-work">Our Work <span aria-hidden="true" /></a><div className="nav-work-dropdown"><a href="/our-work">Our Favs</a><a href="/our-work/collections">Collections</a></div></div>
       <a href="/case-studies">Case Studies</a>
       <a href="/#capabilities">Capabilities</a>
       <a href="/#about">About</a>
@@ -27,6 +27,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   return <nav className={`mobile-menu-panel${open ? ' open' : ''}`} aria-label="Primary">
     <button className="mobile-menu-close" onClick={onClose} aria-label="Close menu">Close <span aria-hidden="true" /></button>
     <a href="/our-work">Our Work</a>
+    <a className="mobile-sub-link" href="/our-work">Our Favs</a>
     <a className="mobile-sub-link" href="/our-work/collections">Collections</a>
     <a href="/case-studies">Case Studies</a>
     <a href="/#capabilities">Capabilities</a>
