@@ -7,7 +7,7 @@ type Summary = { contacts: number; collections: number; videos: number };
 const links = [
   { href: '/connect-vimeo', number: '01', title: 'Vimeo connection', description: 'Connect or check the Vimeo account.' },
   { href: '/library', number: '02', title: 'Work library', description: 'Review, tag, and publish films.' },
-  { href: '/admin/collections', number: '03', title: 'Private collections', description: 'Make unlisted pages from the same library.' },
+  { href: '/admin/collections', number: '03', title: 'Collections', description: 'Curate public or unlisted pages from the same library.' },
   { href: '/admin/contacts', number: '04', title: 'Contact notes', description: 'Review new-project submissions.' },
 ];
 
