@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 type HeaderLinksProps = {
+  adminArea: boolean;
   open: boolean;
   onMenuToggle: () => void;
 };
 
-function HeaderLinks({ open, onMenuToggle }: HeaderLinksProps) {
+function HeaderLinks({ adminArea, open, onMenuToggle }: HeaderLinksProps) {
   return <>
     <a className={`wordmark${open ? ' is-menu-open' : ''}`} href="/"><img src="/assets/tg-logo-white-red.png" alt="TranterGrey" /></a>
     <button className="menu-toggle" onClick={onMenuToggle} aria-expanded={open}>{open ? 'Close' : 'Menu'} <span aria-hidden="true" /></button>
@@ -17,13 +18,14 @@ function HeaderLinks({ open, onMenuToggle }: HeaderLinksProps) {
       <a href="/case-studies">Case Studies</a>
       <a href="/#capabilities">Capabilities</a>
       <a href="/#about">About</a>
+      {adminArea && <a href="/admin">Admin Home</a>}
       <a className="nav-cta" href="/#contact">Start a project</a>
       <p className="mobile-menu-note">Make something worth watching.</p>
     </nav>
   </>;
 }
 
-function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+function MobileMenu({ adminArea, open, onClose }: { adminArea: boolean; open: boolean; onClose: () => void }) {
   return <nav className={`mobile-menu-panel${open ? ' open' : ''}`} aria-label="Primary">
     <button className="mobile-menu-close" onClick={onClose} aria-label="Close menu">Close <span aria-hidden="true" /></button>
     <a href="/our-work">Our Work</a>
@@ -32,12 +34,13 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
     <a href="/case-studies">Case Studies</a>
     <a href="/#capabilities">Capabilities</a>
     <a href="/#about">About</a>
+    {adminArea && <a href="/admin">Admin Home</a>}
     <a className="nav-cta" href="/#contact">Start a project</a>
     <p className="mobile-menu-note">Make something worth watching.</p>
   </nav>;
 }
 
-export function SiteHeader() {
+export function SiteHeader({ adminArea = false }: { adminArea?: boolean }) {
   const [heroMenuOpen, setHeroMenuOpen] = useState(false);
   const [returnMenuOpen, setReturnMenuOpen] = useState(false);
   const [returnOffset, setReturnOffset] = useState<number | null>(null);
@@ -84,9 +87,9 @@ export function SiteHeader() {
 
   return <>
     <header ref={heroHeaderRef} className="site-header" aria-hidden={returnOffset === 0}>
-      <HeaderLinks open={heroMenuOpen} onMenuToggle={() => setHeroMenuOpen((open) => !open)} />
+      <HeaderLinks adminArea={adminArea} open={heroMenuOpen} onMenuToggle={() => setHeroMenuOpen((open) => !open)} />
     </header>
-    {isMounted && createPortal(<MobileMenu open={heroMenuOpen || returnMenuOpen} onClose={() => {
+    {isMounted && createPortal(<MobileMenu adminArea={adminArea} open={heroMenuOpen || returnMenuOpen} onClose={() => {
       setHeroMenuOpen(false);
       setReturnMenuOpen(false);
     }} />, document.body)}
@@ -96,7 +99,7 @@ export function SiteHeader() {
       style={returnOffset === null ? undefined : { transform: `translateY(${returnOffset}px)` }}
       aria-hidden={returnOffset !== 0}
     >
-      <HeaderLinks open={returnMenuOpen} onMenuToggle={() => setReturnMenuOpen((open) => !open)} />
+      <HeaderLinks adminArea={adminArea} open={returnMenuOpen} onMenuToggle={() => setReturnMenuOpen((open) => !open)} />
     </header>, document.body)}
   </>;
 }
