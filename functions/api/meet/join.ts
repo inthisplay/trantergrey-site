@@ -33,10 +33,13 @@ function roomMetadata(title: string, origin: string) {
       shared_note_pad_features: { is_allow: true },
       whiteboard_features: { is_allow: true },
       external_media_player_features: { is_allow: true },
-      waiting_room_features: { is_active: true, waiting_room_msg: 'Waiting for host to join...' },
+      external_broadcasting_features: { is_allow: true, is_allow_rtmp: true },
+      waiting_room_features: { is_active: true },
       breakout_room_features: { is_allow: false, allowed_number_rooms: 6, allow_return_to_main_room: true, allow_self_select: false },
       display_external_link_features: { is_allow: true },
+      ingress_features: { is_allow: true },
       polls_features: { is_allow: true },
+      sip_dial_in_features: { is_allow: false, enable_dial_in_on_create: false, hide_phone_number: false },
       end_to_end_encryption_features: { is_enabled: false, enabled_self_insert_encryption_key: false },
     },
     default_lock_settings: {
@@ -73,7 +76,7 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
     if (!active.is_active) {
       await plugNmeetRequest(env, '/room/create', {
         room_id: roomId,
-        max_participants: 0,
+        max_participants: 1000,
         empty_timeout: 300,
         metadata: roomMetadata(roomTitle, new URL(request.url).origin),
       });
