@@ -102,14 +102,12 @@ async function passwordMatches(candidate: string, expected?: string) {
   return difference === 0;
 }
 
-export async function meetingRole(env: PlugNmeetEnv, password: string) {
+export async function meetingRole(env: PlugNmeetEnv, password: string, hosting: boolean) {
+  if (!hosting) return { isAdmin: false };
+  if (!password) throw new Error('Please enter the host password.');
+  if (!env.PLUGNMEET_HOST_PASSWORD) throw new Error('Host access is not configured yet.');
   if (await passwordMatches(password, env.PLUGNMEET_HOST_PASSWORD)) return { isAdmin: true };
-  if (env.PLUGNMEET_GUEST_PASSWORD) {
-    if (await passwordMatches(password, env.PLUGNMEET_GUEST_PASSWORD)) return { isAdmin: false };
-    throw new Error('That meeting password is not correct.');
-  }
-  if (password) throw new Error('That meeting password is not correct.');
-  return { isAdmin: false };
+  throw new Error('That host password is not correct.');
 }
 
 export type { PlugNmeetEnv };

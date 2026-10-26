@@ -65,11 +65,12 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
     const body = await request.json() as Record<string, unknown>;
     const name = clean(body.name, 80);
     const password = clean(body.password, 160);
+    const hosting = body.hosting === true;
     const website = clean(body.website, 120);
     if (website) return Response.json({ ok: true });
     if (name.length < 2) return Response.json({ error: 'Please enter your name.' }, { status: 400 });
 
-    const { isAdmin } = await meetingRole(env, password);
+    const { isAdmin } = await meetingRole(env, password, hosting);
     const { roomId, roomTitle } = plugNmeetRoom(env);
     const active = await plugNmeetRequest<ActiveResponse>(env, '/room/isRoomActive', { room_id: roomId });
 

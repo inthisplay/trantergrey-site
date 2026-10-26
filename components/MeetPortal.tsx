@@ -46,6 +46,7 @@ export function MeetPortal() {
   const [token, setToken] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [hosting, setHosting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loadingClient, setLoadingClient] = useState(false);
   const [error, setError] = useState('');
@@ -94,7 +95,7 @@ export function MeetPortal() {
       const response = await fetch('/api/meet/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, password, website: '' }),
+        body: JSON.stringify({ name, password: hosting ? password : '', hosting, website: '' }),
       });
       const result = await response.json() as { token?: string; error?: string };
       if (!response.ok || !result.token) throw new Error(result.error || 'We could not open the meeting room.');
@@ -117,13 +118,30 @@ export function MeetPortal() {
     <a className="meet-wordmark" href="/" aria-label="TranterGrey home"><img src="/assets/tg-logo-white-red.png" alt="TranterGrey" /></a>
     <section className="meet-entry-card">
       <p className="eyebrow">TranterGrey video meeting</p>
-      <h1>Come on<br /><em>in.</em></h1>
-      <p className="meet-intro">Enter your name and the meeting password from your invitation.</p>
+      <h1>Let&apos;s<br /><em>Meet</em></h1>
+      <p className="meet-intro">Enter your name to join the meeting. You&apos;ll wait here until a host lets you in.</p>
       <form onSubmit={join}>
         <label><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required minLength={2} maxLength={80} autoFocus /></label>
-        <label><span>Meeting password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required maxLength={160} /></label>
+        <button
+          className="meet-host-toggle"
+          type="button"
+          aria-expanded={hosting}
+          aria-controls="meet-host-fields"
+          onClick={() => {
+            setHosting((current) => !current);
+            setPassword('');
+            setError('');
+          }}
+        >
+          <span>Hosting this meeting?</span>
+          <span aria-hidden="true">{hosting ? '−' : '+'}</span>
+        </button>
+        {hosting && <div className="meet-host-fields" id="meet-host-fields">
+          <label><span>Host password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required maxLength={160} /></label>
+          <p>Hosts can admit guests and manage the room.</p>
+        </div>}
         <input className="meet-honeypot" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-        <button type="submit" disabled={busy}>{busy ? 'Opening room…' : 'Join meeting'} <span aria-hidden="true">↗</span></button>
+        <button className="meet-submit" type="submit" disabled={busy}>{busy ? 'Opening room…' : hosting ? 'Join as host' : 'Join meeting'} <span aria-hidden="true">↗</span></button>
         {error && <p className="meet-error" role="alert">{error}</p>}
       </form>
     </section>
