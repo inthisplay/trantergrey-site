@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 
 type ClientManifest = {
   serverUrl: string;
@@ -47,6 +47,7 @@ export function MeetPortal() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [hosting, setHosting] = useState(false);
+  const requestedRole = useRef<'guest' | 'host'>('guest');
   const [busy, setBusy] = useState(false);
   const [loadingClient, setLoadingClient] = useState(false);
   const [error, setError] = useState('');
@@ -89,13 +90,18 @@ export function MeetPortal() {
 
   async function join(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const joiningAsHost = requestedRole.current === 'host';
+    if (joiningAsHost && !password.trim()) {
+      setError('Please enter the host password.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       const response = await fetch('/api/meet/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, password: hosting ? password : '', hosting, website: '' }),
+        body: JSON.stringify({ name, password: joiningAsHost ? password : '', hosting: joiningAsHost, website: '' }),
       });
       const result = await response.json() as { token?: string; error?: string };
       if (!response.ok || !result.token) throw new Error(result.error || 'We could not open the meeting room.');
@@ -122,26 +128,39 @@ export function MeetPortal() {
       <p className="meet-intro">Enter your name to join the meeting. You&apos;ll wait here until a host lets you in.</p>
       <form onSubmit={join}>
         <label><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required minLength={2} maxLength={80} autoFocus /></label>
-        <button
-          className="meet-host-toggle"
-          type="button"
-          aria-expanded={hosting}
-          aria-controls="meet-host-fields"
-          onClick={() => {
-            setHosting((current) => !current);
-            setPassword('');
-            setError('');
-          }}
-        >
-          <span>Hosting this meeting?</span>
-          <span aria-hidden="true">{hosting ? '−' : '+'}</span>
-        </button>
         {hosting && <div className="meet-host-fields" id="meet-host-fields">
-          <label><span>Host password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required maxLength={160} /></label>
+          <label><span>Host password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" aria-required="true" maxLength={160} autoFocus /></label>
           <p>Hosts can admit guests and manage the room.</p>
         </div>}
         <input className="meet-honeypot" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-        <button className="meet-submit" type="submit" disabled={busy}>{busy ? 'Opening room…' : hosting ? 'Join as host' : 'Join meeting'} <span aria-hidden="true">↗</span></button>
+        <div className="meet-role-actions" aria-label="Choose how to join">
+          <button
+            className={hosting ? 'meet-role-button' : 'meet-role-button is-active'}
+            type="submit"
+            value="guest"
+            disabled={busy}
+            onClick={() => {
+              requestedRole.current = 'guest';
+              setHosting(false);
+              setPassword('');
+            }}
+          >{busy && requestedRole.current === 'guest' ? 'Opening…' : 'Join as guest'} <span aria-hidden="true">↗</span></button>
+          <button
+            className={hosting ? 'meet-role-button is-active' : 'meet-role-button'}
+            type={hosting ? 'submit' : 'button'}
+            value="host"
+            disabled={busy}
+            aria-expanded={hosting}
+            aria-controls="meet-host-fields"
+            onClick={() => {
+              requestedRole.current = 'host';
+              if (!hosting) {
+                setHosting(true);
+                setError('');
+              }
+            }}
+          >{busy && requestedRole.current === 'host' ? 'Opening…' : 'Join as host'} <span aria-hidden="true">↗</span></button>
+        </div>
         {error && <p className="meet-error" role="alert">{error}</p>}
       </form>
     </section>
