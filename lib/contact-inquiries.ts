@@ -10,6 +10,8 @@ export type ContactInquiry = {
   business: string;
   focus: string;
   timeline: string;
+  availabilityDates: string[];
+  availabilityTime: string;
   message: string;
 };
 

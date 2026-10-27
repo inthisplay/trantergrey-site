@@ -13,11 +13,14 @@ type SavedInquiry = {
   business: string;
   focus: string;
   timeline: string;
+  availabilityDates: string[];
+  availabilityTime: string;
   message: string;
 };
 
 const inquiriesFile = join(dataDirectory, 'contact-inquiries.json');
 const limited = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+const meetingTimes = new Set(['Morning', 'Afternoon', 'Evening', 'Surprise me']);
 
 async function readInquiries() {
   try {
@@ -40,9 +43,13 @@ export async function POST(request: Request) {
       business: limited(body.business, 140),
       focus: limited(body.focus, 80),
       timeline: limited(body.timeline, 80),
+      availabilityDates: Array.isArray(body.availabilityDates) ? body.availabilityDates.filter((date: unknown): date is string => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)).slice(0, 14) : [],
+      availabilityTime: limited(body.availabilityTime, 40),
       message: limited(body.message, 2000),
     };
-    if (!inquiry.name || !inquiry.business || !inquiry.focus || !inquiry.timeline || !inquiry.message || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inquiry.email)) {
+    const validAvailability = (!inquiry.availabilityDates.length && !inquiry.availabilityTime)
+      || (inquiry.availabilityDates.length > 0 && meetingTimes.has(inquiry.availabilityTime));
+    if (!inquiry.name || !inquiry.business || !inquiry.focus || !inquiry.timeline || !validAvailability || !inquiry.message || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inquiry.email)) {
       return Response.json({ error: 'Please complete the required fields and try again.' }, { status: 400 });
     }
     await mkdir(dataDirectory, { recursive: true });
