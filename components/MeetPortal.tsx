@@ -50,6 +50,8 @@ export function MeetPortal() {
   const requestedRole = useRef<'guest' | 'host'>('guest');
   const [busy, setBusy] = useState(false);
   const [loadingClient, setLoadingClient] = useState(false);
+  const [fallbackUrl, setFallbackUrl] = useState('');
+  const [fallbackReady, setFallbackReady] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -59,6 +61,7 @@ export function MeetPortal() {
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+    let fallbackServerUrl = '';
     setLoadingClient(true);
 
     (async () => {
@@ -66,6 +69,7 @@ export function MeetPortal() {
       const manifest = await response.json() as ClientManifest;
       if (!response.ok || manifest.error) throw new Error(manifest.error || 'The meeting interface is unavailable.');
       if (cancelled) return;
+      fallbackServerUrl = manifest.serverUrl;
       window.plugNmeetConfig = {
         serverUrl: manifest.serverUrl,
         staticAssetsPath: manifest.staticAssetsPath,
@@ -80,7 +84,13 @@ export function MeetPortal() {
       if (!cancelled) setLoadingClient(false);
     })().catch((cause) => {
       if (!cancelled) {
-        setError(cause instanceof Error ? cause.message : 'The meeting interface is unavailable.');
+        if (fallbackServerUrl) {
+          const url = new URL('/', fallbackServerUrl);
+          url.searchParams.set('access_token', token);
+          setFallbackUrl(url.toString());
+        } else {
+          setError(cause instanceof Error ? cause.message : 'The meeting interface is unavailable.');
+        }
         setLoadingClient(false);
       }
     });
@@ -113,6 +123,19 @@ export function MeetPortal() {
   }
 
   if (token) {
+    if (fallbackUrl) {
+      return <main className="meet-client-shell">
+        {!fallbackReady && <div className="meet-client-status"><span />Opening the meeting room…</div>}
+        <iframe
+          className="meet-client-frame"
+          src={fallbackUrl}
+          title="TranterGrey video meeting"
+          allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-read; clipboard-write"
+          allowFullScreen
+          onLoad={() => setFallbackReady(true)}
+        />
+      </main>;
+    }
     return <main className="meet-client-shell">
       {loadingClient && <div className="meet-client-status"><span />Opening the meeting room…</div>}
       {error && <div className="meet-client-status meet-client-error"><p>{error}</p><a href="/meet/">Return to the meeting page</a></div>}
