@@ -57,6 +57,10 @@ const muxPlaybackEndpoint = readFileSync('functions/api/mux/playback-map.ts', 'u
 if (!muxPlaybackEndpoint.includes('getAutoApprovedMuxPlaybackMap') || !muxPlaybackEndpoint.includes("'Cache-Control': 'public")) {
   throw new Error('The Cloudflare Mux playback map endpoint must expose cached, explicitly matched public playback IDs.');
 }
+const muxPlayback = readFileSync('lib/mux-playback.ts', 'utf8');
+if (!muxPlayback.includes("'654278945': '8A029oWR01MXttjFbExkobOa2cvLmpKCPOAtZM7bAW4X00'")) {
+  throw new Error('The approved Taylor BMW Center Of Excellence Mux asset mapping is missing.');
+}
 
 const header = readFileSync('components/SiteHeader.tsx', 'utf8');
 if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin &&') || !header.includes('href="/admin">Admin')) {
