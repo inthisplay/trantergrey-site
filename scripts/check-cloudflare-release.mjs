@@ -11,6 +11,7 @@ const requiredFiles = [
   'out/showcase.html',
   'out/watch.html',
   'functions/api/mux/library.ts',
+  'functions/api/mux/playback-map.ts',
   'functions/api/admin/mux-uploads.ts',
   'functions/api/admin/mux-assets/client.ts',
   'functions/api/admin/mux-assets/delete.ts',
@@ -48,6 +49,14 @@ for (const parameter of ['search', 'format', 'industry', 'client']) {
   }
 }
 if (!gallery.includes('window.history.replaceState')) throw new Error('The public work gallery must preserve shareable filters in the URL.');
+if (!gallery.includes("fetch('/api/mux/playback-map'") || !gallery.includes('videoPlayerUrl(active, true)')) {
+  throw new Error('The public work gallery must prefer approved Mux playback while retaining its Vimeo fallback.');
+}
+
+const muxPlaybackEndpoint = readFileSync('functions/api/mux/playback-map.ts', 'utf8');
+if (!muxPlaybackEndpoint.includes('getAutoApprovedMuxPlaybackMap') || !muxPlaybackEndpoint.includes("'Cache-Control': 'public")) {
+  throw new Error('The Cloudflare Mux playback map endpoint must expose cached, explicitly matched public playback IDs.');
+}
 
 const header = readFileSync('components/SiteHeader.tsx', 'utf8');
 if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin &&') || !header.includes('href="/admin">Admin')) {

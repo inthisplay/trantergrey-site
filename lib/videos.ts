@@ -1,7 +1,7 @@
 import type { VimeoLibraryVideo } from '@/lib/vimeo-library';
 
 export type Video = {
-  id: string; hash?: string; title: string; client: string; year: number; duration: string;
+  id: string; hash?: string; muxPlaybackId?: string; title: string; client: string; year: number; duration: string;
   kind: string; industry: string; thumbnail: string; searchTerms?: string;
 };
 
@@ -51,4 +51,14 @@ export const videos: Video[] = [
 export function vimeoPlayerUrl(video: Pick<Video, 'id' | 'hash'>, autoplay = false) {
   const hash = video.hash ? `h=${video.hash}&` : '';
   return `https://player.vimeo.com/video/${video.id}?${hash}autoplay=${autoplay ? '1' : '0'}&title=0&byline=0&portrait=0`;
+}
+
+export function videoPlayerUrl(video: Pick<Video, 'id' | 'hash' | 'muxPlaybackId' | 'title'>, autoplay = false) {
+  if (!video.muxPlaybackId) return vimeoPlayerUrl(video, autoplay);
+  const parameters = new URLSearchParams({
+    'metadata-video-id': video.id,
+    'metadata-video-title': video.title,
+  });
+  if (autoplay) parameters.set('autoplay', 'any');
+  return `https://player.mux.com/${video.muxPlaybackId}?${parameters}`;
 }
