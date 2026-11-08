@@ -18,7 +18,7 @@ function HeaderLinks({ showAdmin, open, onMenuToggle }: HeaderLinksProps) {
       <a href="/case-studies">Case Studies</a>
       <a href="/#capabilities">Capabilities</a>
       <a href="/#about">About</a>
-      {showAdmin && <a href="/admin">Admin</a>}
+      {showAdmin && <div className="nav-work-group nav-admin-group"><a className="nav-work-trigger" href="/admin">Admin <span aria-hidden="true" /></a><div className="nav-work-dropdown nav-admin-dropdown"><a href="/admin/mux">Mux</a></div></div>}
       <a className="nav-cta" href="/#contact">Start a project</a>
       <p className="mobile-menu-note">Make something worth watching.</p>
     </nav>
@@ -34,7 +34,7 @@ function MobileMenu({ showAdmin, open, onClose }: { showAdmin: boolean; open: bo
     <a href="/case-studies">Case Studies</a>
     <a href="/#capabilities">Capabilities</a>
     <a href="/#about">About</a>
-    {showAdmin && <a href="/admin">Admin</a>}
+    {showAdmin && <><a href="/admin">Admin</a><a className="mobile-sub-link" href="/admin/mux">Mux</a></>}
     <a className="nav-cta" href="/#contact">Start a project</a>
     <p className="mobile-menu-note">Make something worth watching.</p>
   </nav>;

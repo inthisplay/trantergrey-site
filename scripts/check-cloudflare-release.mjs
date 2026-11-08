@@ -50,8 +50,16 @@ for (const parameter of ['search', 'format', 'industry', 'client']) {
 if (!gallery.includes('window.history.replaceState')) throw new Error('The public work gallery must preserve shareable filters in the URL.');
 
 const header = readFileSync('components/SiteHeader.tsx', 'utf8');
-if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin && <a href="/admin">Admin</a>')) {
+if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin &&') || !header.includes('href="/admin">Admin')) {
   throw new Error('The site navigation must show the Admin link only for an authenticated session.');
+}
+if (!header.includes('nav-admin-group') || !header.includes('href="/admin/mux">Mux</a>')) {
+  throw new Error('The authenticated Admin navigation must include the Mux dropdown link.');
+}
+
+const adminHub = readFileSync('components/AdminHub.tsx', 'utf8');
+if (!adminHub.includes('admin-hub-link-title') || !adminHub.includes("title: 'Mux library'")) {
+  throw new Error('The Admin control room must render the Mux library title with the standard hub title style.');
 }
 
 const workerFiles = requiredFiles.filter((file) => file.startsWith('functions/') && existsSync(file));

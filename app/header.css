@@ -231,6 +231,8 @@
     transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s;
   }
 
+  .nav-admin-dropdown { min-width: 112px; }
+
   .nav-work-group::after {
     position: absolute;
     top: 100%;
