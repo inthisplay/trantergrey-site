@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 type Rendition = { name: string | null; status: string; url: string | null };
@@ -36,7 +35,6 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
   thumbnailUrl: string | null;
   downloadsEnabled: boolean;
 }) {
-  const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [downloadRequested, setDownloadRequested] = useState(false);
@@ -72,7 +70,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
           setDownloadRequested(false);
           setMessage('Download ready.');
           triggerDownload(ready.url);
-          router.refresh();
+          window.location.reload();
           return;
         }
         timer = setTimeout(check, 3000);
@@ -84,7 +82,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     };
     void check();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [assetId, downloadRequested, router]);
+  }, [assetId, downloadRequested]);
 
   async function run(name: string, work: () => Promise<unknown>, success: string) {
     setBusy(name);
@@ -92,7 +90,6 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     try {
       await work();
       setMessage(success);
-      router.refresh();
       return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'The action did not complete.');
@@ -120,7 +117,6 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
       const payload = await postJson('/api/admin/mux-assets/thumbnail', { assetId, time: selectedThumbnailTime }) as { thumbnailUrl?: string };
       if (payload.thumbnailUrl) setSavedThumbnail(payload.thumbnailUrl);
       setMessage('Thumbnail saved.');
-      router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'The thumbnail could not be saved.');
     } finally {
@@ -147,8 +143,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     if (!window.confirm('Permanently delete this video from Mux? This cannot be undone.')) return;
     void run('delete', () => postJson('/api/admin/mux-assets/delete', { assetIds: [assetId] }), 'Video deleted.').then((deleted) => {
       if (deleted) {
-        router.push('/admin/mux');
-        router.refresh();
+        window.location.assign('/admin/mux');
       }
     });
   };

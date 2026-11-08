@@ -5,6 +5,29 @@ const requiredFiles = [
   'functions/api/auth/google.ts',
   'functions/api/auth/google/callback.ts',
   'functions/api/admin/session.ts',
+  'out/admin/mux.html',
+  'out/mux-asset.html',
+  'out/showcase.html',
+  'out/watch.html',
+  'functions/api/mux/library.ts',
+  'functions/api/admin/mux-uploads.ts',
+  'functions/api/admin/mux-assets/client.ts',
+  'functions/api/admin/mux-assets/delete.ts',
+  'functions/api/admin/mux-assets/metadata.ts',
+  'functions/api/admin/mux-assets/playback.ts',
+  'functions/api/admin/mux-assets/static-rendition.ts',
+  'functions/api/admin/mux-assets/thumbnail.ts',
+  'functions/api/admin/video-projects.ts',
+  'functions/api/admin/video-collections.ts',
+  'functions/api/watch/[slug].ts',
+  'functions/api/watch/collection/[slug].ts',
+  'functions/api/watch/download.ts',
+  'functions/api/showcase.ts',
+  'functions/watch/[slug].ts',
+  'functions/watch/collection/[slug].ts',
+  'functions/admin/mux/[id].ts',
+  'migrations/0005_mux_library.sql',
+  'migrations/0006_seed_mux_workspace.sql',
 ];
 
 for (const file of requiredFiles) {
@@ -28,6 +51,46 @@ if (!gallery.includes('window.history.replaceState')) throw new Error('The publi
 const header = readFileSync('components/SiteHeader.tsx', 'utf8');
 if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin && <a href="/admin">Admin</a>')) {
   throw new Error('The site navigation must show the Admin link only for an authenticated session.');
+}
+
+const workerFiles = requiredFiles.filter((file) => file.startsWith('functions/') && existsSync(file));
+for (const file of workerFiles) {
+  const source = readFileSync(file, 'utf8');
+  if (/from ['"]node:|process\.env|server-only/.test(source)) throw new Error(`Cloudflare Function contains a Node-only dependency: ${file}`);
+}
+
+for (const file of [
+  'functions/api/mux/library.ts',
+  'functions/api/admin/mux-uploads.ts',
+  'functions/api/admin/mux-assets/client.ts',
+  'functions/api/admin/mux-assets/delete.ts',
+  'functions/api/admin/mux-assets/metadata.ts',
+  'functions/api/admin/mux-assets/playback.ts',
+  'functions/api/admin/mux-assets/static-rendition.ts',
+  'functions/api/admin/mux-assets/thumbnail.ts',
+  'functions/api/admin/video-projects.ts',
+  'functions/api/admin/video-collections.ts',
+]) {
+  if (!readFileSync(file, 'utf8').includes('adminResponse(')) throw new Error(`Mux admin Function is missing the session guard: ${file}`);
+}
+
+for (const legacyPath of [
+  'app/admin/mux/[id]/page.tsx',
+  'app/watch/[slug]/page.tsx',
+  'app/watch/collection/[slug]/page.tsx',
+  'app/api/mux/library/route.ts',
+  'app/api/admin/mux-uploads/route.ts',
+  'app/api/watch/download/route.ts',
+]) {
+  if (existsSync(legacyPath)) throw new Error(`Node-only Mux route must not return: ${legacyPath}`);
+}
+
+const adminEnvironment = readFileSync('functions/_lib/admin.ts', 'utf8');
+if (!adminEnvironment.includes('MUX_TOKEN_ID?: string') || !adminEnvironment.includes('MUX_TOKEN_SECRET?: string')) throw new Error('Cloudflare Mux credentials are missing from the Function environment contract.');
+
+const muxMigration = readFileSync('migrations/0005_mux_library.sql', 'utf8');
+for (const table of ['mux_asset_metadata', 'mux_video_projects', 'mux_video_collections']) {
+  if (!muxMigration.includes(`CREATE TABLE IF NOT EXISTS ${table}`)) throw new Error(`D1 migration is missing ${table}.`);
 }
 
 console.log('Cloudflare release checks passed.');

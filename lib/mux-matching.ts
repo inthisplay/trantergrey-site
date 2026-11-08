@@ -1,5 +1,4 @@
-import type { MuxLibraryAsset } from './mux-api';
-import type { MuxLibraryStatus } from './mux-library-metadata';
+import type { MuxLibraryAsset, MuxLibraryStatus } from './mux-shared';
 
 export type VimeoMatchCandidate = {
   id: string;

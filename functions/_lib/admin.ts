@@ -10,6 +10,8 @@ export type AdminEnvironment = {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REDIRECT_URI?: string;
+  MUX_TOKEN_ID?: string;
+  MUX_TOKEN_SECRET?: string;
   TG_DATA: { prepare(query: string): Statement };
 };
 

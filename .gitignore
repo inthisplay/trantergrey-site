@@ -1,9 +1,11 @@
 node_modules/
+node_modules
 .next/
 *.tsbuildinfo
 out/
 .wrangler/
 .env
 .env.local
+.dev.vars
 data/
 .DS_Store
