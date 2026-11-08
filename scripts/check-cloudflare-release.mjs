@@ -58,8 +58,12 @@ if (!header.includes('nav-admin-group') || !header.includes('href="/admin/mux">M
 }
 
 const adminHub = readFileSync('components/AdminHub.tsx', 'utf8');
+const adminCss = readFileSync('app/admin.css', 'utf8');
 if (!adminHub.includes('admin-hub-link-title') || !adminHub.includes("title: 'Mux library'")) {
   throw new Error('The Admin control room must render the Mux library title with the standard hub title style.');
+}
+if (!adminCss.includes('.admin-hub-link-title .axis-tracked-text') || !adminCss.includes('.admin-hub-link-title .axis-tracked-glyph')) {
+  throw new Error('Axis glyph wrappers inside Admin hub titles must inherit the title typography.');
 }
 
 const workerFiles = requiredFiles.filter((file) => file.startsWith('functions/') && existsSync(file));
