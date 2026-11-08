@@ -6,6 +6,7 @@
     "dev": "next dev -p 3100",
     "build": "next build",
     "build:site": "node scripts/build-static-site.mjs",
+    "check:cloudflare-release": "npm run build:site && node scripts/check-cloudflare-release.mjs",
     "start": "next start",
     "lint": "next lint"
   },

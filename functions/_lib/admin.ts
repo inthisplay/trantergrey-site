@@ -7,6 +7,9 @@ type Statement = {
 
 export type AdminEnvironment = {
   ADMIN_PASSWORD?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_REDIRECT_URI?: string;
   TG_DATA: { prepare(query: string): Statement };
 };
 
@@ -64,6 +67,10 @@ export function clearAdminCookie() {
 
 export function safeDestination(value: FormDataEntryValue | null) {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : '/admin';
+}
+
+export function isTranterGreyEmail(email: string) {
+  return email.toLowerCase().endsWith('@trantergrey.com');
 }
 
 export function origin(request: Request) {
