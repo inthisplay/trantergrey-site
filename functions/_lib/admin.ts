@@ -33,11 +33,14 @@ function sameValue(first: string, second: string) {
 }
 
 export function configured(env: AdminEnvironment) {
+  return passwordConfigured(env) || Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+}
+
+export function passwordConfigured(env: AdminEnvironment) {
   return Boolean(env.ADMIN_PASSWORD);
 }
 
 export async function hasAdminSession(request: Request, env: AdminEnvironment) {
-  if (!env.ADMIN_PASSWORD) return false;
   const value = cookie(request, sessionCookie);
   if (!value) return false;
   const session = await env.TG_DATA
@@ -53,7 +56,6 @@ export async function adminResponse(request: Request, env: AdminEnvironment) {
 }
 
 export async function adminCookie(env: AdminEnvironment) {
-  if (!env.ADMIN_PASSWORD) return '';
   const value = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + sessionLifetimeSeconds * 1000).toISOString();
   await env.TG_DATA

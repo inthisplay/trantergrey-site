@@ -1,4 +1,4 @@
-import { adminCookie, configured, origin, safeDestination, sameValue, type AdminEnvironment } from '../../_lib/admin';
+import { adminCookie, origin, passwordConfigured, safeDestination, sameValue, type AdminEnvironment } from '../../_lib/admin';
 
 type Context = { request: Request; env: AdminEnvironment };
 
@@ -9,7 +9,7 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
   const location = new URL('/login', origin(request));
   location.searchParams.set('next', destination);
 
-  if (!configured(env)) {
+  if (!passwordConfigured(env)) {
     location.searchParams.set('error', 'config');
     return Response.redirect(location, 303);
   }

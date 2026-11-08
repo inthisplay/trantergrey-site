@@ -4,6 +4,7 @@ const requiredFiles = [
   'out/login.html',
   'functions/api/auth/google.ts',
   'functions/api/auth/google/callback.ts',
+  'functions/api/auth/config.ts',
   'functions/api/admin/session.ts',
   'out/admin/mux.html',
   'out/mux-asset.html',
@@ -87,6 +88,10 @@ for (const legacyPath of [
 
 const adminEnvironment = readFileSync('functions/_lib/admin.ts', 'utf8');
 if (!adminEnvironment.includes('MUX_TOKEN_ID?: string') || !adminEnvironment.includes('MUX_TOKEN_SECRET?: string')) throw new Error('Cloudflare Mux credentials are missing from the Function environment contract.');
+if (/hasAdminSession[\s\S]{0,200}!env\.ADMIN_PASSWORD/.test(adminEnvironment) || /adminCookie[\s\S]{0,200}!env\.ADMIN_PASSWORD/.test(adminEnvironment)) throw new Error('Google-created admin sessions must not depend on ADMIN_PASSWORD.');
+
+const adminLogin = readFileSync('components/AdminLogin.tsx', 'utf8');
+if (!adminLogin.includes("fetch('/api/auth/config'") || !adminLogin.includes('passwordEnabled &&')) throw new Error('The password fallback must only appear when it is configured.');
 
 const muxMigration = readFileSync('migrations/0005_mux_library.sql', 'utf8');
 for (const table of ['mux_asset_metadata', 'mux_video_projects', 'mux_video_collections']) {
