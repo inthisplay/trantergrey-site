@@ -4,6 +4,7 @@ const requiredFiles = [
   'out/login.html',
   'functions/api/auth/google.ts',
   'functions/api/auth/google/callback.ts',
+  'functions/api/admin/session.ts',
 ];
 
 for (const file of requiredFiles) {
@@ -23,5 +24,10 @@ for (const parameter of ['search', 'format', 'industry', 'client']) {
   }
 }
 if (!gallery.includes('window.history.replaceState')) throw new Error('The public work gallery must preserve shareable filters in the URL.');
+
+const header = readFileSync('components/SiteHeader.tsx', 'utf8');
+if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin && <a href="/admin">Admin</a>')) {
+  throw new Error('The site navigation must show the Admin link only for an authenticated session.');
+}
 
 console.log('Cloudflare release checks passed.');

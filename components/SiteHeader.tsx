@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 type HeaderLinksProps = {
-  adminArea: boolean;
+  showAdmin: boolean;
   open: boolean;
   onMenuToggle: () => void;
 };
 
-function HeaderLinks({ adminArea, open, onMenuToggle }: HeaderLinksProps) {
+function HeaderLinks({ showAdmin, open, onMenuToggle }: HeaderLinksProps) {
   return <>
     <a className={`wordmark${open ? ' is-menu-open' : ''}`} href="/"><img src="/assets/tg-logo-white-red.png" alt="TranterGrey" /></a>
     <button className="menu-toggle" onClick={onMenuToggle} aria-expanded={open}>{open ? 'Close' : 'Menu'} <span aria-hidden="true" /></button>
@@ -18,14 +18,14 @@ function HeaderLinks({ adminArea, open, onMenuToggle }: HeaderLinksProps) {
       <a href="/case-studies">Case Studies</a>
       <a href="/#capabilities">Capabilities</a>
       <a href="/#about">About</a>
-      {adminArea && <a href="/admin">Admin Home</a>}
+      {showAdmin && <a href="/admin">Admin</a>}
       <a className="nav-cta" href="/#contact">Start a project</a>
       <p className="mobile-menu-note">Make something worth watching.</p>
     </nav>
   </>;
 }
 
-function MobileMenu({ adminArea, open, onClose }: { adminArea: boolean; open: boolean; onClose: () => void }) {
+function MobileMenu({ showAdmin, open, onClose }: { showAdmin: boolean; open: boolean; onClose: () => void }) {
   return <nav className={`mobile-menu-panel${open ? ' open' : ''}`} aria-label="Primary">
     <button className="mobile-menu-close" onClick={onClose} aria-label="Close menu">Close <span aria-hidden="true" /></button>
     <a href="/our-work">Our Work</a>
@@ -34,7 +34,7 @@ function MobileMenu({ adminArea, open, onClose }: { adminArea: boolean; open: bo
     <a href="/case-studies">Case Studies</a>
     <a href="/#capabilities">Capabilities</a>
     <a href="/#about">About</a>
-    {adminArea && <a href="/admin">Admin Home</a>}
+    {showAdmin && <a href="/admin">Admin</a>}
     <a className="nav-cta" href="/#contact">Start a project</a>
     <p className="mobile-menu-note">Make something worth watching.</p>
   </nav>;
@@ -45,6 +45,7 @@ export function SiteHeader({ adminArea = false }: { adminArea?: boolean }) {
   const [returnMenuOpen, setReturnMenuOpen] = useState(false);
   const [returnOffset, setReturnOffset] = useState<number | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [hasAdminSession, setHasAdminSession] = useState(false);
   const heroHeaderRef = useRef<HTMLElement>(null);
   const returnHeaderRef = useRef<HTMLElement>(null);
   const previousScroll = useRef(0);
@@ -85,11 +86,22 @@ export function SiteHeader({ adminArea = false }: { adminArea?: boolean }) {
 
   useEffect(() => setIsMounted(true), []);
 
+  useEffect(() => {
+    if (adminArea) return;
+    const controller = new AbortController();
+    fetch('/api/admin/session', { cache: 'no-store', credentials: 'same-origin', signal: controller.signal })
+      .then((response) => setHasAdminSession(response.ok))
+      .catch(() => setHasAdminSession(false));
+    return () => controller.abort();
+  }, [adminArea]);
+
+  const showAdmin = adminArea || hasAdminSession;
+
   return <>
     <header ref={heroHeaderRef} className="site-header" aria-hidden={returnOffset === 0}>
-      <HeaderLinks adminArea={adminArea} open={heroMenuOpen} onMenuToggle={() => setHeroMenuOpen((open) => !open)} />
+      <HeaderLinks showAdmin={showAdmin} open={heroMenuOpen} onMenuToggle={() => setHeroMenuOpen((open) => !open)} />
     </header>
-    {isMounted && createPortal(<MobileMenu adminArea={adminArea} open={heroMenuOpen || returnMenuOpen} onClose={() => {
+    {isMounted && createPortal(<MobileMenu showAdmin={showAdmin} open={heroMenuOpen || returnMenuOpen} onClose={() => {
       setHeroMenuOpen(false);
       setReturnMenuOpen(false);
     }} />, document.body)}
@@ -99,7 +111,7 @@ export function SiteHeader({ adminArea = false }: { adminArea?: boolean }) {
       style={returnOffset === null ? undefined : { transform: `translateY(${returnOffset}px)` }}
       aria-hidden={returnOffset !== 0}
     >
-      <HeaderLinks adminArea={adminArea} open={returnMenuOpen} onMenuToggle={() => setReturnMenuOpen((open) => !open)} />
+      <HeaderLinks showAdmin={showAdmin} open={returnMenuOpen} onMenuToggle={() => setReturnMenuOpen((open) => !open)} />
     </header>, document.body)}
   </>;
 }
