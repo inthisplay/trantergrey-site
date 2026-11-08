@@ -41,33 +41,34 @@ function qualityLabel(quality: DownloadQuality) {
   return quality === 'highest' ? 'highest available' : quality;
 }
 
-function VideoJsPlayer({ assetId, playbackId, poster, title, muted = false, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
+export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || !onVideoElement) return;
+    if (!root) return;
     let currentVideo: HTMLVideoElement | null = null;
     const connect = () => {
       const video = root.querySelector('video');
       if (video === currentVideo) return;
-      if (currentVideo) onVideoElement(assetId, null);
+      if (currentVideo) onVideoElement?.(assetId, null);
       currentVideo = video;
       if (video) {
         video.defaultMuted = muted;
         video.muted = muted;
-        onVideoElement(assetId, video);
+        onVideoElement?.(assetId, video);
         video.addEventListener('play', () => setStarted(true));
         const keepMuted = () => { if (muted) video.muted = true; };
         video.addEventListener('volumechange', keepMuted);
+        if (autoPlay) void video.play().catch(() => undefined);
       }
     };
     connect();
     const observer = new MutationObserver(connect);
     observer.observe(root, { childList: true, subtree: true });
-    return () => { observer.disconnect(); if (currentVideo) onVideoElement(assetId, null); };
-  }, [assetId, muted, onVideoElement]);
+    return () => { observer.disconnect(); if (currentVideo) onVideoElement?.(assetId, null); };
+  }, [assetId, autoPlay, muted, onVideoElement]);
 
   return <div ref={rootRef} className="solo-videojs-player">
     <VideoPlayer title={title} poster={poster ?? undefined}>
@@ -232,7 +233,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
       <button type="button" className={showingAll ? 'active' : ''} onClick={() => setSelectedId('all')}>All</button>
       {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => setSelectedId(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
     </div>}
-    {showingAll ? <div className="solo-video-all-stages">{variants.map((variant) => <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} key={variant.assetId}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><VideoJsPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} onVideoElement={registerSyncedVideo} /></div></div>)}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><VideoJsPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} /></div></div>}
+    {showingAll ? <div className="solo-video-all-stages">{variants.map((variant) => <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} key={variant.assetId}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} onVideoElement={registerSyncedVideo} /></div></div>)}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} /></div></div>}
     {!showingAll && <div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" onClick={copyUrl}>

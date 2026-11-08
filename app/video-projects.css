@@ -11,6 +11,13 @@
   margin-inline:auto;
 }
 
+/* The public work modal uses the same branded Video.js Mux player as public watch pages. */
+.modal-player .solo-videojs-player,
+.modal-player .solo-videojs-skin{
+  width:100%;
+  height:100%;
+}
+
 .solo-video-player.has-actions{
   --solo-player-max-height:calc(100svh - 360px);
   padding-top:56px;
