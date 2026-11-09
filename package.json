@@ -3,8 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "next dev -p 3100",
-    "dev:cloudflare": "npm run build:site && wrangler pages dev out --persist-to .wrangler/state",
+    "dev": "node scripts/dev.mjs",
+    "dev:next": "next dev -p 3101",
+    "dev:cloudflare": "npm run dev",
     "db:migrate:local": "wrangler d1 migrations apply TG_DATA --local --persist-to .wrangler/state",
     "build": "next build",
     "build:site": "node scripts/build-static-site.mjs",
@@ -18,6 +19,7 @@
     "@videojs/react": "^10.3.0",
     "@vimeo/player": "^2.30.4",
     "next": "^16.4.5",
+    "pixelarticons": "^2.4.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "video.js": "^10.3.0"

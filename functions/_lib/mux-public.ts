@@ -13,7 +13,7 @@ function publicVariant(asset: Awaited<ReturnType<typeof getMuxLibraryAsset>>, la
 
 export async function publicWatchData(env: AdminEnvironment, slug: string) {
   const [store, metadata] = await Promise.all([readVideoProjectStore(env), readMuxMetadata(env)]);
-  const project = store.projects.find((item) => item.slug === slug);
+  const project = store.projects.find((item) => item.slug === slug || item.legacySlugs?.includes(slug));
   if (project) {
     const assets = await Promise.all(project.variants.map((variant) => getMuxLibraryAsset(env, variant.assetId).catch(() => null)));
     const variants = assets.flatMap((asset, index) => asset ? [publicVariant(asset, project.variants[index].label, metadata)].filter((item): item is PublicVariant => Boolean(item)) : []);
@@ -33,6 +33,13 @@ export async function publicCollectionData(env: AdminEnvironment, slug: string) 
 }
 
 export async function publicShowcaseData(env: AdminEnvironment, ids: string[]) {
-  const [assets, metadata] = await Promise.all([getMuxLibraryAssets(env), readMuxMetadata(env)]); const byId = new Map(assets.map((asset) => [asset.id, asset]));
-  return ids.flatMap((id) => { const asset = byId.get(id); if (!asset?.playerUrl || asset.playbackPolicy !== 'public') return []; const saved = metadata[id]; return [{ id, title: saved?.title || asset.title, client: saved?.client || '', playerUrl: asset.playerUrl }]; });
+  const [assets, metadata, store] = await Promise.all([getMuxLibraryAssets(env), readMuxMetadata(env), readVideoProjectStore(env)]); const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  return ids.flatMap((id) => {
+    const project = store.projects.find((item) => item.slug === id || item.legacySlugs?.includes(id));
+    const preferredVariant = project?.variants.find((variant) => /^horiz(?:ontal)?$/i.test(variant.label)) ?? project?.variants[0];
+    const asset = byId.get(preferredVariant?.assetId ?? id);
+    if (!asset?.playerUrl || asset.playbackPolicy !== 'public') return [];
+    const saved = metadata[asset.id];
+    return [{ id, title: project?.title || saved?.title || asset.title, client: project?.client || saved?.client || '', playerUrl: asset.playerUrl }];
+  });
 }

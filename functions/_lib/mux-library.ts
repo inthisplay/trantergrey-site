@@ -1,8 +1,9 @@
 import { matchMuxAssetsToVimeo, type MatchedMuxLibraryAsset, type VimeoMatchCandidate } from '../../lib/mux-matching';
 import type { AdminEnvironment } from './admin';
 import { getMuxLibraryAssets, muxThumbnailUrl } from './mux';
-import { readMuxMetadata, readVideoProjectStore } from './mux-state';
+import { assignShortVideoUrls, readMuxMetadata, readVideoProjectStore } from './mux-state';
 import { readVimeoLibrary } from './vimeo-state';
+import publishedLibrarySeed from '../../lib/published-vimeo-library.json';
 
 type VimeoRecord = VimeoMatchCandidate & {
   createdAt?: string | null;
@@ -12,13 +13,32 @@ type VimeoRecord = VimeoMatchCandidate & {
 };
 
 export async function readEnrichedMuxLibrary(env: AdminEnvironment) {
-  const [muxAssets, metadata, store, vimeo] = await Promise.all([
+  const [muxAssets, metadata, initialStore, vimeo] = await Promise.all([
     getMuxLibraryAssets(env),
     readMuxMetadata(env),
     readVideoProjectStore(env),
     readVimeoLibrary(env),
   ]);
-  const videos = (vimeo?.videos ?? []).flatMap((raw) => {
+  const migration = await assignShortVideoUrls(env, muxAssets);
+  const store = migration.updated ? await readVideoProjectStore(env) : initialStore;
+  // Keep the published archive available as a safety net for historic timeline
+  // data. In production, the D1 library remains the source of truth; matching
+  // records are merged by Vimeo ID so its current metadata wins while any
+  // missing historic fields (especially createdAt) are retained.
+  const publishedVideos = publishedLibrarySeed.videos as VimeoRecord[];
+  const storedVideos = (vimeo?.videos ?? []) as VimeoRecord[];
+  const storedById = new Map(storedVideos.map((video) => [video.id, video]));
+  const publishedIds = new Set(publishedVideos.map((video) => video.id));
+  const vimeoVideos = [
+    ...publishedVideos.map((published) => {
+      const stored = storedById.get(published.id);
+      return stored
+        ? { ...published, ...stored, createdAt: stored.createdAt || published.createdAt }
+        : published;
+    }),
+    ...storedVideos.filter((video) => !publishedIds.has(video.id)),
+  ];
+  const videos = vimeoVideos.flatMap((raw) => {
     const video = raw as VimeoRecord;
     return typeof video.id === 'string' && typeof video.title === 'string' && Number.isFinite(video.duration) ? [video] : [];
   });

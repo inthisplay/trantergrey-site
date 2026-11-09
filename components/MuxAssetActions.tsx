@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Rendition = { name: string | null; status: string; url: string | null };
 
@@ -35,6 +35,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
   thumbnailUrl: string | null;
   downloadsEnabled: boolean;
 }) {
+  const replaceInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [downloadRequested, setDownloadRequested] = useState(false);
@@ -152,12 +153,53 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     const updated = await run('public-downloads', () => postJson('/api/admin/mux-assets/metadata', { assetId, downloadsEnabled: next }), next ? 'Public downloads enabled.' : 'Public downloads disabled.');
     if (updated) setPublicDownloadsEnabled(next);
   };
+  const replaceVideo = async (file: File | undefined) => {
+    if (!file) return;
+    if (!window.confirm('Replace this Mux video with the selected file? The shareable page will stay the same and the current Mux asset will be permanently deleted after the replacement is ready.')) return;
+    setBusy('replace');
+    setMessage(null);
+    try {
+      const uploadResponse = await postJson('/api/admin/mux-uploads', { filename: file.name, contentType: file.type || 'video/mp4' }) as { uploadUrl?: string; uploadId?: string };
+      if (!uploadResponse.uploadUrl || !uploadResponse.uploadId) throw new Error('Mux did not create an upload destination.');
+      await new Promise<void>((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open('PUT', uploadResponse.uploadUrl!);
+        request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error('The replacement file could not be uploaded.'));
+        request.onerror = () => reject(new Error('The replacement file could not be uploaded.'));
+        request.send(file);
+      });
+      let replacementAssetId: string | null = null;
+      for (let attempt = 0; attempt < 45 && !replacementAssetId; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        const response = await fetch(`/api/admin/mux-uploads?uploadId=${encodeURIComponent(uploadResponse.uploadId)}`, { cache: 'no-store' });
+        const payload = await response.json().catch(() => null) as { assetId?: string; error?: string } | null;
+        if (!response.ok) throw new Error(payload?.error || 'Mux could not process the replacement file.');
+        replacementAssetId = payload?.assetId ?? null;
+      }
+      if (!replacementAssetId) throw new Error('Mux is still preparing the replacement. Please try again in a moment.');
+      for (let attempt = 0; attempt < 45; attempt += 1) {
+        try {
+          await postJson('/api/admin/mux-assets/replace', { assetId, replacementAssetId });
+          window.location.assign(`/admin/mux/${replacementAssetId}`);
+          return;
+        } catch (error) {
+          if (attempt === 44) throw error;
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        }
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'The video could not be replaced.');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return <div className="mux-asset-actions">
     <header><span>Video settings</span><strong>Mux controls</strong></header>
     <section className="mux-share-action"><small>Public link</small><p>Every video has a page ready to paste into an email or message.</p>
       <input aria-label="Public video URL" readOnly value={publicUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={copyPublicLink}>Copy URL</button><a href={sharePath} target="_blank" rel="noreferrer">Open ↗</a></div>
     </section>
+    <section className="mux-replace-action"><small>Replace video</small><p>Upload a revision without changing the shareable page. The superseded Mux asset is deleted when the swap finishes.</p><input ref={replaceInput} className="visually-hidden" type="file" accept="video/*,.mov,.mp4,.m4v,.webm,.avi,.mkv" onChange={(event) => { void replaceVideo(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /><button className="primary" type="button" onClick={() => replaceInput.current?.click()} disabled={Boolean(busy)}>{busy === 'replace' ? 'Replacing…' : 'Replace video'}</button></section>
     <section className="mux-thumbnail-action"><small>Thumbnail</small><p>Choose the frame used throughout the video library.</p>
       {previewThumbnail && <img src={previewThumbnail} alt="Selected thumbnail frame" />}
       <div className="mux-thumbnail-time"><input aria-label="Thumbnail frame time" type="range" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /><label><input type="number" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /> sec</label></div>

@@ -39,6 +39,12 @@ for (const file of requiredFiles) {
 const loginPage = readFileSync('out/login.html', 'utf8');
 if (!loginPage.includes('/api/auth/google')) throw new Error('The static login page does not link to Google sign-in.');
 
+const packageConfig = JSON.parse(readFileSync('package.json', 'utf8'));
+const localDev = readFileSync('scripts/dev.mjs', 'utf8');
+if (packageConfig.scripts?.dev !== 'node scripts/dev.mjs' || !localDev.includes("pathname.startsWith('/api/')") || !localDev.includes("'--port', '3102'")) {
+  throw new Error('Local development must run Pages Functions in front of the Next.js hot-reload server.');
+}
+
 const callback = readFileSync('functions/api/auth/google/callback.ts', 'utf8');
 if (!callback.includes("profile.hd !== 'trantergrey.com'") || !callback.includes('profile.email_verified !== true')) throw new Error('The Google callback must verify both the Workspace domain and the email.');
 

@@ -9,6 +9,7 @@ export type VideoProject = {
   id: string;
   title: string;
   slug: string;
+  legacySlugs?: string[];
   client: string | null;
   description: string | null;
   variants: VideoProjectVariant[];
@@ -43,5 +44,11 @@ export function ratioLabel(aspectRatio: string | null) {
   if (Math.abs(ratio - 9 / 16) < 0.04) return '9:16';
   if (Math.abs(ratio - 1) < 0.04) return '1:1';
   if (Math.abs(ratio - 4 / 5) < 0.04) return '4:5';
+  if (Math.abs(ratio - 5 / 4) < 0.04) return '5:4';
+  if (Math.abs(ratio - 3 / 2) < 0.04) return '3:2';
+  if (Math.abs(ratio - 2 / 3) < 0.04) return '2:3';
+  if (Math.abs(ratio - 4 / 3) < 0.04) return '4:3';
+  if (Math.abs(ratio - 3 / 4) < 0.04) return '3:4';
+  if (Math.abs(ratio - 21 / 9) < 0.05) return '21:9';
   return `${match[1]}:${match[2]}`;
 }

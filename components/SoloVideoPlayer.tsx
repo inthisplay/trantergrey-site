@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import '@videojs/react/video/skin.css';
 import { VideoPlayer, VideoSkin } from '@videojs/react/video';
 import { MuxVideo } from '@videojs/react/media/mux-video';
@@ -44,8 +44,14 @@ function qualityLabel(quality: DownloadQuality) {
 export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(muted);
+  const [volume, setVolume] = useState(1);
+  const [hoverPreview, setHoverPreview] = useState<{ time: number; percent: number } | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     let currentVideo: HTMLVideoElement | null = null;
@@ -57,8 +63,18 @@ export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = fal
       if (video) {
         video.defaultMuted = muted;
         video.muted = muted;
+        setIsMuted(muted);
         onVideoElement?.(assetId, video);
-        video.addEventListener('play', () => setStarted(true));
+        const onPlay = () => { setStarted(true); setPlaying(true); };
+        const onPause = () => setPlaying(false);
+        const onTimeUpdate = () => setCurrentTime(video.currentTime || 0);
+        const onLoadedMetadata = () => setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+        const onVolumeChange = () => { setIsMuted(video.muted); setVolume(video.volume); };
+        video.addEventListener('play', onPlay);
+        video.addEventListener('pause', onPause);
+        video.addEventListener('timeupdate', onTimeUpdate);
+        video.addEventListener('loadedmetadata', onLoadedMetadata);
+        video.addEventListener('volumechange', onVolumeChange);
         const keepMuted = () => { if (muted) video.muted = true; };
         video.addEventListener('volumechange', keepMuted);
         if (autoPlay) void video.play().catch(() => undefined);
@@ -70,18 +86,49 @@ export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = fal
     return () => { observer.disconnect(); if (currentVideo) onVideoElement?.(assetId, null); };
   }, [assetId, autoPlay, muted, onVideoElement]);
 
+  const video = () => rootRef.current?.querySelector('video') ?? null;
+  const togglePlayback = () => {
+    const element = video(); if (!element) return;
+    if (element.paused) void element.play(); else element.pause();
+  };
+  const formatTime = (value: number) => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
+  const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  const previewAtPointer = (event: MouseEvent<HTMLElement>) => {
+    if (!duration) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const percent = Math.min(100, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * 100));
+    setHoverPreview({ percent, time: Math.round(((percent / 100) * duration) * 2) / 2 });
+  };
+  const previewAtBottomPointer = (event: MouseEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (event.clientY < bounds.bottom - 32) { setHoverPreview(null); return; }
+    previewAtPointer(event);
+  };
+  const toggleFromSurface = (event: MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button,input,.tg-player-volume')) return;
+    togglePlayback();
+  };
+  const setVolumeFromPointer = (event: MouseEvent<HTMLDivElement>) => {
+    const element = video(); if (!element) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const next = Math.min(1, Math.max(0, 1 - ((event.clientY - bounds.top) / bounds.height)));
+    element.muted = next === 0;
+    element.volume = next;
+    setIsMuted(next === 0);
+    setVolume(next);
+  };
+
   return <div ref={rootRef} className="solo-videojs-player">
     <VideoPlayer title={title} poster={poster ?? undefined}>
       <VideoSkin className="solo-videojs-skin">
-        <MuxVideo source={{ playbackId }} playsInline crossOrigin="anonymous" />
+        <MuxVideo source={{ playbackId }} playsInline crossOrigin="anonymous" autoPlay={autoPlay} />
         <MuxData metadata={{ video_id: assetId, video_title: title }} />
       </VideoSkin>
     </VideoPlayer>
-    {!started && <button className="solo-video-start" type="button" aria-label={`Play ${title}`} onClick={() => {
-      const video = rootRef.current?.querySelector('video');
-      void video?.play();
-      setStarted(true);
-    }}><span /></button>}
+    <div className={`tg-player-interface${started ? ' started' : ''}`} onClick={toggleFromSurface} onMouseMove={previewAtBottomPointer} onMouseLeave={() => setHoverPreview(null)}>
+      <div className="tg-player-transport"><button className="tg-player-play" type="button" aria-label={playing ? `Pause ${title}` : `Play ${title}`} onClick={togglePlayback}>{playing ? 'Ⅱ' : '▶'}</button></div>
+<div className="tg-player-bottom" style={{ '--player-progress': `${progress}%` } as CSSProperties}>{hoverPreview && <div className="tg-player-scrub-preview" style={{ left: `${hoverPreview.percent}%` }}><img src={`https://image.mux.com/${playbackId}/thumbnail.jpg?time=${hoverPreview.time}&width=240`} alt="" /><span>{formatTime(hoverPreview.time)}</span></div>}<span>{formatTime(currentTime)} / {formatTime(duration)}</span><input aria-label="Seek" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(currentTime, duration || 0)} onMouseMove={previewAtPointer} onMouseLeave={() => setHoverPreview(null)} onChange={(event) => { const element = video(); if (element) element.currentTime = Number(event.target.value); }} /><div><div className="tg-player-volume" style={{ '--volume-offset': `${Math.round((isMuted ? 0 : volume) * 64)}px` } as CSSProperties}><div className="tg-player-volume-hitarea" role="slider" aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)} onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)} onClick={setVolumeFromPointer} onMouseMove={(event) => { if (event.buttons) setVolumeFromPointer(event); }} /><button type="button" aria-label={isMuted ? 'Unmute' : 'Mute'} onClick={() => { const element = video(); if (!element) return; element.muted = !element.muted; setIsMuted(element.muted); }}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M163.51,24.81a8,8,0,0,0-8.42.88L85.25,80H40A16,16,0,0,0,24,96v64a16,16,0,0,0,16,16H85.25l69.84,54.31A8,8,0,0,0,168,224V32A8,8,0,0,0,163.51,24.81ZM152,207.64,92.91,161.69A7.94,7.94,0,0,0,88,160H40V96H88a7.94,7.94,0,0,0,4.91-1.69L152,48.36Z" />{!isMuted && volume > .66 && <><path d="M208,104v48a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /><path d="M240,88v80a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Z" /></>}{!isMuted && volume > .05 && volume <= .66 && <path d="M208,104v48a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" />}</svg></button></div><button type="button" aria-label="Enter fullscreen" onClick={() => void rootRef.current?.requestFullscreen?.()}>⛶</button></div></div>
+    </div>
   </div>;
 }
 
@@ -98,6 +145,18 @@ function selectorLabel(variant: SoloVideoVariant) {
   return variant.label;
 }
 
+function variantFromRatioParam(variants: SoloVideoVariant[], value: string | null) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, '');
+  if (normalized === 'all') return 'all';
+  return variants.find((variant) => {
+    const label = selectorLabel(variant).toLowerCase().replace(/[\s_-]+/g, '');
+    const ratio = variant.aspectRatio?.toLowerCase().replace(/[\s/]+/g, '');
+    const aliases = label === 'horiz' ? ['horizontal', '169'] : label === 'vert' ? ['vertical', '916'] : label === 'sqr' ? ['square', '11'] : [];
+    return normalized === variant.assetId.toLowerCase() || normalized === label || normalized === ratio || aliases.includes(normalized);
+  })?.assetId ?? null;
+}
+
 export function SoloVideoPlayer({ title, variants }: { title: string; variants: SoloVideoVariant[] }) {
   const [selectedId, setSelectedId] = useState(variants.length > 1 ? 'all' : variants[0]?.assetId ?? '');
   const [downloadState, setDownloadState] = useState<'idle' | 'preparing'>('idle');
@@ -107,6 +166,10 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
   const [noticeKind, setNoticeKind] = useState<'info' | 'success' | 'error'>('info');
   const syncedVideos = useRef(new Map<string, HTMLVideoElement>());
   const syncing = useRef(false);
+  useEffect(() => {
+    const requested = variantFromRatioParam(variants, new URLSearchParams(window.location.search).get('ratio'));
+    if (requested) setSelectedId(requested);
+  }, [variants]);
   const selected = useMemo(() => variants.find((variant) => variant.assetId === selectedId) ?? variants[0], [selectedId, variants]);
   useEffect(() => { setDownloadState('idle'); setDownloadMenuOpen(false); setCopyState('idle'); setNotice(''); }, [selectedId]);
   if (!selected) return <p className="solo-video-unavailable">This video is not ready for playback yet.</p>;
@@ -122,6 +185,17 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
     setNotice(message);
     setNoticeKind(kind);
     if (kind !== 'info') window.setTimeout(() => setNotice((current) => current === message ? '' : current), 5000);
+  }
+
+  function selectRatio(nextId: string) {
+    setSelectedId(nextId);
+    const url = new URL(window.location.href);
+    if (nextId === 'all') url.searchParams.delete('ratio');
+    else {
+      const variant = variants.find((item) => item.assetId === nextId);
+      url.searchParams.set('ratio', selectorLabel(variant ?? variants[0]).toLowerCase());
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
   function registerSyncedVideo(assetId: string, video: HTMLVideoElement | null) {
@@ -230,8 +304,8 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
     {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite">{notice}</div>}
     {variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
       <span>View ratio</span>
-      <button type="button" className={showingAll ? 'active' : ''} onClick={() => setSelectedId('all')}>All</button>
-      {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => setSelectedId(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
+      <button type="button" className={showingAll ? 'active' : ''} onClick={() => selectRatio('all')}>All</button>
+      {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => selectRatio(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
     </div>}
     {showingAll ? <div className="solo-video-all-stages">{variants.map((variant) => <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} key={variant.assetId}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} onVideoElement={registerSyncedVideo} /></div></div>)}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} /></div></div>}
     {!showingAll && <div className="solo-video-actions">
