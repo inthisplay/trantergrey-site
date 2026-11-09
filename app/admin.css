@@ -144,3 +144,22 @@
 .mux-player-modal-panel .solo-videojs-player,.mux-asset-player .solo-videojs-player{display:block;width:100%;aspect-ratio:16/9;background:#000}
 @media(min-width:761px){.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(10))>:nth-child(2),.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(10))>:nth-child(3){order:2!important;grid-column:span 3!important}}
 .mux-player-modal-panel{position:relative}.mux-player-modal-panel>.solo-videojs-player{padding:0}.mux-player-modal-panel .tg-player-title{display:none}.mux-player-modal-panel .tg-player-interface{grid-template-rows:1fr}.mux-player-modal-panel .tg-player-transport{grid-row:1}.mux-player-modal-panel>.mux-player-modal-close{position:absolute;z-index:2;top:-29px;right:0;display:grid;width:22px;height:22px;place-items:center;border:0;background:transparent;padding:0;color:rgba(245,242,237,.78);cursor:pointer}.mux-player-modal-panel>.mux-player-modal-close:hover{color:#fff}.mux-player-modal-close svg{width:14px;height:14px;fill:currentColor}.mux-player-modal-panel>.mux-player-ratio-tabs{position:absolute;z-index:2;top:-39px;left:0}
+
+/* Mobile library controls: scroll status choices and reveal card actions on tap. */
+.mux-mobile-actions-toggle{display:none}
+@media(max-width:760px){
+  .mux-status-filter{box-sizing:border-box;width:100%;max-width:100%;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .mux-status-filter::-webkit-scrollbar{display:none}
+  .mux-status-filter>span,.mux-status-filter>button{flex:0 0 auto}
+  .mux-library-thumb-with-actions{display:grid;aspect-ratio:auto;overflow:visible}
+  .mux-library-thumb-with-actions>.mux-library-thumb-primary{position:relative;inset:auto;display:grid;width:100%;aspect-ratio:16/9;overflow:hidden}
+  .mux-mobile-actions-toggle{position:absolute;z-index:12;top:0;left:0;display:block;width:100%;aspect-ratio:16/9;border:0;background:transparent;padding:0;color:#fff;cursor:pointer}
+  .mux-mobile-actions-toggle>span{position:absolute;right:9px;bottom:9px;display:grid;width:31px;height:31px;place-items:center;border:1px solid rgba(255,255,255,.7);background:rgba(8,7,7,.82);font:500 16px var(--mono);line-height:1;transition:transform .2s ease,background .2s ease}
+  .mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle>span{background:var(--bright);transform:rotate(180deg)}
+  .mux-library-thumb-with-actions>.mux-library-hover-actions{position:relative!important;z-index:13;inset:auto!important;display:none!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;width:100%;max-height:none;box-sizing:border-box;overflow:visible;padding:8px 0 0!important;background:transparent!important;opacity:1;pointer-events:auto;backdrop-filter:none}
+  .mux-library-thumb-with-actions.mobile-actions-open>.mux-library-hover-actions{display:grid!important}
+  .mux-library-thumb-with-actions>.mux-library-hover-actions>*{order:initial!important;grid-column:auto!important}
+  .mux-library-thumb-with-actions>.mux-library-hover-actions a,.mux-library-thumb-with-actions>.mux-library-hover-actions button{min-height:40px;padding:8px;font-size:8px;letter-spacing:.045em}
+  .mux-admin[data-theme='light'] .mux-mobile-actions-toggle>span{border-color:rgba(23,19,21,.5);background:rgba(255,255,255,.9);color:#171315}
+  .mux-admin[data-theme='light'] .mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle>span{background:var(--bright);color:#fff}
+}
