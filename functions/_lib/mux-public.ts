@@ -38,9 +38,9 @@ export async function publicShowcaseData(env: AdminEnvironment, ids: string[]) {
     const project = store.projects.find((item) => item.slug === id || item.legacySlugs?.includes(id));
     const preferredVariant = project?.variants.find((variant) => /^horiz(?:ontal)?$/i.test(variant.label)) ?? project?.variants[0];
     const asset = byId.get(preferredVariant?.assetId ?? id);
-    if (!asset?.playerUrl || asset.playbackPolicy !== 'public') return [];
+    if (!asset?.playbackId || asset.playbackPolicy !== 'public') return [];
     const saved = metadata[asset.id];
     const thumbnailUrl = muxSourceThumbnailUrl(asset.playbackId!, saved?.thumbnailTime ?? 1);
-    return [{ id, assetId: asset.id, title: project?.title || saved?.title || asset.title, client: project?.client || saved?.client || '', playerUrl: asset.playerUrl, muxPlaybackId: asset.playbackId, thumbnail: thumbnailUrl, duration: asset.duration }];
+    return [{ id, assetId: asset.id, title: project?.title || saved?.title || asset.title, client: project?.client || saved?.client || '', muxPlaybackId: asset.playbackId, thumbnail: thumbnailUrl, duration: asset.duration }];
   });
 }

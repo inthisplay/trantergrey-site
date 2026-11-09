@@ -83,6 +83,10 @@ const showcaseHook = readFileSync('components/useMuxShowcaseVideos.ts', 'utf8');
 if (!muxPublic.includes('muxSourceThumbnailUrl(asset.playbackId!') || !showcaseHook.includes('quality=source')) {
   throw new Error('The homepage showcase must request source-resolution Mux thumbnails.');
 }
+const showcase = readFileSync('components/ShowcaseShell.tsx', 'utf8');
+if (!showcase.includes('<MuxVideoPlayer') || showcase.includes('<iframe')) {
+  throw new Error('The public showcase must use the shared Mux player instead of an iframe.');
+}
 
 const header = readFileSync('components/SiteHeader.tsx', 'utf8');
 if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin &&') || !header.includes('href="/admin">Admin')) {
