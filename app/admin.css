@@ -155,6 +155,7 @@
   .mux-library-thumb-with-actions>.mux-library-thumb-primary{position:relative;inset:auto;display:grid;width:100%;aspect-ratio:16/9;overflow:hidden}
   .mux-mobile-actions-toggle{position:absolute;z-index:12;top:0;left:0;display:block;width:100%;aspect-ratio:16/9;border:0;background:transparent;padding:0;color:#fff;cursor:pointer}
   .mux-mobile-actions-toggle>span{position:absolute;right:9px;bottom:9px;display:grid;width:31px;height:31px;place-items:center;border:1px solid rgba(255,255,255,.7);background:rgba(8,7,7,.82);font:500 16px var(--mono);line-height:1;transition:transform .2s ease,background .2s ease}
+  .mux-mobile-actions-toggle svg{width:17px;height:17px;fill:currentColor}
   .mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle>span{background:var(--bright);transform:rotate(180deg)}
   .mux-library-thumb-with-actions>.mux-library-hover-actions{position:relative!important;z-index:13;inset:auto!important;display:none!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;width:100%;max-height:none;box-sizing:border-box;overflow:visible;padding:8px 0 0!important;background:transparent!important;opacity:1;pointer-events:auto;backdrop-filter:none}
   .mux-library-thumb-with-actions.mobile-actions-open>.mux-library-hover-actions{display:grid!important}
