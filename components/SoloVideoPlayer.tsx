@@ -179,7 +179,8 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
   const ratio = cssAspectRatio(selected.aspectRatio);
   const numericRatio = selected.aspectRatio?.match(/^\s*(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)\s*$/);
   const isPortrait = numericRatio ? Number(numericRatio[1]) < Number(numericRatio[2]) : false;
-  const availableQualities = availableDownloadQualities(selected.maxResolution);
+  const downloadVariants = showingAll ? variants.filter((variant) => variant.downloadsEnabled) : selected.downloadsEnabled ? [selected] : [];
+  const downloadAllQualities = downloadQualities.filter((quality) => downloadVariants.every((variant) => availableDownloadQualities(variant.maxResolution).includes(quality)));
 
   function showNotice(message: string, kind: 'info' | 'success' | 'error' = 'info') {
     setNotice(message);
@@ -266,33 +267,44 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
     }
   }
 
-  async function getDownload(quality: DownloadQuality) {
-    setDownloadMenuOpen(false);
-    setDownloadState('preparing');
-    showNotice(`Preparing ${qualityLabel(quality)} download…`);
-    try {
-      const response = await fetch('/api/watch/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetId: selected.assetId, quality }) });
+  async function prepareDownload(variant: SoloVideoVariant, quality: DownloadQuality) {
+    const response = await fetch('/api/watch/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetId: variant.assetId, quality }) });
       const payload = await response.json() as { error?: string; nextAvailableQuality?: DownloadQuality };
       if (!response.ok) {
-        setDownloadMenuOpen(Boolean(payload.nextAvailableQuality));
         throw new Error(payload.error || 'Could not prepare the download.');
       }
       for (let attempt = 0; attempt < 40; attempt += 1) {
-        const check = await fetch(`/api/watch/download?assetId=${encodeURIComponent(selected.assetId)}&quality=${quality}`, { cache: 'no-store' });
+        const check = await fetch(`/api/watch/download?assetId=${encodeURIComponent(variant.assetId)}&quality=${quality}`, { cache: 'no-store' });
         const next = await check.json() as { status?: string; downloadUrl?: string; error?: string; nextAvailableQuality?: DownloadQuality };
         if (!check.ok) throw new Error(next.error || 'Could not check the download.');
         if (next.status === 'ready' && next.downloadUrl) {
-          window.location.assign(next.downloadUrl);
-          showNotice(`${qualityLabel(quality)} download started.`, 'success');
-          return;
+          return next.downloadUrl;
         }
         if (next.status === 'errored' || next.status === 'skipped') {
-          setDownloadMenuOpen(Boolean(next.nextAvailableQuality));
           throw new Error(`${qualityLabel(quality)} is unavailable for this video.${next.nextAvailableQuality ? ` Choose ${next.nextAvailableQuality} instead.` : ''}`);
         }
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
       }
       throw new Error('The download is taking longer than expected. Please try again shortly.');
+  }
+
+  function startDownload(url: string) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  async function getDownload(variant: SoloVideoVariant, quality: DownloadQuality) {
+    setDownloadMenuOpen(false);
+    setDownloadState('preparing');
+    showNotice(`Preparing ${qualityLabel(quality)} download…`);
+    try {
+      startDownload(await prepareDownload(variant, quality));
+      showNotice(`${qualityLabel(quality)} download started.`, 'success');
     } catch (error) {
       showNotice(error instanceof Error ? error.message : 'Could not prepare the download.', 'error');
     } finally {
@@ -300,7 +312,22 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
     }
   }
 
-  return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}`}>
+  async function getAllDownloads(quality: DownloadQuality) {
+    setDownloadMenuOpen(false);
+    setDownloadState('preparing');
+    showNotice(`Preparing all ${qualityLabel(quality)} downloads…`);
+    try {
+      const downloads = await Promise.all(downloadVariants.map(async (variant) => ({ variant, url: await prepareDownload(variant, quality) })));
+      downloads.forEach(({ url }) => startDownload(url));
+      showNotice(`${downloads.length} downloads started. Your browser may ask you to allow multiple downloads.`, 'success');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : 'Could not prepare every download.', 'error');
+    } finally {
+      setDownloadState('idle');
+    }
+  }
+
+  return <div className="solo-video-player has-actions">
     {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite">{notice}</div>}
     {variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
       <span>View ratio</span>
@@ -308,7 +335,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
       {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => selectRatio(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
     </div>}
     {showingAll ? <div className="solo-video-all-stages">{variants.map((variant) => <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} key={variant.assetId}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} onVideoElement={registerSyncedVideo} /></div></div>)}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} /></div></div>}
-    {!showingAll && <div className="solo-video-actions">
+    <div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" onClick={copyUrl}>
           <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -319,10 +346,10 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
           </svg>
           <span>{copyState === 'copied' ? 'Copied!' : 'Copy URL'}</span>
         </button>
-        {selected.downloadsEnabled && <div className="solo-download-picker"><button type="button" disabled={downloadState === 'preparing'} aria-haspopup="menu" aria-expanded={downloadMenuOpen} onClick={() => setDownloadMenuOpen((open) => !open)}>
+        {downloadVariants.length > 0 && <div className="solo-download-picker"><button type="button" disabled={downloadState === 'preparing'} aria-haspopup="menu" aria-expanded={downloadMenuOpen} onClick={() => setDownloadMenuOpen((open) => !open)}>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M5 20h14" /></svg><span>{downloadState === 'preparing' ? 'Preparing…' : 'Download'}</span>
-        </button>{downloadMenuOpen && <div className="solo-download-menu" role="menu" aria-label="Download quality">{availableQualities.map((quality) => <button type="button" role="menuitem" key={quality} onClick={() => void getDownload(quality)}>{quality === 'highest' ? 'Highest available' : quality}</button>)}</div>}</div>}
+        </button>{downloadMenuOpen && <div className="solo-download-menu" role="menu" aria-label="Download quality">{downloadVariants.length > 1 && <div className="solo-download-menu-group solo-download-menu-all" role="group" aria-label="Download all ratios"><span>Download all</span>{downloadAllQualities.map((quality) => <button type="button" role="menuitem" key={quality} onClick={() => void getAllDownloads(quality)}>{quality === 'highest' ? 'Highest available' : quality}</button>)}</div>}{downloadVariants.map((variant) => <div className="solo-download-menu-group" role="group" aria-label={`${selectorLabel(variant)} quality`} key={variant.assetId}>{downloadVariants.length > 1 && <span>{selectorLabel(variant)}</span>}{availableDownloadQualities(variant.maxResolution).map((quality) => <button type="button" role="menuitem" key={quality} onClick={() => void getDownload(variant, quality)}>{quality === 'highest' ? 'Highest available' : quality}</button>)}</div>)}</div>}</div>}
       </div>
-    </div>}
+    </div>
   </div>;
 }
