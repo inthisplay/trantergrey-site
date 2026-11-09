@@ -55,7 +55,8 @@ for (const parameter of ['search', 'format', 'industry', 'client']) {
   }
 }
 if (!gallery.includes('window.history.replaceState')) throw new Error('The public work gallery must preserve shareable filters in the URL.');
-if (!gallery.includes('<MuxVideoPlayer') || gallery.includes('vimeoPlayerUrl')) {
+const videoModal = readFileSync('components/VideoModal.tsx', 'utf8');
+if (!gallery.includes('<VideoModal') || !videoModal.includes('<MuxVideoPlayer') || gallery.includes('vimeoPlayerUrl')) {
   throw new Error('The public work gallery must use the shared Mux player without a Vimeo playback fallback.');
 }
 

@@ -58,3 +58,9 @@
   .motion-strip-thumb { transform: scale(1.045); }
   .motion-strip-player { transition: none; }
 }
+
+/* Portaled media dialogs must sit above every transformed homepage layer. */
+.video-modal {
+  z-index: 2147483000 !important;
+  isolation: isolate;
+}

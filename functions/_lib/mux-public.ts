@@ -40,6 +40,7 @@ export async function publicShowcaseData(env: AdminEnvironment, ids: string[]) {
     const asset = byId.get(preferredVariant?.assetId ?? id);
     if (!asset?.playerUrl || asset.playbackPolicy !== 'public') return [];
     const saved = metadata[asset.id];
-    return [{ id, title: project?.title || saved?.title || asset.title, client: project?.client || saved?.client || '', playerUrl: asset.playerUrl }];
+    const thumbnailUrl = saved?.thumbnailTime === null || saved?.thumbnailTime === undefined ? asset.thumbnailUrl : muxThumbnailUrl(asset.playbackId!, saved.thumbnailTime);
+    return [{ id, assetId: asset.id, title: project?.title || saved?.title || asset.title, client: project?.client || saved?.client || '', playerUrl: asset.playerUrl, muxPlaybackId: asset.playbackId, thumbnail: thumbnailUrl, duration: asset.duration }];
   });
 }

@@ -7,8 +7,7 @@ import { FixedReelVisibility } from '@/components/FixedReelVisibility';
 import { HeroReelTimer } from '@/components/HeroReelTimer';
 import { MotionStrips } from '@/components/MotionStrips';
 import { HomepageMotion } from '@/components/HomepageMotion';
-import { toPublicVideo, videos } from '@/lib/videos';
-import { getVimeoLibrary } from '@/lib/vimeo-library';
+import { homepageStripVideos, videos } from '@/lib/videos';
 import { caseStudies } from '@/lib/case-studies';
 
 export const dynamic = 'force-dynamic';
@@ -41,12 +40,7 @@ function StatementWords() {
   }));
 }
 
-export default async function Home() {
-  const library = await getVimeoLibrary();
-  const stripVideos = library?.videos
-    .filter((video) => video.libraryStatus === 'published' && (video.localTags ?? []).some((tag) => tag.toLocaleLowerCase() === 'homepage-strip'))
-    .map(toPublicVideo) ?? videos.slice(0, 5);
-
+export default function Home() {
   return (
     <>
       <main id="top">
@@ -95,7 +89,7 @@ export default async function Home() {
           </div>
         </section>
 
-        {stripVideos.length > 0 && <MotionStrips videos={stripVideos} />}
+        <MotionStrips videos={homepageStripVideos} />
 
         <section className="work" id="work">
           <div className="section-heading">
