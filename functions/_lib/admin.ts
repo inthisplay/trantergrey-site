@@ -12,7 +12,7 @@ export type AdminEnvironment = {
   GOOGLE_REDIRECT_URI?: string;
   MUX_TOKEN_ID?: string;
   MUX_TOKEN_SECRET?: string;
-  TG_DATA: { prepare(query: string): Statement };
+  TG_DATA: { prepare(query: string): Statement; batch(statements: Statement[]): Promise<unknown> };
 };
 
 const sessionCookie = 'tg_admin';

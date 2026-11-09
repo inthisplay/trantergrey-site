@@ -251,3 +251,36 @@
 .mux-admin[data-theme='light'] .mux-upload-zone > button:hover {
   color: #fff;
 }
+
+.mux-collection-ratio-manager {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.mux-collection-ratio-manager > button {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  padding: 9px 12px;
+  cursor: pointer;
+  font: 500 10px var(--mono);
+  text-transform: uppercase;
+}
+.mux-collection-ratio-options {
+  display: grid;
+  gap: 10px;
+  max-height: 280px;
+  overflow: auto;
+}
+.mux-collection-ratio-options fieldset {
+  border: 1px solid var(--line);
+}
+.mux-collection-ratio-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+}
+.mux-collection-ratio-options input[type='checkbox'] {
+  width: auto;
+  accent-color: var(--bright);
+}

@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
 import { ExternalLink } from 'pixelarticons/react';
+import { CollectionDownload } from './CollectionDownload';
 import { VideoModal, type ModalVideo } from './VideoModal';
 import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 
 type VideoData = { title: string; client: string | null; description: string | null; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
-type CollectionData = { collection: VideoProjectCollection; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
+type CollectionData = { collection: VideoProjectCollection; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; downloadsEnabled?: boolean; thumbnailUrl: string | null }> };
 
 export function WatchShell() {
   const [video, setVideo] = useState<VideoData | null>(null);
@@ -77,6 +78,7 @@ export function WatchShell() {
           <small>{project.client || 'TranterGrey'} · {project.variants.length} {project.variants.length === 1 ? 'ratio' : 'ratios'}</small>
           <h2>{project.title}</h2>
         </a>
+        {project.downloadsEnabled !== false && <CollectionDownload slug={project.slug} title={project.title} />}
         <a className="solo-collection-open" href={href} target="_blank" rel="noopener" aria-label={`Open ${project.title} in a new tab`}>
           <ExternalLink aria-hidden="true" />
           <span aria-hidden="true">Open video page in a new tab</span>

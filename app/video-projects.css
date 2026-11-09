@@ -310,3 +310,36 @@
     opacity: 0;
   }
 }
+
+.solo-collection-download {
+  position: absolute;
+  z-index: 6;
+  top: 10px;
+  right: 56px;
+}
+.solo-collection-download > summary {
+  position: static;
+  cursor: pointer;
+  list-style: none;
+}
+.solo-collection-download > summary::-webkit-details-marker {
+  display: none;
+}
+.solo-collection-download .solo-download-menu button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 9px;
+  cursor: pointer;
+}
+.solo-collection-download .solo-download-menu button:is(:hover, :focus-visible) {
+  background: var(--red);
+}
+.solo-collection-download .solo-download-menu [role='status']:not(:empty) {
+  padding: 9px;
+  font-size: 12px;
+}
+.solo-collection-card .solo-collection-download[open] > summary {
+  opacity: 1;
+}

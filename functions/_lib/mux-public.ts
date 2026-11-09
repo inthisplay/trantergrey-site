@@ -26,9 +26,9 @@ export async function publicWatchData(env: AdminEnvironment, slug: string) {
 }
 
 export async function publicCollectionData(env: AdminEnvironment, slug: string) {
-  const store = await readVideoProjectStore(env); const collection = store.collections.find((item) => item.slug === slug); if (!collection) return null;
+  const [store, metadata] = await Promise.all([readVideoProjectStore(env), readMuxMetadata(env)]); const collection = store.collections.find((item) => item.slug === slug); if (!collection) return null;
   const projects = store.projects.filter((item) => item.collectionIds.includes(collection.id));
-  const cards = await Promise.all(projects.map(async (project) => { const cover = await getMuxLibraryAsset(env, project.variants[0]?.assetId || '').catch(() => null); return { ...project, thumbnailUrl: cover?.playbackPolicy === 'public' ? cover.thumbnailUrl : null }; }));
+  const cards = await Promise.all(projects.map(async (project) => { const cover = await getMuxLibraryAsset(env, project.variants[0]?.assetId || '').catch(() => null); return { ...project, downloadsEnabled: project.variants.some((variant) => metadata[variant.assetId]?.downloadsEnabled !== false), thumbnailUrl: cover?.playbackPolicy === 'public' ? cover.thumbnailUrl : null }; }));
   return { collection, projects: cards };
 }
 

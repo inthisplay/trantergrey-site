@@ -71,10 +71,14 @@ export async function readVideoProjectStore(env: AdminEnvironment): Promise<Vide
   };
 }
 
-async function saveProject(env: AdminEnvironment, project: VideoProject) {
-  await env.TG_DATA.prepare(`INSERT INTO mux_video_projects (id, slug, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
+function projectWrite(env: AdminEnvironment, project: VideoProject) {
+  return env.TG_DATA.prepare(`INSERT INTO mux_video_projects (id, slug, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET slug=excluded.slug, value=excluded.value, updated_at=excluded.updated_at`)
-    .bind(project.id, project.slug, JSON.stringify(project), project.createdAt, project.updatedAt).run();
+    .bind(project.id, project.slug, JSON.stringify(project), project.createdAt, project.updatedAt);
+}
+
+async function saveProject(env: AdminEnvironment, project: VideoProject) {
+  await projectWrite(env, project).run();
 }
 
 async function saveCollection(env: AdminEnvironment, collection: VideoProjectCollection) {
@@ -129,6 +133,57 @@ export async function createVideoProject(env: AdminEnvironment, input: { title?:
   const validCollections = new Set(store.collections.map((item) => item.id)); const now = new Date().toISOString();
   const project: VideoProject = { id: crypto.randomUUID(), title, slug, client: text(input.client, 120) || null, description: text(input.description, 1200) || null, variants, collectionIds: ids(input.collectionIds).filter((id) => validCollections.has(id)), createdAt: now, updatedAt: now };
   await saveProject(env, project); return project;
+}
+
+export async function regroupCollectionRatios(env: AdminEnvironment, input: { collectionId?: unknown; assetIds?: unknown; title?: unknown }) {
+  const collectionId = text(input.collectionId, 100);
+  const title = text(input.title, 160);
+  const selectedIds = ids(input.assetIds);
+  if (!title || selectedIds.length < 2) throw new Error('Enter a group title and choose at least two videos.');
+
+  const store = await readVideoProjectStore(env);
+  if (!store.collections.some((collection) => collection.id === collectionId)) throw new Error('That collection could not be found.');
+  const selected = new Set(selectedIds);
+  const sources = store.projects.filter((project) => project.variants.some((variant) => selected.has(variant.assetId)));
+  if (sources.some((project) => !project.collectionIds.includes(collectionId))) throw new Error('All selected videos must belong to this collection.');
+  const variantsById = new Map(sources.flatMap((project) => project.variants.map((variant) => [variant.assetId, variant] as const)));
+  const variants = selectedIds.map((id, order) => {
+    const variant = variantsById.get(id);
+    if (!variant) throw new Error('A selected video is no longer in this collection. Refresh and try again.');
+    return { ...variant, order };
+  });
+
+  const consumed = sources.filter((project) => project.variants.every((variant) => selected.has(variant.assetId)));
+  const survivor = consumed[0];
+  const now = new Date().toISOString();
+  const project: VideoProject = {
+    id: survivor?.id ?? crypto.randomUUID(),
+    slug: survivor?.slug ?? shortVideoSlug(new Set(store.projects.flatMap((item) => [item.slug, ...(item.legacySlugs ?? [])]))),
+    legacySlugs: [...new Set(consumed.flatMap((item) => [item.slug, ...(item.legacySlugs ?? [])]))].filter((slug) => slug !== survivor?.slug),
+    title,
+    client: survivor?.client ?? sources[0]?.client ?? null,
+    description: survivor?.description ?? null,
+    variants,
+    collectionIds: [...new Set(sources.flatMap((item) => item.collectionIds))],
+    createdAt: survivor?.createdAt ?? now,
+    updatedAt: now,
+  };
+  const writes = sources.filter((item) => item.id !== survivor?.id).map((item) => {
+    const remaining = item.variants.filter((variant) => !selected.has(variant.assetId)).map((variant, order) => ({ ...variant, order }));
+    return remaining.length
+      ? projectWrite(env, { ...item, variants: remaining, updatedAt: now })
+      : env.TG_DATA.prepare('DELETE FROM mux_video_projects WHERE id = ?').bind(item.id);
+  });
+  // Abort the entire batch if another request changed a source after it was read.
+  const guards = sources.map((item) => env.TG_DATA.prepare(
+    "SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM mux_video_projects WHERE id = ? AND updated_at = ?) THEN json('stale ratio group') END",
+  ).bind(item.id, item.updatedAt));
+  try {
+    await env.TG_DATA.batch([...guards, ...writes, projectWrite(env, project)]);
+  } catch {
+    throw new Error('Could not regroup these videos. Refresh the collection and try again.');
+  }
+  return project;
 }
 
 export async function updateVideoProject(env: AdminEnvironment, rawId: unknown, patch: { title?: unknown }) {

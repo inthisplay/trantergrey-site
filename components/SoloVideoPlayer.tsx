@@ -5,6 +5,7 @@ import '@videojs/react/video/skin.css';
 import { VideoPlayer, VideoSkin } from '@videojs/react/video';
 import { MuxVideo } from '@videojs/react/media/mux-video';
 import { MuxData } from '@videojs/react/extensions/mux-data';
+import { availableDownloadQualities, downloadQualities, prepareDownload, qualityLabel, startDownload, type DownloadQuality } from '@/lib/watch-download';
 
 export type SoloVideoVariant = {
   assetId: string;
@@ -16,30 +17,6 @@ export type SoloVideoVariant = {
   downloadsEnabled: boolean;
   maxResolution: string | null;
 };
-
-type DownloadQuality = 'highest' | '1080p' | '720p' | '540p';
-const downloadQualities: DownloadQuality[] = ['highest', '1080p', '720p', '540p'];
-const qualityRank: Record<Exclude<DownloadQuality, 'highest'>, number> = { '1080p': 1080, '720p': 720, '540p': 540 };
-const explicitQualities: Array<Exclude<DownloadQuality, 'highest'>> = ['1080p', '720p', '540p'];
-
-function maxResolutionRank(value: string | null) {
-  const normalized = value?.toLowerCase() || '';
-  const explicit = normalized.match(/(2160|1440|1080|720|540|480|360|270)p?/);
-  if (explicit) return Number(explicit[1]);
-  if (normalized.includes('uhd') || normalized.includes('4k')) return 2160;
-  if (normalized.includes('hd')) return 1080;
-  if (normalized.includes('sd')) return 480;
-  return null;
-}
-
-function availableDownloadQualities(maxResolution: string | null) {
-  const max = maxResolutionRank(maxResolution);
-  return ['highest', ...explicitQualities.filter((quality) => max !== null && qualityRank[quality] <= max)] as DownloadQuality[];
-}
-
-function qualityLabel(quality: DownloadQuality) {
-  return quality === 'highest' ? 'highest available' : quality;
-}
 
 export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, keyboardShortcuts = true, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; keyboardShortcuts?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -319,37 +296,6 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
     } catch {
       showNotice('Could not copy this URL.', 'error');
     }
-  }
-
-  async function prepareDownload(variant: SoloVideoVariant, quality: DownloadQuality) {
-    const response = await fetch('/api/watch/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetId: variant.assetId, quality }) });
-      const payload = await response.json() as { error?: string; nextAvailableQuality?: DownloadQuality };
-      if (!response.ok) {
-        throw new Error(payload.error || 'Could not prepare the download.');
-      }
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const check = await fetch(`/api/watch/download?assetId=${encodeURIComponent(variant.assetId)}&quality=${quality}`, { cache: 'no-store' });
-        const next = await check.json() as { status?: string; downloadUrl?: string; error?: string; nextAvailableQuality?: DownloadQuality };
-        if (!check.ok) throw new Error(next.error || 'Could not check the download.');
-        if (next.status === 'ready' && next.downloadUrl) {
-          return next.downloadUrl;
-        }
-        if (next.status === 'errored' || next.status === 'skipped') {
-          throw new Error(`${qualityLabel(quality)} is unavailable for this video.${next.nextAvailableQuality ? ` Choose ${next.nextAvailableQuality} instead.` : ''}`);
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-      }
-      throw new Error('The download is taking longer than expected. Please try again shortly.');
-  }
-
-  function startDownload(url: string) {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = '';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
   }
 
   async function getDownload(variant: SoloVideoVariant, quality: DownloadQuality) {
