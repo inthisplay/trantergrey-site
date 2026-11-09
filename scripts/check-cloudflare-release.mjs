@@ -69,6 +69,12 @@ if (!muxPlayback.includes("'654278945': '8A029oWR01MXttjFbExkobOa2cvLmpKCPOAtZM7
   throw new Error('The approved Taylor BMW Center Of Excellence Mux asset mapping is missing.');
 }
 
+const muxPublic = readFileSync('functions/_lib/mux-public.ts', 'utf8');
+const showcaseHook = readFileSync('components/useMuxShowcaseVideos.ts', 'utf8');
+if (!muxPublic.includes('muxSourceThumbnailUrl(asset.playbackId!') || !showcaseHook.includes('quality=source')) {
+  throw new Error('The homepage showcase must request source-resolution Mux thumbnails.');
+}
+
 const header = readFileSync('components/SiteHeader.tsx', 'utf8');
 if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin &&') || !header.includes('href="/admin">Admin')) {
   throw new Error('The site navigation must show the Admin link only for an authenticated session.');

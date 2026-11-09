@@ -41,6 +41,11 @@ export function muxThumbnailUrl(playbackId: string, time = 1, width = 720) {
   return `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${safeTime}&width=${width}`;
 }
 
+export function muxSourceThumbnailUrl(playbackId: string, time = 1) {
+  const safeTime = Number.isFinite(time) && time >= 0 ? time : 1;
+  return `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${safeTime}`;
+}
+
 function normalize(asset: MuxAsset): MuxLibraryAsset | null {
   if (!asset.id) return null;
   const sourceTitle = asset.meta?.title?.trim() || asset.passthrough?.trim() || `Mux asset ${asset.id.slice(0, 8)}`;

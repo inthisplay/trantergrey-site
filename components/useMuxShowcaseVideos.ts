@@ -23,7 +23,7 @@ export function useMuxShowcaseVideos(videos: Video[]) {
   useEffect(() => {
     if (!requestKey) return;
     const controller = new AbortController();
-    void fetch(`/api/showcase?videos=${encodeURIComponent(requestKey)}`, { signal: controller.signal })
+    void fetch(`/api/showcase?videos=${encodeURIComponent(requestKey)}&quality=source`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`Showcase request failed with ${response.status}.`);
         const payload = await response.json() as { assets?: ShowcaseAsset[] };
