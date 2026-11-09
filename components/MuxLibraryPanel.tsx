@@ -9,6 +9,7 @@ import { MuxVideoPlayer } from './SoloVideoPlayer';
 
 type LibraryStatus = MatchedMuxLibraryAsset['libraryStatus'];
 type StatusFilter = LibraryStatus | 'all';
+type ThumbnailFilter = 'all' | 'needs-thumbnail' | 'custom-thumbnail';
 type GroupMode = 'date' | 'client';
 type BulkAction = 'project' | 'collection' | 'client' | 'detach' | 'delete' | null;
 type LibraryDisplayItem =
@@ -124,6 +125,7 @@ export function MuxLibraryPanel() {
   const [query, setQuery] = useState('');
   const [client, setClient] = useState('All');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [thumbnailFilter, setThumbnailFilter] = useState<ThumbnailFilter>('all');
   const [groupMode, setGroupMode] = useState<GroupMode>('date');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -459,16 +461,21 @@ export function MuxLibraryPanel() {
       const searchable = [asset.title, asset.historicTitle, asset.historicFolderPath, asset.id, asset.externalId, asset.creatorId, asset.vimeoId, clientName(asset), ...asset.localTags, asset.vimeoMatch?.title, asset.vimeoSuggestion?.title].filter(Boolean).join(' ').toLowerCase();
       return (!needle || searchable.includes(needle))
         && (client === 'All' || clientName(asset) === client)
-        && (statusFilter === 'all' || asset.libraryStatus === statusFilter);
+        && (statusFilter === 'all' || asset.libraryStatus === statusFilter)
+        && (thumbnailFilter === 'all' || (thumbnailFilter === 'needs-thumbnail' ? !asset.hasCustomThumbnail : Boolean(asset.hasCustomThumbnail)));
     });
-  }, [assets, query, client, statusFilter]);
+  }, [assets, query, client, statusFilter, thumbnailFilter]);
   const statusCounts = useMemo(() => ({
     unreviewed: (assets ?? []).filter((asset) => asset.libraryStatus === 'unreviewed').length,
     published: (assets ?? []).filter((asset) => asset.libraryStatus === 'published').length,
     hidden: (assets ?? []).filter((asset) => asset.libraryStatus === 'hidden').length,
     all: (assets ?? []).length,
   }), [assets]);
-  const hasFilters = Boolean(query.trim()) || client !== 'All' || statusFilter !== 'all';
+  const thumbnailCounts = useMemo(() => ({
+    needsThumbnail: (assets ?? []).filter((asset) => !asset.hasCustomThumbnail).length,
+    customThumbnail: (assets ?? []).filter((asset) => asset.hasCustomThumbnail).length,
+  }), [assets]);
+  const hasFilters = Boolean(query.trim()) || client !== 'All' || statusFilter !== 'all' || thumbnailFilter !== 'all';
   const assetsById = useMemo(() => new Map((assets ?? []).map((asset) => [asset.id, asset])), [assets]);
   const projectByAssetId = useMemo(() => {
     const map = new Map<string, VideoProject>();
@@ -1103,8 +1110,9 @@ export function MuxLibraryPanel() {
     </div>
     <div className="mux-library-subtoolbar">
       <div className="mux-filter-set mux-status-filter"><span>Status</span>{(['all', 'published', 'unreviewed', 'hidden'] as StatusFilter[]).map((item) => <button className={statusFilter === item ? 'active' : ''} onClick={() => setStatusFilter(item)} key={item}><span>{item === 'unreviewed' ? 'unpublished' : item}</span><b>{statusCounts[item].toLocaleString()}</b></button>)}</div>
+      <div className="mux-filter-set"><span>Thumbnail</span><button className={thumbnailFilter === 'all' ? 'active' : ''} onClick={() => setThumbnailFilter('all')}><span>all</span></button><button className={thumbnailFilter === 'needs-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('needs-thumbnail')}><span>needs selection</span><b>{thumbnailCounts.needsThumbnail.toLocaleString()}</b></button><button className={thumbnailFilter === 'custom-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('custom-thumbnail')}><span>selected</span><b>{thumbnailCounts.customThumbnail.toLocaleString()}</b></button></div>
       <div className="mux-filter-set"><span>Index by</span>{(['date', 'client'] as GroupMode[]).map((item) => <button className={groupMode === item ? 'active' : ''} onClick={() => setGroupMode(item)} key={item}>{item === 'date' ? 'Timeline' : 'Client'}</button>)}</div>
-      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setStatusFilter('all'); }}>Clear filters</button>}
+      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setStatusFilter('all'); setThumbnailFilter('all'); }}>Clear filters</button>}
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{matches.length.toLocaleString()}</strong> of {assets.length.toLocaleString()} assets</p>
@@ -1161,7 +1169,7 @@ export function MuxLibraryPanel() {
               </a>
               <div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${item.project.title}`}><button type="button" onClick={() => { setPreviewProjectId(item.project.id); setPreviewAssetId(item.representative.id); }}><QuickActionLabel icon="view">Play</QuickActionLabel></button><a href={`/admin/mux/${item.representative.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicHref} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectProjectForBulk(item.project, item.assets)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingProjectId === item.project.id} onClick={() => { setReplaceProjectId(item.project.id); groupReplaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingProjectId === item.project.id ? 'Replacing…' : 'Replace videos'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(item.representative)}><QuickActionLabel icon="copy">{copiedAssetId === item.representative.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment(item.assets)}><QuickActionLabel icon="client">{item.project.client || item.assets.some((asset) => clientName(asset) !== 'Unassigned') ? 'Change client' : 'Add client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsProjectId(item.project.id); setTagsDraft(sharedTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingProjectId === item.project.id} onClick={() => void changeProjectStatus(item.project, item.assets, allPublished ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{allPublished ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingProjectId === item.project.id} onClick={() => void changeProjectStatus(item.project, item.assets, allHidden ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{allHidden ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingProjectId === item.project.id} onClick={() => setDeleteProjectId(item.project.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></>}
             </div>
-            <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{item.project.client || clientName(item.representative)}{item.assets.some(hasMuxError) && <em> · Error</em>}</span><b>{publicationLabel(allPublished ? 'published' : 'unreviewed')}</b></p><h2><a href={publicHref} target="_blank" rel="noreferrer">{item.project.title}</a></h2></div>
+            <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{item.project.client || clientName(item.representative)}{item.assets.some(hasMuxError) && <em> · Error</em>}</span><b>{publicationLabel(allPublished ? 'published' : 'unreviewed')}</b></p>{item.assets.some((projectAsset) => !projectAsset.hasCustomThumbnail) && <p className="mux-thumbnail-needed">{item.assets.filter((projectAsset) => !projectAsset.hasCustomThumbnail).length} need thumbnail</p>}<h2><a href={publicHref} target="_blank" rel="noreferrer">{item.project.title}</a></h2></div>
           </article>
         </div>;
       }
@@ -1170,7 +1178,7 @@ export function MuxLibraryPanel() {
           {marker}
           <article>
           {selectionMode ? <button className="mux-library-thumb mux-selectable-thumb" type="button" onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)} aria-label={`${selectedIds.includes(asset.id) ? 'Deselect' : 'Select'} ${asset.title}`}>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}<b>{duration(asset.duration)}</b><i>{selectedIds.includes(asset.id) ? '✓' : '+'}</i></button> : <div className="mux-library-thumb mux-library-thumb-with-actions"><a className="mux-library-thumb-primary" href={`/admin/mux/${asset.id}`} aria-label={`Manage ${asset.title}`}>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}<b>{duration(asset.duration)}</b></a><div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${asset.title}`}><button type="button" onClick={() => setPreviewAssetId(asset.id)}><QuickActionLabel icon="view">View</QuickActionLabel></button><a href={`/admin/mux/${asset.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicPath(asset)} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectAssetForBulk(asset)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingAssetId === asset.id} onClick={() => { setReplaceTargetId(asset.id); replaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingAssetId === asset.id ? 'Replacing…' : 'Replace video'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(asset)}><QuickActionLabel icon="copy">{copiedAssetId === asset.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment([asset])}><QuickActionLabel icon="client">{clientName(asset) === 'Unassigned' ? 'Add client' : 'Change client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsAssetId(asset.id); setTagsDraft(asset.localTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'published' ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{asset.libraryStatus === 'published' ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'hidden' ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{asset.libraryStatus === 'hidden' ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingAssetId === asset.id} onClick={() => setDeleteAssetId(asset.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></div>}
-          <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
+          <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{!asset.hasCustomThumbnail && <p className="mux-thumbnail-needed">Needs thumbnail</p>}{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
           </article>
         </div>;
     }))}</div>}

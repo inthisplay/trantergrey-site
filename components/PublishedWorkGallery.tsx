@@ -8,6 +8,7 @@ type Props = { initialVideos: Video[] };
 
 export function PublishedWorkGallery({ initialVideos }: Props) {
   const [videos, setVideos] = useState(initialVideos);
+  const [loading, setLoading] = useState(initialVideos.length === 0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -20,15 +21,18 @@ export function PublishedWorkGallery({ initialVideos }: Props) {
       const payload = await response.json() as { videos?: Video[] };
       if (!Array.isArray(payload.videos)) throw new Error('Work library response was invalid.');
       setVideos(payload.videos);
+      setLoading(false);
     }).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      // Keep the bundled public library visible if the live endpoint is unavailable.
+      setLoading(false);
     });
 
     return () => controller.abort();
   }, []);
 
-  return videos.length
+  return loading
+    ? <p className="work-empty">Loading films…</p>
+    : videos.length
     ? <VideoGallery videos={videos} />
     : <p className="work-empty">There are no published films yet.</p>;
 }

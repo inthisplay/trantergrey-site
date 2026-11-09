@@ -55,8 +55,8 @@ for (const parameter of ['search', 'format', 'industry', 'client']) {
   }
 }
 if (!gallery.includes('window.history.replaceState')) throw new Error('The public work gallery must preserve shareable filters in the URL.');
-if (!gallery.includes("fetch('/api/mux/playback-map'") || !gallery.includes('<MuxVideoPlayer') || !gallery.includes('vimeoPlayerUrl(active, true)')) {
-  throw new Error('The public work gallery must use the shared Mux player while retaining its Vimeo fallback.');
+if (!gallery.includes('<MuxVideoPlayer') || gallery.includes('vimeoPlayerUrl')) {
+  throw new Error('The public work gallery must use the shared Mux player without a Vimeo playback fallback.');
 }
 
 const muxPlaybackEndpoint = readFileSync('functions/api/mux/playback-map.ts', 'utf8');

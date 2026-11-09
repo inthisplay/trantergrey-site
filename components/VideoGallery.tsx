@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Video } from '@/lib/videos';
-import { vimeoPlayerUrl } from '@/lib/videos';
 import { MuxVideoPlayer } from '@/components/SoloVideoPlayer';
 
 type Props = { videos: Video[]; featured?: boolean };
@@ -16,7 +15,6 @@ function filterValue(value: string | null, options: string[]) {
 
 export function VideoGallery({ videos, featured = false }: Props) {
   const [active, setActive] = useState<Video | null>(null);
-  const [muxPlayback, setMuxPlayback] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('All');
   const [industry, setIndustry] = useState('All');
@@ -24,26 +22,13 @@ export function VideoGallery({ videos, featured = false }: Props) {
   const [railScroll, setRailScroll] = useState({ size: 100, position: 0 });
   const gridRef = useRef<HTMLDivElement>(null);
   const filtersReadFromUrl = useRef(false);
-  const playbackVideos = useMemo(() => videos.map((video) => muxPlayback[video.id] ? { ...video, muxPlaybackId: muxPlayback[video.id] } : video), [videos, muxPlayback]);
-  const kinds = useMemo(() => ['All', ...Array.from(new Set(playbackVideos.map((video) => video.kind).filter(Boolean)))], [playbackVideos]);
-  const industries = useMemo(() => ['All', ...Array.from(new Set(playbackVideos.map((video) => video.industry).filter(Boolean)))], [playbackVideos]);
-  const clients = useMemo(() => ['All', ...Array.from(new Set(playbackVideos.map((video) => video.client).filter(Boolean))).sort()], [playbackVideos]);
-  const visible = useMemo(() => playbackVideos.filter((video) => {
+  const kinds = useMemo(() => ['All', ...Array.from(new Set(videos.map((video) => video.kind).filter(Boolean)))], [videos]);
+  const industries = useMemo(() => ['All', ...Array.from(new Set(videos.map((video) => video.industry).filter(Boolean)))], [videos]);
+  const clients = useMemo(() => ['All', ...Array.from(new Set(videos.map((video) => video.client).filter(Boolean))).sort()], [videos]);
+  const visible = useMemo(() => videos.filter((video) => {
     const haystack = `${video.title} ${video.client} ${video.kind} ${video.industry} ${video.searchTerms ?? ''}`.toLowerCase();
     return haystack.includes(query.toLowerCase()) && (kind === 'All' || video.kind === kind) && (industry === 'All' || video.industry === industry) && (client === 'All' || video.client === client);
-  }), [playbackVideos, query, kind, industry, client]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch('/api/mux/playback-map', { cache: 'no-store', signal: controller.signal }).then(async (response) => {
-      if (!response.ok) return;
-      const payload = await response.json() as { playbackByVimeoId?: Record<string, string> };
-      if (payload.playbackByVimeoId) setMuxPlayback(payload.playbackByVimeoId);
-    }).catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      // Vimeo remains available for any video without an approved Mux match.
-    });
-    return () => controller.abort();
-  }, []);
+  }), [videos, query, kind, industry, client]);
   useEffect(() => {
     if (featured || filtersReadFromUrl.current) return;
     filtersReadFromUrl.current = true;
@@ -55,13 +40,9 @@ export function VideoGallery({ videos, featured = false }: Props) {
   }, [featured, kinds, industries, clients]);
   useEffect(() => {
     const requestedId = new URLSearchParams(window.location.search).get('play');
-    const requestedVideo = playbackVideos.find((video) => video.id === requestedId);
+    const requestedVideo = videos.find((video) => video.id === requestedId);
     if (requestedVideo) setActive(requestedVideo);
-  }, [playbackVideos]);
-  useEffect(() => {
-    if (!active || !muxPlayback[active.id] || active.muxPlaybackId === muxPlayback[active.id]) return;
-    setActive({ ...active, muxPlaybackId: muxPlayback[active.id] });
-  }, [active, muxPlayback]);
+  }, [videos]);
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -133,6 +114,6 @@ export function VideoGallery({ videos, featured = false }: Props) {
   return <>
     {!featured && <div className="gallery-controls"><label><span>Search work</span><input value={query} onInput={(event) => { const value = event.currentTarget.value; setQuery(value); updateFilterUrl('search', value); }} placeholder="Client, project, or keyword" /></label>{clients.length > 2 && <label className="filter-group client-work-filter"><span>Client</span><span className="work-select-wrap"><select aria-label="Filter work by client" value={client} onChange={(event) => { const value = event.target.value; setClient(value); updateFilterUrl('client', value); }}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select><i aria-hidden="true">⌄</i></span></label>}{kinds.length > 2 && <div className="filter-group"><span>Format</span><div>{kinds.map((item) => <button className={kind === item ? 'active' : ''} onClick={() => { setKind(item); updateFilterUrl('format', item); }} key={item}>{item}</button>)}</div></div>}{industries.length > 2 && <div className="filter-group"><span>Industry</span><div>{industries.map((item) => <button className={industry === item ? 'active' : ''} onClick={() => { setIndustry(item); updateFilterUrl('industry', item); }} key={item}>{item}</button>)}</div></div>}<a className="work-collections-link" href="/our-work/collections">Collections <span aria-hidden="true">↗</span></a><p className="result-count" aria-live="polite">{visible.length} films</p></div>}
     {featured ? <div className="featured-rail-shell"><div ref={gridRef} className="work-grid featured-work-rail" aria-label="Selected work gallery">{cards}</div><div className="featured-scrollbar" aria-hidden="true"><span style={{ width: `${railScroll.size}%`, left: `${railScroll.position}%` }} /></div></div> : <div ref={gridRef} className="library-grid">{cards}</div>}
-    {active && <div className="video-modal" role="dialog" aria-modal="true" aria-label={active.title} onMouseDown={(event) => { if (event.target === event.currentTarget) setActive(null); }}><div className="modal-shell"><div className="modal-bar"><p>{active.client} — {active.title}</p><button onClick={() => setActive(null)}>Close ×</button></div><div className="modal-player">{active.muxPlaybackId ? <MuxVideoPlayer key={active.muxPlaybackId} assetId={active.id} playbackId={active.muxPlaybackId} poster={active.thumbnail} title={active.title} autoPlay /> : <iframe src={vimeoPlayerUrl(active, true)} title={active.title} allow="accelerometer; gyroscope; autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen />}</div></div></div>}
+    {active?.muxPlaybackId && <div className="video-modal" role="dialog" aria-modal="true" aria-label={active.title} onMouseDown={(event) => { if (event.target === event.currentTarget) setActive(null); }}><div className="modal-shell"><div className="modal-bar"><p>{active.client} — {active.title}</p><button onClick={() => setActive(null)}>Close ×</button></div><div className="modal-player"><MuxVideoPlayer key={active.muxPlaybackId} assetId={active.id} playbackId={active.muxPlaybackId} poster={active.thumbnail} title={active.title} autoPlay /></div></div></div>}
   </>;
 }

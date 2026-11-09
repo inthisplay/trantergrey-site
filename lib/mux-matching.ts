@@ -24,6 +24,9 @@ export type MatchedMuxLibraryAsset = MuxLibraryAsset & {
   matchIssue: 'ambiguous' | null;
   libraryStatus: MuxLibraryStatus;
   localTags: string[];
+  thumbnailTime?: number;
+  hasCustomThumbnail?: boolean;
+  downloadsEnabled?: boolean;
 };
 
 function inferredClient(assetTitle: string, candidates: VimeoMatchCandidate[]) {
