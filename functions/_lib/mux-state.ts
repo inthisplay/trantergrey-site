@@ -83,6 +83,18 @@ function shortVideoSlug(existing: Set<string>) {
   throw new Error('Could not reserve a short video URL. Please try again.');
 }
 
+function uniqueCollectionSlug(value: string, existing: Set<string>) {
+  const base = videoProjectSlug(value).slice(0, 48).replace(/-+$/g, '') || 'collection';
+  const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const bytes = crypto.getRandomValues(new Uint8Array(4));
+    const suffix = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+    const slug = `${base}-${suffix}`;
+    if (!existing.has(slug)) return slug;
+  }
+  throw new Error('Could not reserve a collection URL. Please try again.');
+}
+
 export async function createVideoProject(env: AdminEnvironment, input: { title?: unknown; slug?: unknown; client?: unknown; description?: unknown; collectionIds?: unknown; variants?: Array<{ assetId?: unknown; label?: unknown }>; mergeExisting?: unknown }, assets: MuxLibraryAsset[]) {
   const store = await readVideoProjectStore(env);
   const title = text(input.title, 160); const requestedSlug = text(input.slug, 100); const slug = requestedSlug ? videoProjectSlug(requestedSlug) : shortVideoSlug(new Set(store.projects.map((item) => item.slug)));
@@ -221,13 +233,16 @@ export async function detachAssetsFromVideoPages(env: AdminEnvironment, assetIds
   return { updatedProjectIds, deletedProjectIds, deletedCollectionIds };
 }
 
-export async function createVideoCollection(env: AdminEnvironment, input: { name?: unknown; slug?: unknown; description?: unknown; assetIds?: unknown; clientsByAssetId?: unknown; allowEmpty?: unknown }, assets: MuxLibraryAsset[]) {
-  const store = await readVideoProjectStore(env); const name = text(input.name, 120); const slug = videoProjectSlug(text(input.slug, 100) || name);
+export async function createVideoCollection(env: AdminEnvironment, input: { collectionId?: unknown; name?: unknown; slug?: unknown; description?: unknown; assetIds?: unknown; clientsByAssetId?: unknown; allowEmpty?: unknown }, assets: MuxLibraryAsset[]) {
+  const store = await readVideoProjectStore(env); const name = text(input.name, 120); const requestedCollectionId = text(input.collectionId, 100);
+  const existing = requestedCollectionId ? store.collections.find((item) => item.id === requestedCollectionId) : undefined;
+  if (requestedCollectionId && !existing) throw new Error('That collection could not be found.');
+  const slug = existing?.slug ?? uniqueCollectionSlug(text(input.slug, 100) || name, new Set(store.collections.map((item) => item.slug)));
   if (!name || !slug) throw new Error('Give this collection a name and usable URL.');
   const selectedIds = ids(input.assetIds); if (!selectedIds.length && input.allowEmpty !== true) throw new Error('Choose at least one Mux asset for this collection.');
   const byId = new Map(assets.map((item) => [item.id, item])); const selected = selectedIds.map((id) => byId.get(id)).filter((item): item is MuxLibraryAsset => Boolean(item));
   if (selected.length !== selectedIds.length) throw new Error('One or more selected Mux assets could not be found.');
-  const now = new Date().toISOString(); const existing = store.collections.find((item) => item.slug === slug);
+  const now = new Date().toISOString();
   const collection: VideoProjectCollection = existing ? { ...existing, name, description: text(input.description, 600) || existing.description, updatedAt: now } : { id: crypto.randomUUID(), name, slug, description: text(input.description, 600) || null, tags: [], createdAt: now, updatedAt: now };
   await saveCollection(env, collection);
   const selectedSet = new Set(selectedIds); const attached = new Set<string>();
