@@ -41,7 +41,7 @@ function qualityLabel(quality: DownloadQuality) {
   return quality === 'highest' ? 'highest available' : quality;
 }
 
-export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
+export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, keyboardShortcuts = true, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; keyboardShortcuts?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -49,7 +49,9 @@ export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = fal
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(muted);
   const [volume, setVolume] = useState(1);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [hoverPreview, setHoverPreview] = useState<{ time: number; percent: number } | null>(null);
+  const controlsTimer = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -87,10 +89,62 @@ export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = fal
   }, [assetId, autoPlay, muted, onVideoElement]);
 
   const video = () => rootRef.current?.querySelector('video') ?? null;
+  const wakeControls = () => {
+    if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+    setControlsVisible(true);
+    if (!video()?.paused) controlsTimer.current = window.setTimeout(() => setControlsVisible(false), document.fullscreenElement === rootRef.current ? 500 : 1800);
+  };
+  useEffect(() => {
+    if (playing) wakeControls();
+    else {
+      if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+      setControlsVisible(true);
+    }
+    return () => { if (controlsTimer.current) window.clearTimeout(controlsTimer.current); };
+  }, [playing]);
+  useEffect(() => {
+    const onFullscreenChange = () => wakeControls();
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
   const togglePlayback = () => {
     const element = video(); if (!element) return;
     if (element.paused) void element.play(); else element.pause();
   };
+  useEffect(() => {
+    if (!keyboardShortcuts) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input,textarea,select,[contenteditable="true"]')) return;
+      const element = video();
+      const root = rootRef.current;
+      if (!element || !root) return;
+      const key = event.key.toLowerCase();
+      if (event.repeat && [' ', 'k', 'm', 'f'].includes(key)) return;
+      if (key === ' ' && target?.closest('button')) return;
+      if (key === ' ' || key === 'k') {
+        event.preventDefault();
+        togglePlayback();
+      } else if (key === 'm') {
+        event.preventDefault();
+        element.muted = !element.muted;
+      } else if (key === 'f') {
+        event.preventDefault();
+        if (document.fullscreenElement) void document.exitFullscreen();
+        else void root.requestFullscreen?.();
+      } else if (key === 'arrowleft' || key === 'arrowright' || key === 'j' || key === 'l') {
+        event.preventDefault();
+        const amount = key === 'arrowleft' ? -5 : key === 'arrowright' ? 5 : key === 'j' ? -10 : 10;
+        element.currentTime = Math.min(element.duration || Infinity, Math.max(0, element.currentTime + amount));
+      } else if (/^[0-9]$/.test(key) && Number.isFinite(element.duration)) {
+        event.preventDefault();
+        element.currentTime = element.duration * (Number(key) / 10);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [keyboardShortcuts]);
   const formatTime = (value: number) => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
   const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
   const previewAtPointer = (event: MouseEvent<HTMLElement>) => {
@@ -125,9 +179,9 @@ export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = fal
         <MuxData metadata={{ video_id: assetId, video_title: title }} />
       </VideoSkin>
     </VideoPlayer>
-    <div className={`tg-player-interface${started ? ' started' : ''}`} onClick={toggleFromSurface} onMouseMove={previewAtBottomPointer} onMouseLeave={() => setHoverPreview(null)}>
-      <div className="tg-player-transport"><button className="tg-player-play" type="button" aria-label={playing ? `Pause ${title}` : `Play ${title}`} onClick={togglePlayback}>{playing ? 'Ⅱ' : '▶'}</button></div>
-<div className="tg-player-bottom" style={{ '--player-progress': `${progress}%` } as CSSProperties}>{hoverPreview && <div className="tg-player-scrub-preview" style={{ left: `${hoverPreview.percent}%` }}><img src={`https://image.mux.com/${playbackId}/thumbnail.jpg?time=${hoverPreview.time}&width=240`} alt="" /><span>{formatTime(hoverPreview.time)}</span></div>}<span>{formatTime(currentTime)} / {formatTime(duration)}</span><input aria-label="Seek" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(currentTime, duration || 0)} onMouseMove={previewAtPointer} onMouseLeave={() => setHoverPreview(null)} onChange={(event) => { const element = video(); if (element) element.currentTime = Number(event.target.value); }} /><div><div className="tg-player-volume" style={{ '--volume-offset': `${Math.round((isMuted ? 0 : volume) * 64)}px` } as CSSProperties}><div className="tg-player-volume-hitarea" role="slider" aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)} onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)} onClick={setVolumeFromPointer} onMouseMove={(event) => { if (event.buttons) setVolumeFromPointer(event); }} /><button type="button" aria-label={isMuted ? 'Unmute' : 'Mute'} onClick={() => { const element = video(); if (!element) return; element.muted = !element.muted; setIsMuted(element.muted); }}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M163.51,24.81a8,8,0,0,0-8.42.88L85.25,80H40A16,16,0,0,0,24,96v64a16,16,0,0,0,16,16H85.25l69.84,54.31A8,8,0,0,0,168,224V32A8,8,0,0,0,163.51,24.81ZM152,207.64,92.91,161.69A7.94,7.94,0,0,0,88,160H40V96H88a7.94,7.94,0,0,0,4.91-1.69L152,48.36Z" />{!isMuted && volume > .66 && <><path d="M208,104v48a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /><path d="M240,88v80a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Z" /></>}{!isMuted && volume > .05 && volume <= .66 && <path d="M208,104v48a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" />}</svg></button></div><button type="button" aria-label="Enter fullscreen" onClick={() => void rootRef.current?.requestFullscreen?.()}>⛶</button></div></div>
+    <div className={`tg-player-interface${started ? ' started' : ''}${controlsVisible ? '' : ' controls-hidden'}`} onClick={toggleFromSurface} onMouseMove={(event) => { wakeControls(); previewAtBottomPointer(event); }} onMouseLeave={() => setHoverPreview(null)}>
+      <div className="tg-player-transport"><button className="tg-player-play" type="button" aria-keyshortcuts="Space k" aria-label={playing ? `Pause ${title}` : `Play ${title}`} onClick={togglePlayback}>{playing ? 'Ⅱ' : '▶'}</button></div>
+<div className="tg-player-bottom" style={{ '--player-progress': `${progress}%` } as CSSProperties}>{hoverPreview && <div className="tg-player-scrub-preview" style={{ left: `${hoverPreview.percent}%` }}><img src={`https://image.mux.com/${playbackId}/thumbnail.jpg?time=${hoverPreview.time}&width=240`} alt="" /><span>{formatTime(hoverPreview.time)}</span></div>}<span>{formatTime(currentTime)} / {formatTime(duration)}</span><input aria-label="Seek" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(currentTime, duration || 0)} onMouseMove={previewAtPointer} onMouseLeave={() => setHoverPreview(null)} onChange={(event) => { const element = video(); if (element) element.currentTime = Number(event.target.value); }} /><div><div className="tg-player-volume" style={{ '--volume-offset': `${Math.round((isMuted ? 0 : volume) * 64)}px` } as CSSProperties}><div className="tg-player-volume-hitarea" role="slider" aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)} onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)} onClick={setVolumeFromPointer} onMouseMove={(event) => { if (event.buttons) setVolumeFromPointer(event); }} /><button type="button" aria-keyshortcuts="m" aria-label={isMuted ? 'Unmute' : 'Mute'} onClick={() => { const element = video(); if (!element) return; element.muted = !element.muted; setIsMuted(element.muted); }}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M163.51,24.81a8,8,0,0,0-8.42.88L85.25,80H40A16,16,0,0,0,24,96v64a16,16,0,0,0,16,16H85.25l69.84,54.31A8,8,0,0,0,168,224V32A8,8,0,0,0,163.51,24.81ZM152,207.64,92.91,161.69A7.94,7.94,0,0,0,88,160H40V96H88a7.94,7.94,0,0,0,4.91-1.69L152,48.36Z" />{!isMuted && volume > .66 && <><path d="M208,104v48a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /><path d="M240,88v80a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Z" /></>}{!isMuted && volume > .05 && volume <= .66 && <path d="M208,104v48a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" />}</svg></button></div><button type="button" aria-keyshortcuts="f" aria-label="Enter fullscreen" onClick={() => void rootRef.current?.requestFullscreen?.()}>⛶</button></div></div>
     </div>
   </div>;
 }
@@ -334,7 +388,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
       <button type="button" className={showingAll ? 'active' : ''} onClick={() => selectRatio('all')}>All</button>
       {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => selectRatio(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
     </div>}
-    {showingAll ? <div className="solo-video-all-stages">{variants.map((variant) => <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} key={variant.assetId}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} onVideoElement={registerSyncedVideo} /></div></div>)}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} /></div></div>}
+    {showingAll ? <div className="solo-video-all-stages">{variants.map((variant) => <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} key={variant.assetId}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div>)}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} /></div></div>}
     <div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" onClick={copyUrl}>
