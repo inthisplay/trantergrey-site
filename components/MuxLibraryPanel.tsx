@@ -67,7 +67,7 @@ function dateParts(createdAt: string | null) {
     return {
       key: `${year}-${month}`,
       eyebrow: year,
-      title: new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' }).format(new Date(`${year}-${month}-15T12:00:00Z`)),
+      title: new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' }).format(new Date(`${year}-${month}-15T12:00:00Z`)),
     };
   }
   const date = new Date(createdAt);
@@ -75,7 +75,7 @@ function dateParts(createdAt: string | null) {
   return {
     key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
     eyebrow: String(date.getFullYear()),
-    title: new Intl.DateTimeFormat('en', { month: 'long' }).format(date),
+    title: new Intl.DateTimeFormat('en', { month: 'short' }).format(date),
   };
 }
 
