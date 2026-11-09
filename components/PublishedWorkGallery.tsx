@@ -6,6 +6,15 @@ import type { Video } from '@/lib/videos';
 
 type Props = { initialVideos: Video[] };
 
+function shuffled(videos: Video[]) {
+  const result = [...videos];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
 export function PublishedWorkGallery({ initialVideos }: Props) {
   const [videos, setVideos] = useState(initialVideos);
   const [loading, setLoading] = useState(initialVideos.length === 0);
@@ -20,7 +29,7 @@ export function PublishedWorkGallery({ initialVideos }: Props) {
       if (!response.ok) throw new Error(`Work library request failed with ${response.status}.`);
       const payload = await response.json() as { videos?: Video[] };
       if (!Array.isArray(payload.videos)) throw new Error('Work library response was invalid.');
-      setVideos(payload.videos);
+      setVideos(shuffled(payload.videos));
       setLoading(false);
     }).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
