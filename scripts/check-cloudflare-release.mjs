@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const requiredFiles = [
   'out/login.html',
+  'out/_headers',
   'functions/api/auth/google.ts',
   'functions/api/auth/google/callback.ts',
   'functions/api/auth/config.ts',
@@ -38,6 +39,14 @@ for (const file of requiredFiles) {
 
 const loginPage = readFileSync('out/login.html', 'utf8');
 if (!loginPage.includes('/api/auth/google')) throw new Error('The static login page does not link to Google sign-in.');
+
+for (const page of ['out/watch.html', 'out/showcase.html', 'out/work.html']) {
+  if (!readFileSync(page, 'utf8').includes('<meta name="robots" content="noindex, nofollow"')) throw new Error(`${page} must prevent search indexing.`);
+}
+const staticHeaders = readFileSync('out/_headers', 'utf8');
+for (const path of ['/watch', '/showcase', '/work']) {
+  if (!staticHeaders.includes(`${path}\n  X-Robots-Tag: noindex, nofollow, noarchive`)) throw new Error(`${path} must send an X-Robots-Tag header.`);
+}
 
 const packageConfig = JSON.parse(readFileSync('package.json', 'utf8'));
 const localDev = readFileSync('scripts/dev.mjs', 'utf8');
@@ -111,6 +120,10 @@ for (const file of [
   'functions/api/admin/video-collections.ts',
 ]) {
   if (!readFileSync(file, 'utf8').includes('adminResponse(')) throw new Error(`Mux admin Function is missing the session guard: ${file}`);
+}
+
+for (const file of ['functions/watch/[slug].ts', 'functions/watch/collection/[slug].ts']) {
+  if (!readFileSync(file, 'utf8').includes("'X-Robots-Tag', 'noindex, nofollow, noarchive'")) throw new Error(`${file} must prevent redirect URLs from being indexed.`);
 }
 
 for (const legacyPath of [
