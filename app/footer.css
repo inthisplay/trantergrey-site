@@ -47,7 +47,7 @@
 /* Shared video links begin at the wordmark: the contact and navigation panel
    belongs to the full site footer, not the focused watch experience. */
 .site-footer-video .footer-body {
-  padding-top:clamp(110px, 12vw, 210px);
+  padding-top:clamp(55px, 6vw, 105px);
 }
 
 .footer-long-wordmark {
@@ -173,7 +173,7 @@
     grid-template-columns: 1fr;
     align-content: center;
   }
-  .site-footer-video .footer-body { padding-top:84px; }
+  .site-footer-video .footer-body { padding-top:42px; }
   .footer-long-wordmark { width: 100%; }
   .footer-reel { padding-block: 12px; }
   .footer-reel a { padding-inline: 16px; font-size: 9px; }
