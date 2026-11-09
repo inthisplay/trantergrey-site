@@ -2,19 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
-import { ExternalLink, Grid2x22 } from 'pixelarticons/react';
-import { CollectionDownload } from './CollectionDownload';
+import { ExternalLink } from 'pixelarticons/react';
 import { VideoModal, type ModalVideo } from './VideoModal';
 import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 
 type VideoData = { title: string; client: string | null; description: string | null; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
-type CollectionData = { collection: VideoProjectCollection; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; downloadsEnabled?: boolean; thumbnailUrl: string | null }> };
+type CollectionData = { collection: VideoProjectCollection; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
 export function WatchShell() {
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
   const [error, setError] = useState('');
-  const [preview, setPreview] = useState<(ModalVideo & { allRatios?: SoloVideoVariant[]; href: string }) | null>(null);
+  const [preview, setPreview] = useState<(ModalVideo & { variants: SoloVideoVariant[]; href: string }) | null>(null);
   const [previewError, setPreviewError] = useState('');
   const [loadingSlug, setLoadingSlug] = useState('');
   const previewRequest = useRef<AbortController | null>(null);
@@ -25,7 +24,7 @@ export function WatchShell() {
     previewTrigger.current?.focus();
   }, []);
 
-  async function openPreview(event: React.MouseEvent<HTMLAnchorElement>, project: CollectionData['projects'][number], allRatios = false) {
+  async function openPreview(event: React.MouseEvent<HTMLAnchorElement>, project: CollectionData['projects'][number]) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     previewTrigger.current = event.currentTarget;
@@ -40,7 +39,7 @@ export function WatchShell() {
       const variant = video?.variants[0];
       if (!response.ok || !video || !variant) throw new Error('Video unavailable');
       if (!controller.signal.aborted) {
-        setPreview({ id: variant.assetId, title: video.title, client: video.client || project.client || 'TranterGrey', thumbnail: variant.thumbnailUrl || project.thumbnailUrl || '', muxPlaybackId: variant.playbackId, allRatios: allRatios ? video.variants : undefined, href: `/watch/${project.slug}` });
+        setPreview({ id: variant.assetId, title: video.title, client: video.client || project.client || 'TranterGrey', thumbnail: variant.thumbnailUrl || project.thumbnailUrl || '', muxPlaybackId: variant.playbackId, variants: video.variants, href: `/watch/${project.slug}` });
       }
     } catch {
       if (!controller.signal.aborted) setPreviewError(`Could not open “${project.title}.” Try again or open its video page.`);
@@ -79,11 +78,6 @@ export function WatchShell() {
           <h2>{project.title}</h2>
         </a>
         <div className="solo-collection-actions">
-          {project.variants.length > 1 && <a className="solo-collection-open" href={href} onClick={(event) => void openPreview(event, project, true)} aria-haspopup="dialog" aria-label={`View all ratios for ${project.title}`}>
-            <Grid2x22 aria-hidden="true" />
-            <span aria-hidden="true">View all ratios</span>
-          </a>}
-          {project.downloadsEnabled !== false && <CollectionDownload slug={project.slug} title={project.title} />}
           <a className="solo-collection-open" href={href} target="_blank" rel="noopener" aria-label={`Open ${project.title} in a new tab`}>
             <ExternalLink aria-hidden="true" />
             <span aria-hidden="true">Open video page in a new tab</span>
@@ -92,8 +86,8 @@ export function WatchShell() {
       </article>;
     })}</div> : <p className="solo-video-unavailable">No videos have been added to this collection yet.</p>}
     <VideoModal video={preview} onClose={closePreview}>
-      {preview?.allRatios && <div className="collection-ratio-preview">
-        <SoloVideoPlayer key={preview.href} title={preview.title} variants={preview.allRatios} standaloneHref={preview.href} />
+      {preview && <div className="collection-ratio-preview">
+        <SoloVideoPlayer key={preview.href} title={preview.title} variants={preview.variants} standaloneHref={preview.href} />
       </div>}
     </VideoModal>
   </section>;

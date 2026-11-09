@@ -316,40 +316,22 @@
   }
 }
 
-.solo-collection-download {
-  position: relative;
-  z-index: 6;
-}
-.solo-collection-download > summary {
-  cursor: pointer;
-  list-style: none;
-}
-.solo-collection-download > summary::-webkit-details-marker {
-  display: none;
-}
-.solo-collection-download[open] > summary > span {
-  visibility: hidden;
-}
 .collection-ratio-preview {
   max-height: calc(100dvh - 125px);
   overflow: auto;
   padding: 16px;
 }
-.solo-collection-download .solo-download-menu button {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  padding: 9px;
-  cursor: pointer;
+.collection-ratio-preview .solo-video-all-stages {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(10px, 2vw, 20px);
 }
-.solo-collection-download .solo-download-menu button:is(:hover, :focus-visible) {
-  background: var(--red);
+.collection-ratio-preview .solo-video-all-stages .solo-video-stage {
+  flex: calc(var(--variant-ratio)) 1 calc(140px * (var(--variant-ratio)));
+  max-width: min(100%, calc(clamp(160px, 54dvh, 480px) * (var(--variant-ratio))));
 }
-.solo-collection-download .solo-download-menu [role='status']:not(:empty) {
-  padding: 9px;
-  font-size: 12px;
-}
-.solo-collection-card .solo-collection-download[open] > summary {
-  opacity: 1;
+.collection-ratio-preview .solo-video-stage.portrait {
+  max-width: calc(clamp(160px, 54dvh, 480px) * 9 / 16);
 }
