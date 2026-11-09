@@ -179,7 +179,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
   const ratio = cssAspectRatio(selected.aspectRatio);
   const numericRatio = selected.aspectRatio?.match(/^\s*(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)\s*$/);
   const isPortrait = numericRatio ? Number(numericRatio[1]) < Number(numericRatio[2]) : false;
-  const downloadVariants = showingAll ? variants.filter((variant) => variant.downloadsEnabled) : selected.downloadsEnabled ? [selected] : [];
+  const downloadVariants = showingAll ? variants : [selected];
   const downloadAllQualities = downloadQualities.filter((quality) => downloadVariants.every((variant) => availableDownloadQualities(variant.maxResolution).includes(quality)));
 
   function showNotice(message: string, kind: 'info' | 'success' | 'error' = 'info') {
@@ -327,7 +327,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
     }
   }
 
-  return <div className="solo-video-player has-actions">
+  return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}`}>
     {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite">{notice}</div>}
     {variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
       <span>View ratio</span>

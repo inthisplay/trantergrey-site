@@ -1,6 +1,5 @@
 import type { AdminEnvironment } from '../../_lib/admin';
 import { createMuxStaticRendition, getMuxLibraryAsset } from '../../_lib/mux';
-import { readMuxMetadata } from '../../_lib/mux-state';
 
 const qualities = ['highest', '1080p', '720p', '540p'] as const;
 type Quality = typeof qualities[number];
@@ -17,7 +16,6 @@ function filename(title: string, quality: Quality) { return `${title.replace(/[^
 
 async function publicAsset(env: AdminEnvironment, id: string) {
   if (!/^[A-Za-z0-9]+$/.test(id)) throw new Error('A valid video ID is required.');
-  const metadata = await readMuxMetadata(env); if (metadata[id]?.downloadsEnabled === false) throw new Error('Downloads are disabled for this video.');
   const asset = await getMuxLibraryAsset(env, id); if (asset.playbackPolicy !== 'public') throw new Error('This video is not publicly available.'); return asset;
 }
 
