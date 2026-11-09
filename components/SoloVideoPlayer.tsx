@@ -179,7 +179,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
   const ratio = cssAspectRatio(selected.aspectRatio);
   const numericRatio = selected.aspectRatio?.match(/^\s*(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)\s*$/);
   const isPortrait = numericRatio ? Number(numericRatio[1]) < Number(numericRatio[2]) : false;
-  const downloadVariants = showingAll ? variants : [selected];
+  const downloadVariants = showingAll ? variants.filter((variant) => variant.downloadsEnabled) : selected.downloadsEnabled ? [selected] : [];
   const downloadAllQualities = downloadQualities.filter((quality) => downloadVariants.every((variant) => availableDownloadQualities(variant.maxResolution).includes(quality)));
 
   function showNotice(message: string, kind: 'info' | 'success' | 'error' = 'info') {
