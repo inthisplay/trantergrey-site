@@ -90,11 +90,11 @@ if (!showcase.includes('<MuxVideoPlayer') || showcase.includes('<iframe')) {
 }
 
 const header = readFileSync('components/SiteHeader.tsx', 'utf8');
-if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin &&') || !header.includes('href="/admin">Admin')) {
+if (!header.includes("fetch('/api/admin/session'") || !header.includes('showAdmin && !open && <AdminMenu />') || !header.includes('href="/admin">Admin')) {
   throw new Error('The site navigation must show the Admin link only for an authenticated session.');
 }
-if (!header.includes('nav-admin-group') || !header.includes('href="/admin/mux">Mux</a>')) {
-  throw new Error('The authenticated Admin navigation must include the Mux dropdown link.');
+if (!header.includes('header-admin-menu') || !header.includes('href="/admin/mux">Mux library</a>')) {
+  throw new Error('The logo-side Admin menu must include the Mux library link.');
 }
 
 const adminHub = readFileSync('components/AdminHub.tsx', 'utf8');

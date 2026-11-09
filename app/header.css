@@ -231,7 +231,6 @@
     transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s;
   }
 
-  .nav-admin-dropdown { min-width: 112px; }
 
   .nav-work-group::after {
     position: absolute;
@@ -279,4 +278,57 @@
 @media (prefers-reduced-motion: reduce) {
   .site-header--return { will-change: auto; }
   .mobile-menu-panel { transition: none; }
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-admin-menu {
+  position: relative;
+}
+
+.header-admin-menu > button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.header-admin-menu > button[aria-expanded='true'] {
+  border-color: currentColor;
+}
+
+.header-admin-menu > button span {
+  width: 16px;
+  height: 1px;
+  background: currentColor;
+  box-shadow: 0 -5px currentColor, 0 5px currentColor;
+}
+
+.header-admin-links {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 150px;
+  border: 1px solid var(--line);
+  background: #171315;
+  color: #f5f2ed;
+}
+
+.header-admin-links a {
+  display: block;
+  padding: 12px;
+  white-space: nowrap;
+}
+
+.header-admin-links a:is(:hover, :focus-visible) {
+  background: var(--red);
 }
