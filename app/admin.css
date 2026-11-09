@@ -167,15 +167,17 @@
 
 /* Keep the Mux control room compact when it is used from a phone. */
 @media(max-width:620px){
-  .mux-admin>section{padding-top:104px}
+  .mux-admin>section{position:relative;padding-top:104px}
   .mux-admin>section>.eyebrow,.mux-admin>section>.admin-back{display:none}
   .mux-admin>section>h1{margin:0 0 24px;font-size:3.4rem}
-  .mux-upload-zone{display:flex;justify-content:flex-end;margin:0 0 20px;border:0;background:transparent;padding:0}
+  .mux-admin .mux-upload-zone{position:absolute;top:108px;right:6vw;display:block;margin:0;border:0;background:transparent;padding:0}
   .mux-upload-zone>div:not(.mux-upload-queue){display:none}
-  .mux-upload-zone>button{justify-self:auto}
-  .mux-upload-zone .mux-upload-queue{width:100%;margin-top:4px}
+  .mux-upload-zone>button{min-height:38px;padding:11px 13px}
+  .mux-upload-zone .mux-upload-queue{position:absolute;top:46px;right:0;width:min(88vw,360px);margin:0}
   .mux-library-subtoolbar{align-items:center;flex-direction:row;flex-wrap:nowrap;gap:14px;overflow-x:auto;overscroll-behavior-inline:contain;padding-bottom:10px;-webkit-overflow-scrolling:touch}
   .mux-library-subtoolbar::-webkit-scrollbar{display:none}
   .mux-library-subtoolbar .mux-filter-set,.mux-library-subtoolbar .mux-library-actions{flex:0 0 auto;flex-wrap:nowrap}
   .mux-library-subtoolbar .mux-status-filter{width:auto;max-width:none;overflow:visible;padding-bottom:0}
+  .mux-library-subtoolbar .mux-library-actions{align-self:center;margin-left:0}
+  .mux-library-subtoolbar .mux-theme-toggle{min-height:34px}
 }
