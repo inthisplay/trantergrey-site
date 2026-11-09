@@ -1079,10 +1079,11 @@ export function MuxLibraryPanel() {
     {workspaceMessage && <div className="mux-workspace-message" role="status" aria-live="polite">{workspaceMessage}</div>}
     <input ref={replaceInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" onChange={(event) => { const file = event.target.files?.[0]; if (file && replaceTargetId) void replaceVideo(file, replaceTargetId); }} />
     <input ref={groupReplaceInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" multiple onChange={(event) => { const project = projects.find((item) => item.id === replaceProjectId); if (!project) return; const projectAssets = project.variants.map((variant) => assetsById.get(variant.assetId)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset)); void replaceProjectVideos(Array.from(event.target.files ?? []), project, projectAssets); }} />
+    <button className="mux-mobile-upload-trigger" type="button" onClick={() => uploadInput.current?.click()}>Upload videos</button>
     <section className={`mux-upload-zone${isDraggingUpload ? ' is-dragging' : ''}`} onDragEnter={(event) => { event.preventDefault(); setIsDraggingUpload(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingUpload(false); }} onDrop={dropUpload}>
       <input ref={uploadInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" multiple onChange={chooseUpload} />
       <div><p>Upload to Mux</p><h2>Drop videos here.</h2><span>Direct to Mux.</span></div>
-      <button type="button" onClick={() => uploadInput.current?.click()}>Upload videos</button>
+      <button type="button" onClick={() => uploadInput.current?.click()}>Choose videos</button>
       {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map((upload) => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? `${upload.progress}%` : upload.state === 'complete' ? 'Sent to Mux' : 'Could not upload'}</b>{upload.state === 'uploading' && <i><i style={{ width: `${upload.progress}%` }} /></i>}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
     </section>
     {uploadDrawerOpen && <aside className={`mux-upload-drawer${uploads.length >= 8 ? ' mux-upload-drawer-large' : uploads.length >= 4 ? ' mux-upload-drawer-wide' : ''}`} aria-label="Upload details">
