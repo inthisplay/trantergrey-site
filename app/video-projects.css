@@ -220,6 +220,20 @@
   margin:34px auto 55px;
 }
 
+.solo-video-presentation{
+  width:fit-content;
+  max-width:100%;
+  margin-inline:auto;
+}
+
+.solo-video-presentation .solo-video-heading{
+  width:100%;
+}
+
+.solo-video-presentation .solo-video-collections{
+  margin-bottom:0;
+}
+
 @media(max-width:620px){
   .solo-video-actions{
     position:static;
@@ -248,5 +262,9 @@
 
   .solo-video-heading{
     margin-top:28px;
+  }
+
+  .solo-video-presentation{
+    width:100%;
   }
 }

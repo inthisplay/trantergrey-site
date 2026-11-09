@@ -35,6 +35,6 @@ export function WatchShell() {
   </section>;
 
   return <section className="solo-video-shell">
-    {video ? <><SoloVideoPlayer title={video.title} variants={video.variants} /><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`/watch/collection/${item.slug}`} key={item.id}>{item.name} →</a>)}</nav>}</> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
+    {video ? <div className="solo-video-presentation"><SoloVideoPlayer title={video.title} variants={video.variants} /><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`/watch/collection/${item.slug}`} key={item.id}>{item.name} →</a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
   </section>;
 }
