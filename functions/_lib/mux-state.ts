@@ -25,17 +25,27 @@ export async function readMuxMetadata(env: AdminEnvironment): Promise<MuxMetadat
 export async function patchMuxMetadata(env: AdminEnvironment, rawId: unknown, patch: { client?: unknown; title?: unknown; tags?: unknown; status?: unknown; thumbnailTime?: unknown; downloadsEnabled?: unknown }) {
   const id = assetId(rawId);
   if (!id) throw new Error('A valid Mux asset ID is required.');
-  const current = (await readMuxMetadata(env))[id] ?? { client: null, title: null, tags: null, status: null, thumbnailTime: null, downloadsEnabled: null };
-  const next: MuxAssetMetadata = { ...current };
+  const next: MuxAssetMetadata = { client: null, title: null, tags: null, status: null, thumbnailTime: null, downloadsEnabled: null };
   if ('client' in patch) next.client = text(patch.client, 120) || null;
   if ('title' in patch) next.title = text(patch.title, 240) || null;
   if ('tags' in patch) next.tags = tags(patch.tags);
   if ('status' in patch) { const value = status(patch.status); if (!value) throw new Error('Choose a valid library status.'); next.status = value; }
   if ('thumbnailTime' in patch) { const value = Number(patch.thumbnailTime); if (!Number.isFinite(value) || value < 0) throw new Error('Enter a valid thumbnail time.'); next.thumbnailTime = Math.round(value * 1000) / 1000; }
   if ('downloadsEnabled' in patch) { if (typeof patch.downloadsEnabled !== 'boolean') throw new Error('Choose a valid download setting.'); next.downloadsEnabled = patch.downloadsEnabled; }
-  await env.TG_DATA.prepare(`INSERT INTO mux_asset_metadata (asset_id, client, title, tags, status, thumbnail_time, downloads_enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(asset_id) DO UPDATE SET client=excluded.client, title=excluded.title, tags=excluded.tags, status=excluded.status, thumbnail_time=excluded.thumbnail_time, downloads_enabled=excluded.downloads_enabled, updated_at=excluded.updated_at`)
-    .bind(id, next.client, next.title, JSON.stringify(next.tags), next.status, next.thumbnailTime, next.downloadsEnabled ? 1 : 0, new Date().toISOString()).run();
+  const fields = [
+    ['client', 'client', next.client],
+    ['title', 'title', next.title],
+    ['tags', 'tags', JSON.stringify(next.tags)],
+    ['status', 'status', next.status],
+    ['thumbnailTime', 'thumbnail_time', next.thumbnailTime],
+    ['downloadsEnabled', 'downloads_enabled', next.downloadsEnabled ? 1 : 0],
+  ] as const;
+  const updatedFields = fields.filter(([key]) => key in patch);
+  const columns = ['asset_id', 'updated_at', ...updatedFields.map(([, column]) => column)];
+  const assignments = columns.slice(1).map((column) => `${column}=excluded.${column}`);
+  await env.TG_DATA.prepare(`INSERT INTO mux_asset_metadata (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})
+    ON CONFLICT(asset_id) DO UPDATE SET ${assignments.join(', ')}`)
+    .bind(id, new Date().toISOString(), ...updatedFields.map(([, , value]) => value)).run();
   return {
     assetId: id,
     ...('title' in patch ? { title: next.title } : {}),
@@ -95,7 +105,7 @@ function uniqueCollectionSlug(value: string, existing: Set<string>) {
   throw new Error('Could not reserve a collection URL. Please try again.');
 }
 
-export async function createVideoProject(env: AdminEnvironment, input: { title?: unknown; slug?: unknown; client?: unknown; description?: unknown; collectionIds?: unknown; variants?: Array<{ assetId?: unknown; label?: unknown }>; mergeExisting?: unknown }, assets: MuxLibraryAsset[]) {
+export async function createVideoProject(env: AdminEnvironment, input: { title?: unknown; slug?: unknown; client?: unknown; description?: unknown; collectionIds?: unknown; variants?: Array<{ assetId?: unknown; label?: unknown }>; mergeExisting?: unknown; reuseSolo?: unknown }, assets: MuxLibraryAsset[]) {
   const store = await readVideoProjectStore(env);
   const title = text(input.title, 160); const requestedSlug = text(input.slug, 100); const slug = requestedSlug ? videoProjectSlug(requestedSlug) : shortVideoSlug(new Set(store.projects.map((item) => item.slug)));
   if (!title || !slug) throw new Error('Give this video project a title and usable URL.');
@@ -105,6 +115,12 @@ export async function createVideoProject(env: AdminEnvironment, input: { title?:
   if (!variants.length) throw new Error('Choose at least one Mux asset for this project.');
   const selectedIds = new Set(variants.map((item) => item.assetId));
   const conflicts = store.projects.filter((project) => project.variants.some((variant) => selectedIds.has(variant.assetId)));
+  if (input.reuseSolo === true && variants.length === 1 && conflicts.length === 1 && conflicts[0].variants.length === 1) {
+    const existing = conflicts[0];
+    const project = { ...existing, title, client: text(input.client, 120) || existing.client, updatedAt: new Date().toISOString() };
+    await saveProject(env, project);
+    return project;
+  }
   if (conflicts.length && input.mergeExisting === true) {
     if (conflicts.some((project) => project.variants.some((variant) => !selectedIds.has(variant.assetId)))) throw new Error('A selected asset belongs to a page with other video variants. Manage that page before regrouping it.');
     await Promise.all(conflicts.map((project) => env.TG_DATA.prepare('DELETE FROM mux_video_projects WHERE id = ?').bind(project.id).run()));

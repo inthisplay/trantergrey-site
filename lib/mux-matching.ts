@@ -32,13 +32,12 @@ export type MatchedMuxLibraryAsset = MuxLibraryAsset & {
 function inferredClient(assetTitle: string, candidates: VimeoMatchCandidate[]) {
   const normalizedAsset = normalizedTitle(assetTitle);
   const knownClients = [...new Set(candidates.map((video) => video.client?.trim()).filter((client): client is string => Boolean(client)))];
-  const known = knownClients
+  return knownClients
     .sort((first, second) => second.length - first.length)
-    .find((client) => normalizedAsset.startsWith(normalizedTitle(client)));
-  if (known) return known;
-
-  const prefix = assetTitle.split(/\s+[–—-]\s+/)[0]?.trim();
-  return prefix && prefix !== assetTitle && prefix.length >= 3 ? prefix : null;
+    .find((client) => {
+      const name = normalizedTitle(client);
+      return name && (normalizedAsset === name || normalizedAsset.startsWith(name + ' '));
+    }) ?? null;
 }
 
 function normalizedTitle(value: string, loose = false) {

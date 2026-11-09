@@ -28,6 +28,7 @@ export async function readEnrichedMuxLibrary(env: AdminEnvironment) {
     return typeof video.id === 'string' && typeof video.title === 'string' && Number.isFinite(video.duration) ? [video] : [];
   });
   const byId = new Map(videos.map((video) => [video.id, video]));
+  const projectClients = new Map(store.projects.flatMap((project) => project.variants.map((variant) => [variant.assetId, project.client] as const)));
   const assets = matchMuxAssetsToVimeo(muxAssets, videos).map((matched) => {
     const sourceId = matched.vimeoMatch?.id || matched.vimeoId;
     const source = sourceId ? byId.get(sourceId) : undefined;
@@ -35,7 +36,7 @@ export async function readEnrichedMuxLibrary(env: AdminEnvironment) {
     return {
       ...matched,
       title: saved?.title || source?.customTitle?.trim() || source?.title?.trim() || matched.title,
-      client: saved?.client || matched.client || source?.client?.trim() || null,
+      client: saved?.client || projectClients.get(matched.id) || matched.client || source?.client?.trim() || null,
       localTags: saved?.tags ?? (Array.isArray(source?.localTags) ? source.localTags : []),
       libraryStatus: saved?.status || source?.libraryStatus || 'unreviewed',
       thumbnailTime: saved?.thumbnailTime ?? 1,

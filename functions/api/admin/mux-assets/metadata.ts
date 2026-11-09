@@ -7,7 +7,7 @@ export async function onRequestPost({ request, env }: Context) {
   try {
     const body = await request.json() as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
-    for (const key of ['title', 'tags', 'status', 'downloadsEnabled'] as const) if (key in body) patch[key] = body[key];
+    for (const key of ['client', 'title', 'tags', 'status', 'downloadsEnabled'] as const) if (key in body) patch[key] = body[key];
     return Response.json(await patchMuxMetadata(env, body.assetId, patch));
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not update that video.' }, { status: 400 }); }
 }

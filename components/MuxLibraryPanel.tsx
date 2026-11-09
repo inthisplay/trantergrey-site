@@ -330,11 +330,17 @@ export function MuxLibraryPanel() {
 
   function addFiles(files: FileList | File[]) {
     const videos = Array.from(files).filter((file) => file.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(file.name));
+    if (uploads.some((upload) => upload.state !== 'error') || savingUploadDetails) {
+      setUploadDrawerOpen(true);
+      setWorkspaceMessage('Save the current upload details before starting another batch.');
+      return;
+    }
     if (!videos.length) { setWorkspaceMessage('Choose a video file to upload.'); return; }
     setUploads([]);
     setPendingUploadFiles(videos);
     setUploadDestination('solo');
     setUploadCollectionName('');
+    setUploadCollectionId('');
     setUploadRatiosIncluded(false);
     setSelectedUploadIds([]);
     setUploadRatioGroups([]);
@@ -381,6 +387,7 @@ export function MuxLibraryPanel() {
   }
 
   async function saveUploadDetails() {
+    if (uploads.some((upload) => upload.state === 'uploading')) return;
     const readyUploads = uploads.filter((upload): upload is UploadState & { assetId: string } => Boolean(upload.assetId));
     if (!readyUploads.length) {
       setWorkspaceMessage('There are no completed uploads to save yet.');
@@ -396,14 +403,15 @@ export function MuxLibraryPanel() {
       const readyUploadIds = new Set(readyUploads.map((upload) => upload.id));
       const effectiveRatioGroups = uploadRatioGroups.map((group) => ({ ...group, uploadIds: group.uploadIds.filter((uploadId) => readyUploadIds.has(uploadId)) })).filter((group) => group.uploadIds.length >= 2);
       const ratioGroupByUploadId = new Map(effectiveRatioGroups.flatMap((group) => group.uploadIds.map((uploadId) => [uploadId, group])));
-      const responses = await Promise.all(readyUploads.flatMap((upload) => {
+      const responses = await Promise.all(readyUploads.map((upload) => {
         const ratioGroup = ratioGroupByUploadId.get(upload.id);
         const client = uploadClient.trim() || upload.client.trim();
         const tags = parseTags(uploadTags || upload.tags);
-        return [
-          ...(client ? [fetch('/api/admin/mux-assets/client', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetIds: [upload.assetId], client }) })] : []),
-          fetch('/api/admin/mux-assets/metadata', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: upload.assetId, title: ratioGroup?.title || upload.title.trim() || upload.name.replace(/\.[^.]+$/, ''), tags }) }),
-        ];
+        return fetch('/api/admin/mux-assets/metadata', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ assetId: upload.assetId, title: ratioGroup?.title || upload.title.trim() || upload.name.replace(/\.[^.]+$/, ''), tags, client: client || undefined }),
+        });
       }));
       const failed = responses.find((response) => !response.ok);
       if (failed) { const payload = await jsonResponse<{ error?: string }>(failed); throw new Error(payload.error || 'Could not save these video details.'); }
@@ -429,7 +437,7 @@ export function MuxLibraryPanel() {
       if (uploadDestination === 'solo') {
         const soloUploads = readyUploads.filter((upload) => !groupedIds.has(upload.id));
         const projects = await Promise.all(soloUploads.map(async (upload) => {
-          const response = await fetch('/api/admin/video-projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: upload.title.trim() || upload.name.replace(/\.[^.]+$/, ''), client: uploadClient.trim() || upload.client.trim(), variants: [{ assetId: upload.assetId, label: upload.variantLabel }] }) });
+          const response = await fetch('/api/admin/video-projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: upload.title.trim() || upload.name.replace(/\.[^.]+$/, ''), client: uploadClient.trim() || upload.client.trim(), variants: [{ assetId: upload.assetId, label: upload.variantLabel }], reuseSolo: true }) });
           const payload = await jsonResponse<{ error?: string }>(response);
           if (!response.ok) throw new Error(payload.error || `Could not create a short URL for “${upload.title}.”`);
         }));
@@ -1086,6 +1094,7 @@ export function MuxLibraryPanel() {
       <button type="button" onClick={() => uploadInput.current?.click()}>Choose videos</button>
       {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map((upload) => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? `${upload.progress}%` : upload.state === 'complete' ? 'Sent to Mux' : 'Could not upload'}</b>{upload.state === 'uploading' && <i><i style={{ width: `${upload.progress}%` }} /></i>}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
     </section>
+    {!uploadDrawerOpen && uploads.length > 0 && <button type="button" onClick={() => setUploadDrawerOpen(true)}>Review unsaved upload details</button>}
     {uploadDrawerOpen && <aside className={`mux-upload-drawer${uploads.length >= 8 ? ' mux-upload-drawer-large' : uploads.length >= 4 ? ' mux-upload-drawer-wide' : ''}`} aria-label="Upload details">
       <header><div><p>Uploads in progress</p><h2>{uploads.length} {uploads.length === 1 ? 'video' : 'videos'}</h2></div><button type="button" onClick={() => setUploadDrawerOpen(false)} aria-label="Close upload details">×</button></header>
       <div className="mux-upload-drawer-body">
@@ -1093,7 +1102,7 @@ export function MuxLibraryPanel() {
         <section className="mux-upload-shared-details">
           {uploadDestination === 'collection' && <label className="mux-upload-client-picker"><span>Add to collection</span><input value={uploadCollectionName} onFocus={() => setCollectionPickerOpen(true)} onBlur={() => window.setTimeout(() => setCollectionPickerOpen(false), 150)} onChange={(event) => { setUploadCollectionName(event.target.value); setUploadCollectionId(''); setCollectionPickerOpen(true); }} placeholder="Search or add a collection" />{collectionPickerOpen && <div role="listbox">{sharedMatchingCollections.map((collection) => <button type="button" role="option" key={collection.id} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadCollectionName(collection.name); setUploadCollectionId(collection.id); setCollectionPickerOpen(false); }}>{collection.name}</button>)}{uploadCollectionName.trim() && !sharedMatchingCollections.some((collection) => collection.name.toLowerCase() === uploadCollectionName.trim().toLowerCase()) && <button type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadCollectionId(''); setCollectionPickerOpen(false); }}>Create “{uploadCollectionName.trim()}”</button>}</div>}</label>}
           <fieldset className="mux-upload-ratio-option"><legend>Multiple ratios included?</legend><label className="mux-upload-ratio-toggle"><input type="checkbox" checked={uploadRatiosIncluded} onChange={(event) => { setUploadRatiosIncluded(event.target.checked); setSelectedUploadIds([]); }} /><span>Group selected uploads as ratio variations</span></label></fieldset>
-          <label className="mux-upload-client-picker"><span>Client</span><input value={uploadClient} onFocus={() => setClientPickerUploadId('shared')} onBlur={() => window.setTimeout(() => setClientPickerUploadId((current) => current === 'shared' ? '' : current), 150)} onChange={(event) => { setUploadClient(event.target.value); setClientPickerUploadId('shared'); }} placeholder="Search or add a client" />{clientPickerUploadId === 'shared' && <div role="listbox">{sharedMatchingClients.map((name) => <button type="button" role="option" key={name} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadClient(name); setClientPickerUploadId(''); }}>{name}</button>)}{uploadClient.trim() && !sharedMatchingClients.some((name) => name.toLowerCase() === uploadClient.trim().toLowerCase()) && <button type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => setClientPickerUploadId('')}>Use “{uploadClient.trim()}” as a new client</button>}</div>}</label>
+          <label className="mux-upload-client-picker"><span>Client (applied when you save upload details)</span><input value={uploadClient} onFocus={() => setClientPickerUploadId('shared')} onBlur={() => window.setTimeout(() => setClientPickerUploadId((current) => current === 'shared' ? '' : current), 150)} onChange={(event) => { setUploadClient(event.target.value); setClientPickerUploadId('shared'); }} placeholder="Search or add a client" />{clientPickerUploadId === 'shared' && <div role="listbox">{sharedMatchingClients.map((name) => <button type="button" role="option" key={name} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadClient(name); setClientPickerUploadId(''); }}>{name}</button>)}{uploadClient.trim() && !sharedMatchingClients.some((name) => name.toLowerCase() === uploadClient.trim().toLowerCase()) && <button type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => setClientPickerUploadId('')}>Use “{uploadClient.trim()}” as a new client</button>}</div>}</label>
           <label><span>Tags</span><input value={uploadTags} onFocus={() => setTagPickerUploadId('shared')} onBlur={() => window.setTimeout(() => setTagPickerUploadId((current) => current === 'shared' ? '' : current), 150)} onChange={(event) => { setUploadTags(event.target.value); setTagPickerUploadId('shared'); }} placeholder="Campaign, social" /></label>
           {tagPickerUploadId === 'shared' && <div className="mux-upload-tag-suggestions"><button className="mux-upload-tag-dismiss" type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setTagPickerUploadId('')}>Done with tags ×</button>{sharedSuggestedTags.map((tag) => <button type="button" key={tag} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadTags((current) => acceptTag(current, tag)); setTagPickerUploadId('shared'); }}>{tag}</button>)}</div>}
         </section>
@@ -1105,11 +1114,11 @@ export function MuxLibraryPanel() {
             {selectable ? <button className="mux-upload-card-select" type="button" onClick={() => toggleUploadForRatioGroup(upload.id)} aria-pressed={selectedUploadIds.includes(upload.id)} aria-label={`${selectedUploadIds.includes(upload.id) ? 'Deselect' : 'Select'} ${upload.title}`}><div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : 'Mux preparing preview'}</span>}<i>{selectedUploadIds.includes(upload.id) ? '✓' : '+'}</i></div></button> : <div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : 'Mux preparing preview'}</span>}</div>}
             {ratioGroup ? <p className="mux-upload-ratio-title">{ratioGroup.title} · ratio variation</p> : <label><span>Title</span><input value={upload.title} onChange={(event) => updateUpload(upload.id, { title: event.target.value })} /></label>}
             {upload.state === 'uploading' && <i className="mux-upload-card-progress"><i style={{ width: `${upload.progress}%` }} /></i>}
-            {upload.error && <small>{upload.error}</small>}
+            {upload.error && <small role="alert">{upload.error}</small>}
           </article>;
         })}
       </div>
-      <footer><button type="button" onClick={() => setUploadDrawerOpen(false)}>Keep browsing</button><button className="primary" type="button" disabled={savingUploadDetails || !uploads.some((upload) => upload.assetId)} onClick={() => void saveUploadDetails()}>{savingUploadDetails ? 'Saving…' : 'Save upload details'}</button></footer>
+      <footer><button type="button" onClick={() => setUploadDrawerOpen(false)}>Keep browsing</button><button className="primary" type="button" disabled={savingUploadDetails || uploads.some((upload) => upload.state === 'uploading') || !uploads.some((upload) => upload.assetId)} onClick={() => void saveUploadDetails()}>{savingUploadDetails ? 'Saving…' : 'Save upload details'}</button></footer>
     </aside>}
     {duplicateRatioWarning && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => setDuplicateRatioWarning(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDuplicateRatioWarning(null)} aria-label="Close">×</button><div className="mux-bulk-delete"><p>Duplicate ratio</p><h3>Group these anyway?</h3><span>Two or more selected videos appear to share the same ratio. You can cancel and adjust the selection, or continue with this ratio group.</span><div className="mux-collection-delete-actions"><button type="button" onClick={() => setDuplicateRatioWarning(null)}>Cancel</button><button className="danger" type="button" onClick={() => createRatioGroup(duplicateRatioWarning.uploadIds, duplicateRatioWarning.title, true)}>Continue</button></div></div></div></div>}
     <div className="mux-library-toolbar">
