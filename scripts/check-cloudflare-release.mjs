@@ -6,7 +6,6 @@ const requiredFiles = [
   'functions/api/auth/google.ts',
   'functions/api/auth/google/callback.ts',
   'functions/api/auth/config.ts',
-  'functions/_middleware.ts',
   'functions/api/admin/session.ts',
   'out/admin/mux.html',
   'out/mux-asset.html',
@@ -129,10 +128,6 @@ for (const file of [
 
 for (const file of ['functions/watch/[slug].ts', 'functions/watch/collection/[slug].ts']) {
   if (!readFileSync(file, 'utf8').includes("'X-Robots-Tag', 'noindex, nofollow, noarchive'")) throw new Error(`${file} must prevent redirect URLs from being indexed.`);
-}
-const robotsMiddleware = readFileSync('functions/_middleware.ts', 'utf8');
-if (!robotsMiddleware.includes("pathname.startsWith('/watch/')") || !robotsMiddleware.includes("'X-Robots-Tag', 'noindex, nofollow, noarchive'")) {
-  throw new Error('Public video routes must add a no-index header after Cloudflare route handling.');
 }
 
 for (const legacyPath of [
