@@ -188,7 +188,7 @@ function variantFromRatioParam(variants: SoloVideoVariant[], value: string | nul
   })?.assetId ?? null;
 }
 
-export function SoloVideoPlayer({ title, variants }: { title: string; variants: SoloVideoVariant[] }) {
+export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: string; variants: SoloVideoVariant[]; standaloneHref?: string }) {
   const [selectedId, setSelectedId] = useState(variants.length > 1 ? 'all' : variants[0]?.assetId ?? '');
   const [downloadState, setDownloadState] = useState<'idle' | 'preparing'>('idle');
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
@@ -198,9 +198,10 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
   const syncedVideos = useRef(new Map<string, HTMLVideoElement>());
   const syncing = useRef(false);
   useEffect(() => {
+    if (standaloneHref) return;
     const requested = variantFromRatioParam(variants, new URLSearchParams(window.location.search).get('ratio'));
     if (requested) setSelectedId(requested);
-  }, [variants]);
+  }, [variants, standaloneHref]);
   const selected = useMemo(() => variants.find((variant) => variant.assetId === selectedId) ?? variants[0], [selectedId, variants]);
   useEffect(() => { setDownloadState('idle'); setDownloadMenuOpen(false); setCopyState('idle'); setNotice(''); }, [selectedId]);
   if (!selected) return <p className="solo-video-unavailable">This video is not ready for playback yet.</p>;
@@ -221,6 +222,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
 
   function selectRatio(nextId: string) {
     setSelectedId(nextId);
+    if (standaloneHref) return;
     const url = new URL(window.location.href);
     if (nextId === 'all') url.searchParams.delete('ratio');
     else {
@@ -275,7 +277,7 @@ export function SoloVideoPlayer({ title, variants }: { title: string; variants: 
   }, [showingAll]);
 
   async function copyUrl() {
-    const url = window.location.href;
+    const url = standaloneHref ? new URL(standaloneHref, window.location.origin).href : window.location.href;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);

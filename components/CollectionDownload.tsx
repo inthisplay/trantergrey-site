@@ -41,7 +41,7 @@ export function CollectionDownload({ slug, title }: { slug: string; title: strin
   }
 
   return <details className="solo-collection-download" onToggle={(event) => { if (event.currentTarget.open) void loadOptions(); }}>
-    <summary className="solo-collection-open" aria-label={`Download ${title}`} title="Download video"><Download aria-hidden="true" /></summary>
+    <summary className="solo-collection-open" aria-label={`Download ${title}`}><Download aria-hidden="true" /><span aria-hidden="true">Download video</span></summary>
     <div className="solo-download-menu" aria-label={`Download options for ${title}`}>
       <div role="status">{loading ? 'Loading download options…' : message || (variants?.length === 0 ? 'Downloads are unavailable.' : '')}</div>
       {variants?.map((variant) => <div className="solo-download-menu-group" key={variant.assetId}>

@@ -276,10 +276,15 @@
 .solo-collection-card > a:first-child {
   display: block;
 }
-.solo-collection-open {
+.solo-collection-actions {
   position: absolute;
   top: 10px;
   right: 10px;
+  display: flex;
+  gap: 6px;
+}
+.solo-collection-open {
+  position: relative;
   display: grid;
   width: 40px;
   height: 40px;
@@ -312,18 +317,23 @@
 }
 
 .solo-collection-download {
-  position: absolute;
+  position: relative;
   z-index: 6;
-  top: 10px;
-  right: 56px;
 }
 .solo-collection-download > summary {
-  position: static;
   cursor: pointer;
   list-style: none;
 }
 .solo-collection-download > summary::-webkit-details-marker {
   display: none;
+}
+.solo-collection-download[open] > summary > span {
+  visibility: hidden;
+}
+.collection-ratio-preview {
+  max-height: calc(100dvh - 125px);
+  overflow: auto;
+  padding: 16px;
 }
 .solo-collection-download .solo-download-menu button {
   border: 0;
