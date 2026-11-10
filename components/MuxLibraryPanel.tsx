@@ -89,6 +89,13 @@ function libraryDate(asset: MatchedMuxLibraryAsset) {
   return asset.historicCreatedAt || asset.createdAt;
 }
 
+function libraryDateTimestamp(asset: MatchedMuxLibraryAsset) {
+  const value = libraryDate(asset);
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value);
+  return Number.isNaN(date.getTime()) ? Number.NEGATIVE_INFINITY : date.getTime();
+}
+
 function parseTags(value: string) {
   return Array.from(new Set(value.split(',').map((tag) => tag.trim()).filter(Boolean)));
 }
@@ -552,7 +559,14 @@ export function MuxLibraryPanel() {
   }, [assetsById, collections, matches, projectByAssetId, projects, selectionMode]);
   const groups = useMemo(() => {
     const grouped = new Map<string, { key: string; eyebrow: string; title: string; items: LibraryDisplayItem[] }>();
-    for (const item of displayItems) {
+    const orderedItems = groupMode === 'date'
+      ? [...displayItems].sort((first, second) => {
+        const firstAsset = first.kind === 'asset' ? first.asset : first.representative;
+        const secondAsset = second.kind === 'asset' ? second.asset : second.representative;
+        return libraryDateTimestamp(secondAsset) - libraryDateTimestamp(firstAsset);
+      })
+      : displayItems;
+    for (const item of orderedItems) {
       const asset = item.kind === 'asset' ? item.asset : item.representative;
       const parts = groupMode === 'date'
         ? dateParts(libraryDate(asset))
