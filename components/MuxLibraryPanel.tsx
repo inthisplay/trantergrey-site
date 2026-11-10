@@ -3,7 +3,8 @@
 import { PlaybackIcon } from './PlaybackIcon';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
-import { Check, Copy, ExternalLink, EyeOff, Label, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
+import { Check, ChevronDown, Copy, ExternalLink, EyeOff, Label, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
+import { MuxDateFilter, muxDateKey, type MuxDateRange } from './MuxDateFilter';
 import { createMuxSearch } from '@/lib/mux-search';
 import type { MatchedMuxLibraryAsset } from '@/lib/mux-matching';
 import { hasDistinctRatios, ratioLabel, videoProjectSlug, type VideoProject, type VideoProjectCollection } from '@/lib/video-projects-shared';
@@ -133,6 +134,7 @@ export function MuxLibraryPanel() {
   const [collections, setCollections] = useState<VideoProjectCollection[]>([]);
   const [query, setQuery] = useState('');
   const [client, setClient] = useState('All');
+  const [dateRange, setDateRange] = useState<MuxDateRange | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [thumbnailFilter, setThumbnailFilter] = useState<ThumbnailFilter>('all');
   const [groupMode, setGroupMode] = useState<GroupMode>('date');
@@ -476,11 +478,19 @@ export function MuxLibraryPanel() {
 
   const clients = useMemo(() => ['All', ...Array.from(new Set((assets ?? []).map(clientName))).sort()], [assets]);
   const searchLibrary = useMemo(() => createMuxSearch(assets ?? []), [assets]);
+  const assetDates = useMemo(() => new Map((assets ?? []).flatMap((asset) => {
+    const value = libraryDate(asset);
+    if (!value) return [];
+    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value);
+    return Number.isNaN(date.getTime()) ? [] : [[asset.id, muxDateKey(date)] as const];
+  })), [assets]);
+  const dateYears = useMemo(() => [...new Set([...assetDates.values()].map((date) => Number(date.slice(0, 4))))], [assetDates]);
   const matches = useMemo(() => searchLibrary(query).filter((asset) =>
     (client === 'All' || clientName(asset) === client)
+    && (!dateRange || ((assetDates.get(asset.id) ?? '') >= dateRange.start && (assetDates.get(asset.id) ?? '') <= dateRange.end))
     && (statusFilter === 'all' || asset.libraryStatus === statusFilter)
     && (thumbnailFilter === 'all' || (thumbnailFilter === 'needs-thumbnail' ? !asset.hasCustomThumbnail : Boolean(asset.hasCustomThumbnail)))
-  ), [searchLibrary, query, client, statusFilter, thumbnailFilter]);
+  ), [searchLibrary, query, client, statusFilter, thumbnailFilter, dateRange, assetDates]);
   const statusCounts = useMemo(() => ({
     unreviewed: (assets ?? []).filter((asset) => asset.libraryStatus === 'unreviewed').length,
     published: (assets ?? []).filter((asset) => asset.libraryStatus === 'published').length,
@@ -491,7 +501,7 @@ export function MuxLibraryPanel() {
     needsThumbnail: (assets ?? []).filter((asset) => !asset.hasCustomThumbnail).length,
     customThumbnail: (assets ?? []).filter((asset) => asset.hasCustomThumbnail).length,
   }), [assets]);
-  const hasFilters = Boolean(query.trim()) || client !== 'All' || statusFilter !== 'all' || thumbnailFilter !== 'all';
+  const hasFilters = Boolean(dateRange || query.trim()) || client !== 'All' || statusFilter !== 'all' || thumbnailFilter !== 'all';
   const driveSearchTerm = query.trim() || (client === 'All' || client === 'Unassigned' ? '' : client);
   const driveSearchUrl = `https://drive.google.com/drive/search?q=${encodeURIComponent(['type:video', driveSearchTerm].filter(Boolean).join(' '))}`;
   const assetsById = useMemo(() => new Map((assets ?? []).map((asset) => [asset.id, asset])), [assets]);
@@ -1170,13 +1180,14 @@ export function MuxLibraryPanel() {
     {duplicateRatioWarning && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => setDuplicateRatioWarning(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDuplicateRatioWarning(null)} aria-label="Close">×</button><div className="mux-bulk-delete"><p>Duplicate ratio</p><h3>Group these anyway?</h3><span>Two or more selected videos appear to share the same ratio. You can cancel and adjust the selection, or continue with this ratio group.</span><div className="mux-collection-delete-actions"><button type="button" onClick={() => setDuplicateRatioWarning(null)}>Cancel</button><button className="danger" type="button" onClick={() => createRatioGroup(duplicateRatioWarning.uploadIds, duplicateRatioWarning.title, true)}>Continue</button></div></div></div></div>}
     <div className="mux-library-toolbar">
       <label className="mux-search"><span>Search title, client, or Mux ID</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Mux" /></label>
-      <label className="mux-select"><span>Client</span><select value={client} onChange={(event) => setClient(event.target.value)}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select></label>
+      <label className="mux-select"><span>Client</span><select value={client} onChange={(event) => setClient(event.target.value)}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select><ChevronDown className="mux-select-chevron" aria-hidden="true" /></label>
+      <MuxDateFilter range={dateRange} years={dateYears} onChange={setDateRange} />
     </div>
     <div className="mux-library-subtoolbar">
       <div className="mux-filter-set mux-status-filter"><span>Status</span>{(['all', 'published', 'unreviewed', 'hidden'] as StatusFilter[]).map((item) => <button className={statusFilter === item ? 'active' : ''} onClick={() => setStatusFilter(item)} key={item}><span>{item === 'unreviewed' ? 'unpublished' : item}</span><b>{statusCounts[item].toLocaleString()}</b></button>)}</div>
       <div className="mux-filter-set"><span>Thumbnail</span><button className={thumbnailFilter === 'all' ? 'active' : ''} onClick={() => setThumbnailFilter('all')}><span>all</span></button><button className={thumbnailFilter === 'needs-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('needs-thumbnail')}><span>needs selection</span><b>{thumbnailCounts.needsThumbnail.toLocaleString()}</b></button><button className={thumbnailFilter === 'custom-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('custom-thumbnail')}><span>selected</span><b>{thumbnailCounts.customThumbnail.toLocaleString()}</b></button></div>
       <div className="mux-filter-set"><span>Index by</span>{(['date', 'client'] as GroupMode[]).map((item) => <button className={groupMode === item ? 'active' : ''} onClick={() => setGroupMode(item)} key={item}>{item === 'date' ? 'Timeline' : 'Client'}</button>)}</div>
-      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setStatusFilter('all'); setThumbnailFilter('all'); }}>Clear filters</button>}
+      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setStatusFilter('all'); setThumbnailFilter('all'); setDateRange(null); }}>Clear filters</button>}
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{matches.length.toLocaleString()}</strong> of {assets.length.toLocaleString()} assets</p>
