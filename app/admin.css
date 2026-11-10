@@ -474,6 +474,7 @@
 }
 
 .mux-processing-overlay{position:absolute;z-index:2;inset:0;display:grid;place-content:center;justify-items:center;gap:9px;background:rgba(9,7,8,.68);color:#fff;text-shadow:0 1px 8px #000;font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;pointer-events:none}.mux-processing-overlay i{width:26px;height:26px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--bright);border-radius:50%;animation:mux-processing-spin .9s linear infinite}.mux-processing-overlay strong{font:inherit}@keyframes mux-processing-spin{to{transform:rotate(1turn)}}
+.mux-thumbnail-fallback{display:block!important;width:100%;height:100%;background:linear-gradient(135deg,#4d4949 0 47%,#5a5555 47% 53%,#4d4949 53% 100%)}.mux-replacement-progress{display:grid;gap:7px;max-width:600px;margin:16px 0 0;border:1px solid rgba(245,242,237,.28);background:rgba(22,18,19,.72);padding:13px 15px;color:var(--paper)}.mux-replacement-progress>div{display:flex;justify-content:space-between;gap:14px;font:500 9px var(--mono);letter-spacing:.07em;text-transform:uppercase}.mux-replacement-progress strong{color:var(--bright);font:inherit}.mux-replacement-progress p{overflow:hidden;margin:0;color:rgba(245,242,237,.62);font:400 12px var(--sans);text-overflow:ellipsis;white-space:nowrap}.mux-replacement-progress>i{display:block;height:4px;background:rgba(245,242,237,.18)}.mux-replacement-progress>i>i{display:block;height:100%;background:var(--bright);transition:width .15s}
 
 @media (max-width: 760px) {
   .mux-library-toolbar:has(.mux-date-filter) {

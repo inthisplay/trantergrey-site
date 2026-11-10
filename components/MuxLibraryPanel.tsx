@@ -27,6 +27,7 @@ type UploadDestination = 'solo' | 'collection';
 type UploadRatioGroup = { id: string; title: string; uploadIds: string[] };
 type DuplicateRatioWarning = { title: string; uploadIds: string[] } | null;
 type UploadPlan = { client: string; tags: string[]; grouping: 'none'; name: string; collectionId: string };
+type ReplacementProgress = { fileName: string; progress: number; stage: 'uploading' | 'processing' | 'swapping'; current: number; total: number };
 
 const quickActionIcons = { view: PlaybackIcon, manage: SettingsCog, public: ExternalLink, select: Check, replace: Refresh, copy: Copy, client: UserPlus, tags: Label, publish: Upload, hide: EyeOff, delete: Trash };
 type QuickActionIcon = keyof typeof quickActionIcons;
@@ -76,6 +77,10 @@ function isProcessingAsset(asset: MatchedMuxLibraryAsset) {
 function ProcessingOverlay({ asset }: { asset: MatchedMuxLibraryAsset }) {
   if (!isProcessingAsset(asset)) return null;
   return <span className="mux-processing-overlay" role="status"><i aria-hidden="true" /><strong>Processing</strong></span>;
+}
+
+function ThumbnailFallback() {
+  return <span className="mux-thumbnail-fallback" aria-label="Thumbnail unavailable" />;
 }
 
 function dateParts(createdAt: string | null) {
@@ -219,6 +224,7 @@ export function MuxLibraryPanel() {
   const [replaceProjectId, setReplaceProjectId] = useState('');
   const [replacingProjectId, setReplacingProjectId] = useState('');
   const [replacingAssetId, setReplacingAssetId] = useState('');
+  const [replacementProgress, setReplacementProgress] = useState<ReplacementProgress | null>(null);
 
   async function refreshLibrary() {
     try {
@@ -303,8 +309,9 @@ export function MuxLibraryPanel() {
     }
   }
 
-  async function replaceVideo(file: File, previousAssetId: string) {
+  async function replaceVideo(file: File, previousAssetId: string, batch = { current: 1, total: 1 }) {
     setReplacingAssetId(previousAssetId);
+    setReplacementProgress({ fileName: file.name, progress: 0, stage: 'uploading', ...batch });
     setWorkspaceMessage('Uploading replacement to Mux…');
     try {
       const response = await fetch('/api/admin/mux-uploads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: file.name.replace(/\.[^.]+$/, '') }) });
@@ -312,13 +319,18 @@ export function MuxLibraryPanel() {
       if (!response.ok || !upload.id || !upload.url) throw new Error(upload.error || 'Could not prepare the replacement upload.');
       await new Promise<void>((resolve, reject) => {
         const request = new XMLHttpRequest();
+        request.upload.onprogress = (event) => {
+          if (event.lengthComputable) setReplacementProgress((current) => current ? { ...current, progress: Math.round((event.loaded / event.total) * 100) } : current);
+        };
         request.onerror = () => reject(new Error('The replacement upload was interrupted. Please try again.'));
         request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error(`Mux rejected the replacement (${request.status}).`));
         request.open('PUT', upload.url!);
         request.send(file);
       });
+      setReplacementProgress((current) => current ? { ...current, progress: 100, stage: 'processing' } : current);
       setWorkspaceMessage('Replacement uploaded. Waiting for Mux to process it…');
       const replacementAssetId = await waitForMuxAsset(upload.id);
+      setReplacementProgress((current) => current ? { ...current, stage: 'swapping' } : current);
       let payload: { project?: VideoProject; error?: string } | undefined;
       for (let attempt = 0; attempt < 30; attempt += 1) {
         const swap = await fetch('/api/admin/mux-assets/replace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: previousAssetId, replacementAssetId }) });
@@ -337,6 +349,7 @@ export function MuxLibraryPanel() {
     } finally {
       setReplacingAssetId('');
       setReplaceTargetId('');
+      if (batch.total === 1) setReplacementProgress(null);
       if (replaceInput.current) replaceInput.current.value = '';
     }
   }
@@ -350,13 +363,14 @@ export function MuxLibraryPanel() {
     try {
       for (const [index, file] of files.entries()) {
         setWorkspaceMessage(`Replacing ${index + 1} of ${projectAssets.length} ratios in “${project.title}”…`);
-        const replaced = await replaceVideo(file, projectAssets[index].id);
+        const replaced = await replaceVideo(file, projectAssets[index].id, { current: index + 1, total: projectAssets.length });
         if (!replaced) return;
       }
       setWorkspaceMessage(`All ${projectAssets.length} ratios in “${project.title}” were replaced. Its public URL is unchanged.`);
     } finally {
       setReplacingProjectId('');
       setReplaceProjectId('');
+      setReplacementProgress(null);
       if (groupReplaceInput.current) groupReplaceInput.current.value = '';
     }
   }
@@ -1175,6 +1189,7 @@ export function MuxLibraryPanel() {
 
   return <>
     {workspaceMessage && <div className="mux-workspace-message" role="status" aria-live="polite">{workspaceMessage}</div>}
+    {replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing{replacementProgress.total > 1 ? ` ${replacementProgress.current} of ${replacementProgress.total}` : ''}</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? 'Mux is processing' : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><i><i style={{ width: `${replacementProgress.progress}%` }} /></i></div>}
     <input ref={replaceInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" onChange={(event) => { const file = event.target.files?.[0]; if (file && replaceTargetId) void replaceVideo(file, replaceTargetId); }} />
     <input ref={groupReplaceInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" multiple onChange={(event) => { const project = projects.find((item) => item.id === replaceProjectId); if (!project) return; const projectAssets = project.variants.map((variant) => assetsById.get(variant.assetId)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset)); void replaceProjectVideos(Array.from(event.target.files ?? []), project, projectAssets); }} />
     <button className="mux-mobile-upload-trigger" type="button" onClick={() => uploadInput.current?.click()}>Upload videos</button>
@@ -1290,7 +1305,7 @@ export function MuxLibraryPanel() {
       return <div className={`mux-library-flow-cell${selectedIds.includes(asset.id) ? ' selected' : ''}`} key={asset.id}>
           {marker}
           <article>
-          {selectionMode ? <button className="mux-library-thumb mux-selectable-thumb" type="button" onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)} aria-label={`${selectedIds.includes(asset.id) ? 'Deselect' : 'Select'} ${asset.title}`}>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b><i>{selectedIds.includes(asset.id) ? '✓' : '+'}</i></button> : <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}><a className="mux-library-thumb-primary" href={`/admin/mux/${asset.id}`} aria-label={`Manage ${asset.title}`}>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b></a><MobileActionsToggle title={asset.title} expanded={openMobileActions === actionKey} onClick={() => setOpenMobileActions((current) => current === actionKey ? '' : actionKey)} /><div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${asset.title}`}><button type="button" disabled={!canPreviewAsset(asset)} title={canPreviewAsset(asset) ? undefined : 'Mux is still preparing this video.'} onClick={() => setPreviewAssetId(asset.id)}><QuickActionLabel icon="view">View</QuickActionLabel></button><a href={`/admin/mux/${asset.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicPath(asset)} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectAssetForBulk(asset)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingAssetId === asset.id} onClick={() => { setReplaceTargetId(asset.id); replaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingAssetId === asset.id ? 'Replacing…' : 'Replace video'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(asset)}><QuickActionLabel icon="copy">{copiedAssetId === asset.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment([asset])}><QuickActionLabel icon="client">{clientName(asset) === 'Unassigned' ? 'Add client' : 'Change client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsAssetId(asset.id); setTagsDraft(asset.localTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'published' ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{asset.libraryStatus === 'published' ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'hidden' ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{asset.libraryStatus === 'hidden' ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingAssetId === asset.id} onClick={() => setDeleteAssetId(asset.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></div>}
+          {selectionMode ? <button className="mux-library-thumb mux-selectable-thumb" type="button" onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)} aria-label={`${selectedIds.includes(asset.id) ? 'Deselect' : 'Select'} ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <img src={asset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b><i>{selectedIds.includes(asset.id) ? '✓' : '+'}</i></button> : <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}><a className="mux-library-thumb-primary" href={`/admin/mux/${asset.id}`} aria-label={`Manage ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <img src={asset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b></a><MobileActionsToggle title={asset.title} expanded={openMobileActions === actionKey} onClick={() => setOpenMobileActions((current) => current === actionKey ? '' : actionKey)} /><div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${asset.title}`}><button type="button" disabled={!canPreviewAsset(asset)} title={canPreviewAsset(asset) ? undefined : 'Mux is still preparing this video.'} onClick={() => setPreviewAssetId(asset.id)}><QuickActionLabel icon="view">View</QuickActionLabel></button><a href={`/admin/mux/${asset.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicPath(asset)} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectAssetForBulk(asset)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingAssetId === asset.id} onClick={() => { setReplaceTargetId(asset.id); replaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingAssetId === asset.id ? 'Replacing…' : 'Replace video'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(asset)}><QuickActionLabel icon="copy">{copiedAssetId === asset.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment([asset])}><QuickActionLabel icon="client">{clientName(asset) === 'Unassigned' ? 'Add client' : 'Change client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsAssetId(asset.id); setTagsDraft(asset.localTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'published' ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{asset.libraryStatus === 'published' ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'hidden' ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{asset.libraryStatus === 'hidden' ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingAssetId === asset.id} onClick={() => setDeleteAssetId(asset.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></div>}
           <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{!asset.hasCustomThumbnail && <p className="mux-thumbnail-needed">Needs thumbnail</p>}{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
           </article>
         </div>;
