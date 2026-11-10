@@ -256,13 +256,20 @@
   padding: 14px 24px;
   border-bottom: 1px solid var(--line);
 }
-.mux-collection-ratio-manager > button {
+.mux-collection-manager-head > .mux-collection-manager-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.mux-collection-manage-ratios {
   border: 1px solid var(--line);
   background: transparent;
   color: inherit;
-  padding: 9px 12px;
+  padding: 10px 12px;
   cursor: pointer;
-  font: 500 10px var(--mono);
+  font: 500 9px var(--mono);
+  letter-spacing: .06em;
   text-transform: uppercase;
 }
 .mux-collection-ratio-options {
