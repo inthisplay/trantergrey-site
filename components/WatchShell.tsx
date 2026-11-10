@@ -86,7 +86,7 @@ export function WatchShell() {
       </article>;
     })}</div> : <p className="solo-video-unavailable">No videos have been added to this collection yet.</p>}
     <VideoModal video={preview} onClose={closePreview}>
-      {preview && <div className="collection-ratio-preview">
+      {preview && <div className="video-ratio-preview">
         <SoloVideoPlayer key={preview.href} title={preview.title} variants={preview.variants} standaloneHref={preview.href} />
       </div>}
     </VideoModal>

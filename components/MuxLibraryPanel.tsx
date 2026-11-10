@@ -2,13 +2,14 @@
 
 import { PlaybackIcon } from './PlaybackIcon';
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { Check, Copy, ExternalLink, EyeOff, Label, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
 import type { MatchedMuxLibraryAsset } from '@/lib/mux-matching';
 import { hasDistinctRatios, ratioLabel, videoProjectSlug, type VideoProject, type VideoProjectCollection } from '@/lib/video-projects-shared';
 import { CollectionRatioManager } from './CollectionRatioManager';
 import { MuxThemeToggle } from './MuxThemeToggle';
-import { MuxVideoPlayer } from './SoloVideoPlayer';
+import { MuxVideoPlayer, SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
+import { VideoModal } from './VideoModal';
 
 type LibraryStatus = MatchedMuxLibraryAsset['libraryStatus'];
 type StatusFilter = LibraryStatus | 'all';
@@ -562,7 +563,24 @@ export function MuxLibraryPanel() {
   const tagsAsset = tagsAssetId ? assetsById.get(tagsAssetId) : undefined;
   const previewAsset = previewAssetId ? assetsById.get(previewAssetId) : undefined;
   const previewProject = previewProjectId ? projects.find((project) => project.id === previewProjectId) : undefined;
-  const previewProjectVariants = previewProject?.variants.map((variant) => ({ variant, asset: assetsById.get(variant.assetId) })).filter((item): item is { variant: VideoProject['variants'][number]; asset: MatchedMuxLibraryAsset } => Boolean(item.asset)) ?? [];
+  const previewProjectVariants = (previewProject?.variants ?? []).flatMap((variant): SoloVideoVariant[] => {
+    const asset = assetsById.get(variant.assetId);
+    if (!asset?.playbackId || asset.playbackPolicy !== 'public') return [];
+    return [{
+      assetId: asset.id,
+      label: variant.label || friendlyAssetRatio(asset),
+      aspectRatio: asset.aspectRatio || variant.aspectRatio,
+      playbackId: asset.playbackId,
+      thumbnailUrl: asset.thumbnailUrl,
+      duration: asset.duration,
+      downloadsEnabled: asset.downloadsEnabled !== false,
+      maxResolution: asset.maxResolution,
+    }];
+  });
+  const closePreview = useCallback(() => {
+    setPreviewAssetId('');
+    setPreviewProjectId('');
+  }, []);
   const selectingProject = selectingProjectId ? projects.find((project) => project.id === selectingProjectId) : undefined;
   const selectingProjectAssets = selectingProject?.variants.map((variant) => ({ variant, asset: assetsById.get(variant.assetId) })).filter((item): item is { variant: VideoProject['variants'][number]; asset: MatchedMuxLibraryAsset } => Boolean(item.asset)) ?? [];
   const selectingCollection = selectingCollectionId ? collections.find((collection) => collection.id === selectingCollectionId) : undefined;
@@ -1234,7 +1252,14 @@ export function MuxLibraryPanel() {
           </article>
         </div>;
     }))}</div>}
-{previewAsset && <div className="mux-player-modal" role="dialog" aria-modal="true" aria-label={`Preview ${previewAsset.title}`} onMouseDown={() => { setPreviewAssetId(''); setPreviewProjectId(''); }}><div className="mux-player-modal-panel" onMouseDown={(event) => event.stopPropagation()}>{previewProjectVariants.length > 1 && <nav className="mux-player-ratio-tabs" aria-label="Choose ratio">{previewProjectVariants.map(({ asset, variant }) => <button type="button" key={asset.id} aria-pressed={asset.id === previewAsset.id} onClick={() => setPreviewAssetId(asset.id)}>{variant.label || friendlyAssetRatio(asset)}<small>{friendlyAssetRatio(asset)}</small></button>)}</nav>}<button className="mux-player-modal-close" type="button" aria-label="Close preview" onClick={() => { setPreviewAssetId(''); setPreviewProjectId(''); }}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg></button>{previewAsset.playbackId && previewAsset.playbackPolicy === 'public' ? <MuxVideoPlayer key={previewAsset.id} assetId={previewAsset.id} playbackId={previewAsset.playbackId} poster={previewAsset.thumbnailUrl} title={previewProject?.title || previewAsset.title} autoPlay /> : <p>Preview unavailable while Mux finishes processing this asset.</p>}</div></div>}
+{previewAsset && previewProject && previewProjectVariants.length > 0 ? <VideoModal
+      video={{ id: previewAsset.id, title: previewProject.title, client: previewProject.client || clientName(previewAsset), thumbnail: previewAsset.thumbnailUrl || '', muxPlaybackId: previewProjectVariants[0].playbackId }}
+      onClose={closePreview}
+    >
+      <div className="video-ratio-preview">
+        <SoloVideoPlayer key={previewProject.id} title={previewProject.title} variants={previewProjectVariants} standaloneHref={`/watch/${previewProject.slug}`} />
+      </div>
+    </VideoModal> : previewAsset && <div className="mux-player-modal" role="dialog" aria-modal="true" aria-label={`Preview ${previewAsset.title}`} onMouseDown={closePreview}><div className="mux-player-modal-panel" onMouseDown={(event) => event.stopPropagation()}><button className="mux-player-modal-close" type="button" aria-label="Close preview" onClick={closePreview}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg></button>{previewAsset.playbackId && previewAsset.playbackPolicy === 'public' ? <MuxVideoPlayer key={previewAsset.id} assetId={previewAsset.id} playbackId={previewAsset.playbackId} poster={previewAsset.thumbnailUrl} title={previewProject?.title || previewAsset.title} autoPlay /> : <p>Preview unavailable while Mux finishes processing this asset.</p>}</div></div>}
       {selectingGroupTitle && <div className="mux-bulk-modal mux-group-selection-modal" role="dialog" aria-modal="true" aria-label={`Select videos from ${selectingGroupTitle}`} onMouseDown={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }} aria-label="Close">×</button><header><p>Select from group</p><h3>{selectingGroupTitle}</h3><span>{selectingGroupAssets.filter((asset) => selectedIds.includes(asset.id)).length} of {selectingGroupAssets.length} selected</span></header><div className="mux-group-selection-grid">{selectingGroupAssets.map((asset) => <button className={selectedIds.includes(asset.id) ? 'selected' : ''} type="button" key={asset.id} onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)}><span>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <i>Preview unavailable</i>}<b>{duration(asset.duration)}</b><em>{selectedIds.includes(asset.id) ? '✓' : '+'}</em></span><strong>{asset.title}</strong><small>{friendlyAssetRatio(asset)}</small></button>)}</div><footer><button type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}>Done</button></footer></div></div>}
       {selectionMode && <div className="mux-bulk-bar"><div><strong>{selectedIds.length}</strong><span>{selectedIds.length === 1 ? 'video selected' : 'videos selected'}</span></div><nav><button disabled={!selectedIds.length} onClick={() => void copyShowcaseUrl()}>{showcaseCopied ? 'Temp showcase copied' : 'Create temp showcase'}</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('collection')}>Create collection</button><button disabled={!canCreateRatioGroup} title={canCreateRatioGroup ? undefined : 'Select at least two ready videos with different aspect ratios'} onClick={() => { setProjectTitle(selectedAssets[0].title); setBulkAction('ratio'); }}>Create ratio group</button><button disabled={!selectedIds.length} onClick={() => { setClientAssignment(selectedAssets.map(clientName).find((name) => name !== 'Unassigned') || ''); setBulkAction('client'); }}>Add to client</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('detach')}>Remove from pages</button><button className="danger" disabled={!selectedIds.length} onClick={() => setBulkAction('delete')}>Delete</button></nav><button className="mux-bulk-close" onClick={exitSelectionMode} aria-label="Exit selection mode">×</button></div>}
     {bulkAction && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => !saving && setBulkAction(null)}><div onMouseDown={(event) => event.stopPropagation()}>
