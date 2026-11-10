@@ -319,3 +319,31 @@
   background: var(--red);
   color: #fff;
 }
+
+.mux-drive-search {
+  display: flex;
+  justify-content: center;
+  margin: 32px 0 48px;
+}
+
+.mux-drive-search a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  color: var(--paper);
+  font: 500 11px var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.mux-drive-search a:is(:hover, :focus-visible) {
+  border-color: currentColor;
+}
+
+.mux-drive-search svg {
+  width: 16px;
+  height: 16px;
+}

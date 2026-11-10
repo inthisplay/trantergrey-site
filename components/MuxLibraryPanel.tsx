@@ -492,6 +492,8 @@ export function MuxLibraryPanel() {
     customThumbnail: (assets ?? []).filter((asset) => asset.hasCustomThumbnail).length,
   }), [assets]);
   const hasFilters = Boolean(query.trim()) || client !== 'All' || statusFilter !== 'all' || thumbnailFilter !== 'all';
+  const driveSearchTerm = query.trim() || (client === 'All' || client === 'Unassigned' ? '' : client);
+  const driveSearchUrl = `https://drive.google.com/drive/search?q=${encodeURIComponent(['type:video', driveSearchTerm].filter(Boolean).join(' '))}`;
   const assetsById = useMemo(() => new Map((assets ?? []).map((asset) => [asset.id, asset])), [assets]);
   const projectByAssetId = useMemo(() => {
     const map = new Map<string, VideoProject>();
@@ -1249,6 +1251,11 @@ export function MuxLibraryPanel() {
           </article>
         </div>;
     }))}</div>}
+    {hasFilters && <div className="mux-drive-search">
+      <a href={driveSearchUrl} target="_blank" rel="noreferrer">
+        Search Google Drive <ExternalLink aria-hidden="true" />
+      </a>
+    </div>}
 {previewAsset && previewProject && previewProjectVariants.length > 0 ? <VideoModal
       video={{ id: previewAsset.id, title: previewProject.title, client: previewProject.client || clientName(previewAsset), thumbnail: previewAsset.thumbnailUrl || '', muxPlaybackId: previewProjectVariants[0].playbackId }}
       onClose={closePreview}
