@@ -4,6 +4,7 @@ import { PlaybackIcon } from './PlaybackIcon';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { Check, Copy, ExternalLink, EyeOff, Label, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
+import { createMuxSearch } from '@/lib/mux-search';
 import type { MatchedMuxLibraryAsset } from '@/lib/mux-matching';
 import { hasDistinctRatios, ratioLabel, videoProjectSlug, type VideoProject, type VideoProjectCollection } from '@/lib/video-projects-shared';
 import { CollectionRatioManager } from './CollectionRatioManager';
@@ -474,16 +475,12 @@ export function MuxLibraryPanel() {
   }
 
   const clients = useMemo(() => ['All', ...Array.from(new Set((assets ?? []).map(clientName))).sort()], [assets]);
-  const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return (assets ?? []).filter((asset) => {
-      const searchable = [asset.title, asset.historicTitle, asset.historicFolderPath, asset.id, asset.externalId, asset.creatorId, asset.vimeoId, clientName(asset), ...asset.localTags, asset.vimeoMatch?.title, asset.vimeoSuggestion?.title].filter(Boolean).join(' ').toLowerCase();
-      return (!needle || searchable.includes(needle))
-        && (client === 'All' || clientName(asset) === client)
-        && (statusFilter === 'all' || asset.libraryStatus === statusFilter)
-        && (thumbnailFilter === 'all' || (thumbnailFilter === 'needs-thumbnail' ? !asset.hasCustomThumbnail : Boolean(asset.hasCustomThumbnail)));
-    });
-  }, [assets, query, client, statusFilter, thumbnailFilter]);
+  const searchLibrary = useMemo(() => createMuxSearch(assets ?? []), [assets]);
+  const matches = useMemo(() => searchLibrary(query).filter((asset) =>
+    (client === 'All' || clientName(asset) === client)
+    && (statusFilter === 'all' || asset.libraryStatus === statusFilter)
+    && (thumbnailFilter === 'all' || (thumbnailFilter === 'needs-thumbnail' ? !asset.hasCustomThumbnail : Boolean(asset.hasCustomThumbnail)))
+  ), [searchLibrary, query, client, statusFilter, thumbnailFilter]);
   const statusCounts = useMemo(() => ({
     unreviewed: (assets ?? []).filter((asset) => asset.libraryStatus === 'unreviewed').length,
     published: (assets ?? []).filter((asset) => asset.libraryStatus === 'published').length,
