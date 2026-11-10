@@ -92,7 +92,7 @@
 .mux-admin[data-theme='light'] .mux-bulk-modal{background:rgba(23,19,21,.42)}.mux-admin[data-theme='light'] .mux-bulk-modal>div,.mux-admin[data-theme='light'] .mux-collection-manager-modal>div,.mux-admin[data-theme='light'] .mux-collection-manager-list{background:#f2f2f2;color:#171315;border-color:rgba(23,19,21,.26)}.mux-admin[data-theme='light'] .mux-bulk-modal-close{color:rgba(23,19,21,.7)}.mux-admin[data-theme='light'] .mux-collection-manager-head,.mux-admin[data-theme='light'] .mux-collection-tags-form{border-color:rgba(23,19,21,.18)}.mux-admin[data-theme='light'] .mux-collection-tags-form input,.mux-admin[data-theme='light'] .mux-bulk-simple-form input{border-color:rgba(23,19,21,.28);background:#fff;color:#171315}.mux-admin[data-theme='light'] .mux-collection-project{background:#fff;border-color:rgba(23,19,21,.24)}.mux-admin[data-theme='light'] .mux-collection-project>header::after{background:rgba(23,19,21,.16)}.mux-admin[data-theme='light'] .mux-collection-project>header h4,.mux-admin[data-theme='light'] .mux-collection-manager-copy h4{color:#171315}.mux-admin[data-theme='light'] .mux-collection-manager-copy p,.mux-admin[data-theme='light'] .mux-collection-manager-ratio{color:rgba(23,19,21,.57)}.mux-admin[data-theme='light'] .mux-collection-manager-actions a,.mux-admin[data-theme='light'] .mux-collection-manager-actions button{border-color:rgba(23,19,21,.3);color:#171315}.mux-admin[data-theme='light'] .mux-upload-drawer{background:#f2f2f2;color:#171315;border-color:rgba(23,19,21,.24);box-shadow:-18px 0 65px rgba(23,19,21,.18)}.mux-admin[data-theme='light'] .mux-upload-drawer header,.mux-admin[data-theme='light'] .mux-upload-drawer footer,.mux-admin[data-theme='light'] .mux-upload-file-list{border-color:rgba(23,19,21,.18)}.mux-admin[data-theme='light'] .mux-upload-drawer header>button,.mux-admin[data-theme='light'] .mux-upload-drawer footer button{color:#171315;border-color:rgba(23,19,21,.3)}.mux-admin[data-theme='light'] .mux-upload-drawer input,.mux-admin[data-theme='light'] .mux-upload-drawer select{border-color:rgba(23,19,21,.3);background:#fff;color:#171315}.mux-admin[data-theme='light'] .mux-upload-drawer fieldset{border-color:rgba(23,19,21,.22)}.mux-admin[data-theme='light'] .mux-upload-drawer fieldset label,.mux-admin[data-theme='light'] .mux-upload-file-list span,.mux-admin[data-theme='light'] .mux-upload-direct-note{color:rgba(23,19,21,.65)}.mux-admin[data-theme='light'] .mux-upload-drawer .mux-upload-client-picker>div[role='listbox'],.mux-admin[data-theme='light'] .mux-upload-drawer .mux-upload-client-picker>div[role='listbox'] button{background:#fff;color:#171315}
 .mux-admin[data-theme='light'] .mux-collection-delete-button,.mux-admin[data-theme='light'] .mux-ratio-group-delete,.mux-admin[data-theme='light'] .mux-collection-manager-actions .danger{border-color:var(--bright)!important;color:var(--bright)!important}
 .mux-admin[data-theme='light'] .mux-ratio-group-pencil{border-color:rgba(23,19,21,.35)!important;color:#171315!important}.mux-admin[data-theme='light'] .mux-ratio-group-pencil:hover,.mux-admin[data-theme='light'] .mux-ratio-group-pencil:focus-visible{border-color:var(--bright)!important;background:rgba(178,65,76,.12)!important;color:var(--bright)!important}
-.mux-collection-manager-modal button:not(:disabled){transition:border-color .15s ease,background .15s ease,color .15s ease}.mux-collection-manager-modal button:hover:not(:disabled){border-color:var(--bright)!important;background:rgba(178,65,76,.12)!important;color:var(--bright)!important}.mux-collection-manager-modal .mux-collection-tags-form>button:hover:not(:disabled){border-color:#98333d!important;background:#98333d!important;color:#fff!important}.mux-collection-manager-modal .mux-collection-delete-button:hover,.mux-collection-manager-modal .mux-ratio-group-delete:hover,.mux-collection-manager-modal .mux-collection-manager-actions .danger:hover{border-color:#98333d!important;background:rgba(152,51,61,.12)!important;color:#98333d!important}
+.mux-collection-manager-modal :is(button:not(:disabled),a){transition:border-color .15s ease,background .15s ease,color .15s ease}.mux-collection-manager-modal :is(button:not(:disabled),a):is(:hover,:focus-visible){border-color:var(--bright)!important;background:rgba(178,65,76,.12)!important;color:var(--bright)!important}.mux-collection-manager-modal .mux-collection-tags-form>button:not(:disabled):is(:hover,:focus-visible){border-color:#98333d!important;background:#98333d!important;color:#fff!important}.mux-collection-manager-modal :is(.mux-collection-delete-button,.mux-ratio-group-delete,.mux-collection-manager-actions .danger):not(:disabled):is(:hover,:focus-visible){border-color:#98333d!important;background:rgba(152,51,61,.12)!important;color:#98333d!important}
 
 /* The selection tray intentionally remains a dark floating surface in either theme. */
 .mux-admin[data-theme='light'] .mux-bulk-bar{border-color:rgba(245,242,237,.32);background:rgba(12,11,11,.96);color:#f5f2ed}.mux-admin[data-theme='light'] .mux-bulk-bar span{color:rgba(245,242,237,.62)}.mux-admin[data-theme='light'] .mux-bulk-bar nav button{border-color:rgba(245,242,237,.32);background:transparent;color:#f5f2ed}.mux-admin[data-theme='light'] .mux-bulk-bar nav button:hover:not(:disabled){border-color:var(--bright);background:rgba(178,65,76,.16);color:#fff}.mux-admin[data-theme='light'] .mux-bulk-bar nav button.danger{color:#ff929c}.mux-admin[data-theme='light'] .mux-bulk-close{color:rgba(245,242,237,.74)}
@@ -290,4 +290,32 @@
 .mux-collection-ratio-options input[type='checkbox'] {
   width: auto;
   accent-color: var(--bright);
+}
+
+.mux-admin[data-theme='light'] .mux-collection-manager-modal :is(
+  .mux-collection-manager-head > div > span,
+  .mux-collection-tags-form label > span,
+  .mux-bulk-simple-form label > span,
+  .mux-collection-ratio-list span
+) {
+  color: #595155;
+}
+.mux-admin[data-theme='light'] .mux-collection-manager-modal .mux-tag-suggestions button {
+  border-color: var(--line);
+  color: var(--paper);
+}
+.mux-collection-manager-modal .mux-collection-ratio-list li:has(a:is(:hover, :focus-visible)) {
+  border-color: var(--bright);
+  background: rgba(178, 65, 76, .12);
+}
+
+.mux-admin[data-theme='light'] .mux-library-hover-actions > :is(a, button:enabled):is(:hover, :focus-visible) {
+  border-color: var(--bright);
+  background: var(--bright);
+  color: #fff;
+}
+.mux-admin[data-theme='light'] .mux-library-hover-actions > .danger:enabled:is(:hover, :focus-visible) {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
 }
