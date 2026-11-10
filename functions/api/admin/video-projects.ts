@@ -1,6 +1,6 @@
 import { adminResponse, type AdminEnvironment } from '../../_lib/admin';
 import { getMuxLibraryAssets } from '../../_lib/mux';
-import { createVideoProject, deleteVideoProject, readVideoProjectStore, regroupCollectionRatios, updateVideoProject } from '../../_lib/mux-state';
+import { createVideoProject, deleteVideoProject, readVideoProjectStore, regroupVideoRatios, updateVideoProject } from '../../_lib/mux-state';
 
 type Context = { request: Request; env: AdminEnvironment };
 export async function onRequestGet({ request, env }: Context) { const denied = await adminResponse(request, env); return denied || Response.json(await readVideoProjectStore(env)); }
@@ -14,7 +14,7 @@ export async function onRequestPatch({ request, env }: Context) {
   try {
     const body = await request.json() as { projectId?: unknown; title?: unknown; collectionId?: unknown; assetIds?: unknown };
     const project = 'assetIds' in body
-      ? await regroupCollectionRatios(env, body)
+      ? await regroupVideoRatios(env, body, body.collectionId === undefined ? await getMuxLibraryAssets(env) : undefined)
       : await updateVideoProject(env, body.projectId, { title: body.title });
     return Response.json({ project });
   }

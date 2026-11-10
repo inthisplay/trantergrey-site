@@ -1,6 +1,6 @@
 import type { AdminEnvironment } from './admin';
 import type { VideoProject, VideoProjectCollection, VideoProjectVariant } from '../../lib/video-projects-shared';
-import { ratioLabel, videoProjectSlug } from '../../lib/video-projects-shared';
+import { hasDistinctRatios, ratioLabel, videoProjectSlug } from '../../lib/video-projects-shared';
 import type { MuxLibraryAsset } from '../../lib/mux-shared';
 
 export type MuxLibraryStatus = 'unreviewed' | 'published' | 'hidden';
@@ -135,23 +135,32 @@ export async function createVideoProject(env: AdminEnvironment, input: { title?:
   await saveProject(env, project); return project;
 }
 
-export async function regroupCollectionRatios(env: AdminEnvironment, input: { collectionId?: unknown; assetIds?: unknown; title?: unknown }) {
+export async function regroupVideoRatios(env: AdminEnvironment, input: { collectionId?: unknown; assetIds?: unknown; title?: unknown }, libraryAssets?: MuxLibraryAsset[]) {
   const collectionId = text(input.collectionId, 100);
   const title = text(input.title, 160);
   const selectedIds = ids(input.assetIds);
   if (!title || selectedIds.length < 2) throw new Error('Enter a group title and choose at least two videos.');
 
   const store = await readVideoProjectStore(env);
-  if (!store.collections.some((collection) => collection.id === collectionId)) throw new Error('That collection could not be found.');
+  if (!libraryAssets && !store.collections.some((collection) => collection.id === collectionId)) throw new Error('That collection could not be found.');
   const selected = new Set(selectedIds);
   const sources = store.projects.filter((project) => project.variants.some((variant) => selected.has(variant.assetId)));
-  if (sources.some((project) => !project.collectionIds.includes(collectionId))) throw new Error('All selected videos must belong to this collection.');
+  if (!libraryAssets && sources.some((project) => !project.collectionIds.includes(collectionId))) throw new Error('All selected videos must belong to this collection.');
   const variantsById = new Map(sources.flatMap((project) => project.variants.map((variant) => [variant.assetId, variant] as const)));
+  const assetsById = libraryAssets && new Map(libraryAssets.map((asset) => [asset.id, asset]));
   const variants = selectedIds.map((id, order) => {
     const variant = variantsById.get(id);
+    if (assetsById) {
+      const asset = assetsById.get(id);
+      if (!asset?.playbackId || asset.playbackPolicy !== 'public' || asset.status !== 'ready') {
+        throw new Error('Every selected video must be ready with public playback.');
+      }
+      return { assetId: id, label: ratioLabel(asset.aspectRatio), aspectRatio: asset.aspectRatio, order };
+    }
     if (!variant) throw new Error('A selected video is no longer in this collection. Refresh and try again.');
     return { ...variant, order };
   });
+  if (assetsById && !hasDistinctRatios(variants)) throw new Error('Choose videos with different aspect ratios.');
 
   const consumed = sources.filter((project) => project.variants.every((variant) => selected.has(variant.assetId)));
   const survivor = consumed[0];
@@ -178,10 +187,13 @@ export async function regroupCollectionRatios(env: AdminEnvironment, input: { co
   const guards = sources.map((item) => env.TG_DATA.prepare(
     "SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM mux_video_projects WHERE id = ? AND updated_at = ?) THEN json('stale ratio group') END",
   ).bind(item.id, item.updatedAt));
+  const newAssetGuards = selectedIds.filter((id) => !variantsById.has(id)).map((id) => env.TG_DATA.prepare(
+    "SELECT CASE WHEN EXISTS (SELECT 1 FROM mux_video_projects, json_each(mux_video_projects.value, '$.variants') AS variant WHERE json_extract(variant.value, '$.assetId') = ?) THEN json('stale ratio group') END",
+  ).bind(id));
   try {
-    await env.TG_DATA.batch([...guards, ...writes, projectWrite(env, project)]);
+    await env.TG_DATA.batch([...guards, ...newAssetGuards, ...writes, projectWrite(env, project)]);
   } catch {
-    throw new Error('Could not regroup these videos. Refresh the collection and try again.');
+    throw new Error('Could not regroup these videos. Refresh the library and try again.');
   }
   return project;
 }

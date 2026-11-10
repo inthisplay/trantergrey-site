@@ -52,3 +52,13 @@ export function ratioLabel(aspectRatio: string | null) {
   if (Math.abs(ratio - 21 / 9) < 0.05) return '21:9';
   return `${match[1]}:${match[2]}`;
 }
+
+export function hasDistinctRatios(assets: Array<{ aspectRatio: string | null }>) {
+  const ratios = assets.map(({ aspectRatio }) => {
+    const match = aspectRatio?.match(/^\s*(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)\s*$/);
+    if (!match || !Number(match[1]) || !Number(match[2])) return null;
+    const [width, height] = ratioLabel(aspectRatio ?? null).split(':').map(Number);
+    return width / height;
+  });
+  return ratios.length >= 2 && ratios.every(Number.isFinite) && new Set(ratios).size === ratios.length;
+}
