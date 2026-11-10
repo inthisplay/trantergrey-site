@@ -1,7 +1,9 @@
 'use client';
 
+import { PlaybackIcon } from './PlaybackIcon';
+
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
-import { Check, Copy, ExternalLink, EyeOff, Label, Play, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
+import { Check, Copy, ExternalLink, EyeOff, Label, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
 import type { MatchedMuxLibraryAsset } from '@/lib/mux-matching';
 import { hasDistinctRatios, ratioLabel, videoProjectSlug, type VideoProject, type VideoProjectCollection } from '@/lib/video-projects-shared';
 import { CollectionRatioManager } from './CollectionRatioManager';
@@ -23,7 +25,7 @@ type UploadRatioGroup = { id: string; title: string; uploadIds: string[] };
 type DuplicateRatioWarning = { title: string; uploadIds: string[] } | null;
 type UploadPlan = { client: string; tags: string[]; grouping: 'none'; name: string; collectionId: string };
 
-const quickActionIcons = { view: Play, manage: SettingsCog, public: ExternalLink, select: Check, replace: Refresh, copy: Copy, client: UserPlus, tags: Label, publish: Upload, hide: EyeOff, delete: Trash };
+const quickActionIcons = { view: PlaybackIcon, manage: SettingsCog, public: ExternalLink, select: Check, replace: Refresh, copy: Copy, client: UserPlus, tags: Label, publish: Upload, hide: EyeOff, delete: Trash };
 type QuickActionIcon = keyof typeof quickActionIcons;
 
 function QuickActionLabel({ icon, children }: { icon: QuickActionIcon; children: ReactNode }) {

@@ -1,5 +1,7 @@
 'use client';
 
+import { PlaybackIcon } from './PlaybackIcon';
+
 import { useState } from 'react';
 
 type CaseStudyVimeoStripProps = {
@@ -19,7 +21,7 @@ export function CaseStudyVimeoStrip({ id, hash, thumbnail, title }: CaseStudyVim
       <img src={thumbnail} alt="" />
       <span className="case-study-vimeo-strip-wash" />
       <span className="case-study-vimeo-strip-vignette" />
-      <span className="case-study-vimeo-strip-play" aria-hidden="true"><i /></span>
+      <span className="case-study-vimeo-strip-play" aria-hidden="true"><PlaybackIcon /></span>
     </button>}
     {isExpanded && <><iframe src={source} title={title} allow="autoplay; fullscreen; picture-in-picture" /><button className="case-study-vimeo-strip-close" type="button" onClick={() => { setIsExpanded(false); setIsHovered(false); }} aria-label={`Close ${title}`}>×</button></>}
   </div>;

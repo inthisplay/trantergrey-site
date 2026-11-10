@@ -1,5 +1,7 @@
 'use client';
 
+import { PlaybackIcon } from './PlaybackIcon';
+
 import { useState } from 'react';
 
 type VimeoPlayGateProps = {
@@ -20,7 +22,7 @@ export function VimeoPlayGate({ id, hash, title }: VimeoPlayGateProps) {
         allow="autoplay; fullscreen; picture-in-picture"
         title={title}
       />
-      {!isPlaying && <button className="vimeo-play-gate-button" type="button" onClick={() => setIsPlaying(true)} aria-label={`Play ${title}`}><span /></button>}
+      {!isPlaying && <button className="vimeo-play-gate-button" type="button" onClick={() => setIsPlaying(true)} aria-label={`Play ${title}`}><PlaybackIcon /></button>}
     </div>
   );
 }
