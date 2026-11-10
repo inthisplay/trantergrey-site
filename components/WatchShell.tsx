@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
 import { Download, ExternalLink } from 'pixelarticons/react';
-import { prepareDownload, startDownload } from '@/lib/watch-download';
+import { prepareDownload } from '@/lib/watch-download';
 import { VideoModal, type ModalVideo } from './VideoModal';
 import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 
@@ -13,6 +13,7 @@ type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: st
 export function WatchShell() {
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
+  const [archiveUrl, setArchiveUrl] = useState('');
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadNotice, setDownloadNotice] = useState('');
   const [error, setError] = useState('');
@@ -27,6 +28,10 @@ export function WatchShell() {
     previewTrigger.current?.focus();
   }, []);
 
+  useEffect(() => {
+    if (archiveUrl) return () => URL.revokeObjectURL(archiveUrl);
+  }, [archiveUrl]);
+
   async function downloadCollection(assetIds: string[]) {
     setDownloadPending(true);
     setDownloadNotice('Preparing the highest available quality for each video…');
@@ -36,8 +41,17 @@ export function WatchShell() {
         const batch = assetIds.slice(offset, offset + 3);
         urls.push(...await Promise.all(batch.map((assetId) => prepareDownload({ assetId }, 'highest'))));
       }
-      urls.forEach(startDownload);
-      setDownloadNotice(`Requested ${urls.length} MP4 downloads. Your browser may ask you to allow multiple downloads.`);
+      setDownloadNotice('Packaging the videos into a ZIP…');
+      const { BlobWriter, ZipWriter } = await import('@zip.js/zip.js');
+      const archive = new ZipWriter(new BlobWriter('application/zip'));
+      for (const [index, url] of urls.entries()) {
+        const response = await fetch(url);
+        if (!response.ok || !response.body) throw new Error(`Video ${index + 1} could not be retrieved.`);
+        const filename = new URL(url).searchParams.get('download') || 'video.mp4';
+        await archive.add(`${index + 1}-${filename}`, response.body, { level: 0, useWebWorkers: false });
+      }
+      setArchiveUrl(URL.createObjectURL(await archive.close()));
+      setDownloadNotice(`ZIP ready with ${urls.length} MP4 files.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Please try again.';
       setDownloadNotice(`Could not prepare all downloads. ${message}`);
@@ -92,10 +106,13 @@ export function WatchShell() {
     <header className="solo-collection-header">
       <div className="solo-video-heading"><p className="eyebrow">TranterGrey collection</p><h1>{collection.collection.name}</h1>{collection.collection.description && <p>{collection.collection.description}</p>}</div>
       {collection.downloadAssetIds.length > 0 && <div className="solo-collection-download">
-        <button type="button" disabled={downloadPending} onClick={() => void downloadCollection(collection.downloadAssetIds)}>
+        {archiveUrl ? <a href={archiveUrl} download={`${collection.collection.slug}.zip`}>
+          <Download aria-hidden="true" />
+          Save ZIP
+        </a> : <button type="button" disabled={downloadPending} onClick={() => void downloadCollection(collection.downloadAssetIds)}>
           <Download aria-hidden="true" />
           {downloadPending ? 'Preparing…' : 'Download all'}
-        </button>
+        </button>}
         <div role="status">{downloadNotice}</div>
       </div>}
     </header>
