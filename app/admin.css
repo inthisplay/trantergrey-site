@@ -473,6 +473,8 @@
   color: white;
 }
 
+.mux-processing-overlay{position:absolute;z-index:2;inset:0;display:grid;place-content:center;justify-items:center;gap:9px;background:rgba(9,7,8,.68);color:#fff;text-shadow:0 1px 8px #000;font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;pointer-events:none}.mux-processing-overlay i{width:26px;height:26px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--bright);border-radius:50%;animation:mux-processing-spin .9s linear infinite}.mux-processing-overlay strong{font:inherit}@keyframes mux-processing-spin{to{transform:rotate(1turn)}}
+
 @media (max-width: 760px) {
   .mux-library-toolbar:has(.mux-date-filter) {
     grid-template-columns: 1fr;
