@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
-type Summary = { contacts: number; collections: number; videos: number };
+type Summary = { contacts: number; videos: number };
 
 const links = [
   { href: '/admin/mux', number: '01', title: 'Mux library', description: 'Build solo pages, ratio sets, and campaign collections.' },
-  { href: '/connect-vimeo', number: '02', title: 'Vimeo connection', description: 'Connect or check the Vimeo account.' },
-  { href: '/library', number: '03', title: 'Work library', description: 'Review, tag, and publish films.' },
-  { href: '/admin/collections', number: '04', title: 'Collections', description: 'Curate public or unlisted pages from the same library.' },
-  { href: '/admin/contacts', number: '05', title: 'Contact notes', description: 'Review new-project submissions.' },
+  { href: '/admin/contacts', number: '02', title: 'Contact notes', description: 'Review new-project submissions.' },
 ];
 
 export function AdminHub() {
@@ -25,5 +22,5 @@ export function AdminHub() {
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to open the private control room.'));
   }, []);
 
-  return <section><div className="admin-hub-head"><div><p className="eyebrow">TranterGrey private control room</p><h1>Keep it<br /><em>moving.</em></h1></div><p>{summary ? `${summary.videos.toLocaleString()} Mux assets, ${summary.collections.toLocaleString()} private collections, and ${summary.contacts.toLocaleString()} contact notes.` : 'Opening the private control room…'}</p></div>{error ? <p className="admin-empty">{error}</p> : <nav className="admin-hub-links">{links.map((item) => <a href={item.href} key={item.href}><span>{item.number}</span><span className="admin-hub-link-title">{item.title}</span><i>{item.description}</i><b>↗</b></a>)}</nav>}<form action="/api/admin/logout" method="post"><button className="admin-back" type="submit">Sign out</button></form></section>;
+  return <section><div className="admin-hub-head"><div><p className="eyebrow">TranterGrey private control room</p><h1>Keep it<br /><em>moving.</em></h1></div><p>{summary ? `${summary.videos.toLocaleString()} Mux assets and ${summary.contacts.toLocaleString()} contact notes.` : 'Opening the private control room…'}</p></div>{error ? <p className="admin-empty">{error}</p> : <nav className="admin-hub-links">{links.map((item) => <a href={item.href} key={item.href}><span>{item.number}</span><span className="admin-hub-link-title">{item.title}</span><i>{item.description}</i><b>↗</b></a>)}</nav>}<form action="/api/admin/logout" method="post"><button className="admin-back" type="submit">Sign out</button></form></section>;
 }
