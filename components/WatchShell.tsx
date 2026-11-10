@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
-import { ExternalLink } from 'pixelarticons/react';
+import { Download, ExternalLink } from 'pixelarticons/react';
+import { prepareDownload, startDownload } from '@/lib/watch-download';
 import { VideoModal, type ModalVideo } from './VideoModal';
 import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 
 type VideoData = { title: string; client: string | null; description: string | null; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
-type CollectionData = { collection: VideoProjectCollection; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
+type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
 export function WatchShell() {
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState('');
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<(ModalVideo & { variants: SoloVideoVariant[]; href: string }) | null>(null);
   const [previewError, setPreviewError] = useState('');
@@ -23,6 +26,25 @@ export function WatchShell() {
     setPreview(null);
     previewTrigger.current?.focus();
   }, []);
+
+  async function downloadCollection(assetIds: string[]) {
+    setDownloadPending(true);
+    setDownloadNotice('Preparing the highest available quality for each video…');
+    try {
+      const urls: string[] = [];
+      for (let offset = 0; offset < assetIds.length; offset += 3) {
+        const batch = assetIds.slice(offset, offset + 3);
+        urls.push(...await Promise.all(batch.map((assetId) => prepareDownload({ assetId }, 'highest'))));
+      }
+      urls.forEach(startDownload);
+      setDownloadNotice(`Requested ${urls.length} MP4 downloads. Your browser may ask you to allow multiple downloads.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Please try again.';
+      setDownloadNotice(`Could not prepare all downloads. ${message}`);
+    } finally {
+      setDownloadPending(false);
+    }
+  }
 
   async function openPreview(event: React.MouseEvent<HTMLAnchorElement>, project: CollectionData['projects'][number]) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -58,16 +80,25 @@ export function WatchShell() {
     if (!slug) { setError('This video link is incomplete.'); return; }
     const endpoint = isCollection ? `/api/watch/collection/${encodeURIComponent(slug)}` : `/api/watch/${encodeURIComponent(slug)}`;
     fetch(endpoint, { cache: 'no-store' }).then(async (response) => {
-      const payload = await response.json() as { video?: VideoData; collection?: VideoProjectCollection; projects?: CollectionData['projects']; error?: string };
+      const payload = await response.json() as { video?: VideoData; collection?: VideoProjectCollection; downloadAssetIds?: string[]; projects?: CollectionData['projects']; error?: string };
       if (!response.ok) throw new Error(payload.error || 'This page is unavailable.');
-      if (isCollection && payload.collection) { setCollection({ collection: payload.collection, projects: payload.projects ?? [] }); document.title = `${payload.collection.name} — TranterGrey`; }
+      if (isCollection && payload.collection) { setCollection({ collection: payload.collection, projects: payload.projects ?? [], downloadAssetIds: payload.downloadAssetIds ?? [] }); document.title = `${payload.collection.name} — TranterGrey`; }
       else if (payload.video) { setVideo(payload.video); document.title = `${payload.video.title} — TranterGrey`; }
       else throw new Error('This page is unavailable.');
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'This page is unavailable.'));
   }, []);
 
   if (collection) return <section className="solo-video-shell collection-page">
-    <div className="solo-video-heading"><p className="eyebrow">TranterGrey collection</p><h1>{collection.collection.name}</h1>{collection.collection.description && <p>{collection.collection.description}</p>}</div>
+    <header className="solo-collection-header">
+      <div className="solo-video-heading"><p className="eyebrow">TranterGrey collection</p><h1>{collection.collection.name}</h1>{collection.collection.description && <p>{collection.collection.description}</p>}</div>
+      {collection.downloadAssetIds.length > 0 && <div className="solo-collection-download">
+        <button type="button" disabled={downloadPending} onClick={() => void downloadCollection(collection.downloadAssetIds)}>
+          <Download aria-hidden="true" />
+          {downloadPending ? 'Preparing…' : 'Download all'}
+        </button>
+        <div role="status">{downloadNotice}</div>
+      </div>}
+    </header>
     {previewError && <p role="alert">{previewError}</p>}
     {collection.projects.length ? <div className="solo-collection-grid">{collection.projects.map((project) => {
       const href = `/watch/${project.slug}`;

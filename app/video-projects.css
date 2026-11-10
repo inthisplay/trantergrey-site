@@ -340,3 +340,55 @@
 .tg-player-transport .tg-player-play svg {
   transform: translateX(1px);
 }
+
+.solo-collection-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 24px;
+  width: min(100%, 1600px);
+  margin: 34px auto 55px;
+}
+
+.solo-collection-header .solo-video-heading {
+  flex: 1 1 520px;
+  min-width: 0;
+  margin: 0;
+}
+
+.solo-collection-download {
+  margin-left: auto;
+  text-align: right;
+}
+
+.solo-collection-download button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--paper);
+  font: 600 11px var(--mono);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.solo-collection-download button:is(:hover, :focus-visible) {
+  border-color: var(--paper);
+}
+
+.solo-collection-download button:disabled {
+  cursor: wait;
+}
+
+.solo-collection-download svg {
+  width: 18px;
+  height: 18px;
+}
+
+.solo-collection-download [role='status'] {
+  max-width: 240px;
+  margin-top: 8px;
+  font-size: 13px;
+}

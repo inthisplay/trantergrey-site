@@ -26,10 +26,25 @@ export async function publicWatchData(env: AdminEnvironment, slug: string) {
 }
 
 export async function publicCollectionData(env: AdminEnvironment, slug: string) {
-  const store = await readVideoProjectStore(env); const collection = store.collections.find((item) => item.slug === slug); if (!collection) return null;
+  const store = await readVideoProjectStore(env);
+  const collection = store.collections.find((item) => item.slug === slug);
+  if (!collection) return null;
+
   const projects = store.projects.filter((item) => item.collectionIds.includes(collection.id));
-  const cards = await Promise.all(projects.map(async (project) => { const cover = await getMuxLibraryAsset(env, project.variants[0]?.assetId || '').catch(() => null); return { ...project, thumbnailUrl: cover?.playbackPolicy === 'public' ? cover.thumbnailUrl : null }; }));
-  return { collection, projects: cards };
+  const assetIds = [...new Set(projects.flatMap((project) => project.variants.map(({ assetId }) => assetId)))];
+  const [metadata, assets] = await Promise.all([
+    readMuxMetadata(env),
+    Promise.all(assetIds.map((id) => getMuxLibraryAsset(env, id).catch(() => null))),
+  ]);
+  const publicAssets = new Map(assets.flatMap((asset) =>
+    asset?.playbackId && asset.playbackPolicy === 'public' ? [[asset.id, asset] as const] : [],
+  ));
+  const cards = projects.map((project) => ({
+    ...project,
+    thumbnailUrl: publicAssets.get(project.variants[0]?.assetId)?.thumbnailUrl ?? null,
+  }));
+  const downloadAssetIds = assetIds.filter((id) => publicAssets.has(id) && metadata[id]?.downloadsEnabled !== false);
+  return { collection, projects: cards, downloadAssetIds };
 }
 
 export async function publicShowcaseData(env: AdminEnvironment, ids: string[]) {
