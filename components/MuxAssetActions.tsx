@@ -50,7 +50,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
   const pendingDownload = renditions.some((rendition) => ['preparing', 'processing'].includes(rendition.status));
   const publicPlayback = playbackPolicy === 'public' && Boolean(playbackId);
   const sharePath = `/watch/${projectSlug || assetId}`;
-  const unbrandedPath = `/watch/unbranded/${projectSlug || assetId}`;
+  const unbrandedPath = `/watch/u/${projectSlug || assetId}`;
   const [publicUrl, setPublicUrl] = useState(sharePath);
   const [unbrandedUrl, setUnbrandedUrl] = useState(unbrandedPath);
   const previewThumbnail = useMemo(() => playbackId ? muxThumbnailUrl(playbackId, selectedThumbnailTime) : savedThumbnail, [playbackId, savedThumbnail, selectedThumbnailTime]);

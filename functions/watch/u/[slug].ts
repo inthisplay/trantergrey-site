@@ -1,7 +1,7 @@
 type Context = { request: Request; params: { slug: string } };
 
 export async function onRequestGet({ request, params }: Context) {
-  const target = new URL('/watch/unbranded', request.url);
+  const target = new URL('/watch/u', request.url);
   target.searchParams.set('slug', params.slug);
   return Response.redirect(target, 302);
 }
