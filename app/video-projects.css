@@ -271,9 +271,6 @@
   background:#eeeeec;
   padding:clamp(24px,5vw,80px);
 }
-body:has(.unbranded-video-page) .site-header,
-body:has(.unbranded-video-page) .site-footer{display:none}
-body:has(.unbranded-video-page) .solo-video-page{background:#eeeeec}
 .unbranded-video-frame{
   width:min(100%,1180px);
 }

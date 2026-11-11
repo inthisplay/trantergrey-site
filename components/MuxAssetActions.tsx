@@ -50,12 +50,17 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
   const pendingDownload = renditions.some((rendition) => ['preparing', 'processing'].includes(rendition.status));
   const publicPlayback = playbackPolicy === 'public' && Boolean(playbackId);
   const sharePath = `/watch/${projectSlug || assetId}`;
+  const unbrandedPath = `/watch/unbranded/${projectSlug || assetId}`;
   const [publicUrl, setPublicUrl] = useState(sharePath);
+  const [unbrandedUrl, setUnbrandedUrl] = useState(unbrandedPath);
   const previewThumbnail = useMemo(() => playbackId ? muxThumbnailUrl(playbackId, selectedThumbnailTime) : savedThumbnail, [playbackId, savedThumbnail, selectedThumbnailTime]);
 
   useEffect(() => {
     setPublicUrl(new URL(sharePath, window.location.origin).toString());
   }, [sharePath]);
+  useEffect(() => {
+    setUnbrandedUrl(new URL(unbrandedPath, window.location.origin).toString());
+  }, [unbrandedPath]);
 
   useEffect(() => {
     if (!downloadRequested) return;
@@ -127,10 +132,10 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
       setBusy(null);
     }
   };
-  const copyPublicLink = async () => {
+  const copyLink = async (url: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(publicUrl);
-      setMessage('Public link copied.');
+      await navigator.clipboard.writeText(url);
+      setMessage(`${label} copied.`);
     } catch {
       setMessage('Select the URL below and copy it.');
     }
@@ -210,7 +215,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
   return <div className="mux-asset-actions">
     <header><span>Video settings</span><strong>Mux controls</strong></header>
     <section className="mux-share-action"><small>Public link</small><p>Every video has a page ready to paste into an email or message.</p>
-      <input aria-label="Public video URL" readOnly value={publicUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={copyPublicLink}>Copy URL</button><a href={sharePath} target="_blank" rel="noreferrer">Open ↗</a></div>
+      <input aria-label="Public video URL" readOnly value={publicUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={() => void copyLink(publicUrl, 'Public link')}>Copy URL</button><a href={sharePath} target="_blank" rel="noreferrer">Open ↗</a></div>
     </section>
     <section className="mux-replace-action"><small>Replace video</small><p>Upload a revision without changing the shareable page. The superseded Mux asset is deleted when the swap finishes.</p><input ref={replaceInput} className="visually-hidden" type="file" accept="video/*,.mov,.mp4,.m4v,.webm,.avi,.mkv" onChange={(event) => { void replaceVideo(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /><button className="primary" type="button" onClick={() => replaceInput.current?.click()} disabled={Boolean(busy)}>{busy === 'replace' ? 'Replacing…' : 'Replace video'}</button></section>
     <section className="mux-thumbnail-action"><small>Thumbnail</small><p>Choose the frame used throughout the video library.</p>
@@ -220,7 +225,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     </section>
     <section><small>Download</small><p>Mux prepares the MP4 only when someone asks for it.</p><button className="primary" type="button" onClick={download} disabled={Boolean(busy) || downloadRequested}>{downloadRequested || busy === 'download' ? 'Preparing…' : 'Download'}</button></section>
     <section><small>Public download</small><p>{publicDownloadsEnabled ? 'Visitors can request an MP4 from the public video page.' : 'The download button is hidden on the public video page.'}</p><button type="button" onClick={togglePublicDownloads} disabled={Boolean(busy)}>{busy === 'public-downloads' ? 'Updating…' : publicDownloadsEnabled ? 'Disable downloads' : 'Enable downloads'}</button></section>
-    {projectId && <section><small>Public page style</small><p>{unbrandedPage ? 'This shared page is a simple light-grey video viewer with share and embed controls.' : 'This shared page uses the standard TranterGrey navigation and footer.'}</p><button type="button" onClick={toggleUnbrandedPage} disabled={Boolean(busy)}>{busy === 'unbranded-page' ? 'Updating…' : unbrandedPage ? 'Use branded page' : 'Make page unbranded'}</button></section>}
+    {projectId && <section className="mux-share-action"><small>Unbranded page</small><p>{unbrandedPage ? 'A separate light-grey video page is enabled. The standard public link above always stays branded.' : 'Enable a separate client-ready video page with share and embed controls.'}</p>{unbrandedPage && <><input aria-label="Unbranded video URL" readOnly value={unbrandedUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={() => void copyLink(unbrandedUrl, 'Unbranded link')}>Copy unbranded link</button><a href={unbrandedPath} target="_blank" rel="noreferrer">Open ↗</a></div></>}<button type="button" onClick={toggleUnbrandedPage} disabled={Boolean(busy)}>{busy === 'unbranded-page' ? 'Updating…' : unbrandedPage ? 'Disable unbranded page' : 'Enable unbranded page'}</button></section>}
     <section><small>Playback</small><p>{publicPlayback ? 'This video has a public Mux playback ID.' : 'Its public page exists, but playback is currently unavailable.'}</p><button type="button" onClick={togglePlayback} disabled={Boolean(busy)}>{busy === 'playback' ? 'Updating…' : publicPlayback ? 'Disable public playback' : 'Enable public playback'}</button></section>
     <section className="danger"><small>Danger zone</small><p>Deletion permanently removes the asset from Mux.</p><button type="button" onClick={deleteVideo} disabled={Boolean(busy)}>{busy === 'delete' ? 'Deleting…' : 'Delete from Mux'}</button></section>
     {message && <p className="mux-action-message" role="status">{message}</p>}

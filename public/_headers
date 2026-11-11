@@ -1,6 +1,9 @@
 /watch
   X-Robots-Tag: noindex, nofollow, noarchive
 
+/watch/unbranded
+  X-Robots-Tag: noindex, nofollow, noarchive
+
 /showcase
   X-Robots-Tag: noindex, nofollow, noarchive
 

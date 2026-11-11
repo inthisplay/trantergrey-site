@@ -10,7 +10,7 @@ import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 type VideoData = { title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
 type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
-export function WatchShell() {
+export function WatchShell({ unbranded = false }: { unbranded?: boolean }) {
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
   const [archiveUrl, setArchiveUrl] = useState('');
@@ -140,7 +140,11 @@ export function WatchShell() {
     </VideoModal>
   </section>;
 
-  if (video?.unbrandedPublicPage) return <section className="unbranded-video-page"><div className="unbranded-video-frame"><SoloVideoPlayer title={video.title} variants={video.variants} unbranded /></div></section>;
+  if (unbranded) return <section className="unbranded-video-page"><div className="unbranded-video-frame">
+    {video?.unbrandedPublicPage
+      ? <SoloVideoPlayer title={video.title} variants={video.variants} unbranded />
+      : <p className="solo-video-unavailable">This video does not have an unbranded page enabled.</p>}
+  </div></section>;
 
   return <section className="solo-video-shell">
     {video ? <div className="solo-video-presentation"><div className="solo-video-public-media-region"><SoloVideoPlayer title={video.title} variants={video.variants} /></div><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`/watch/collection/${item.slug}`} key={item.id}>{item.name} →</a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
