@@ -22,7 +22,7 @@ export async function SiteFooter({ variant = 'default' }: SiteFooterProps) {
           {[0, 1].map((set) => <div className="footer-reel-set" aria-hidden={set === 1} key={set}>{footerFilms.map((video) => <a href={`/our-work?play=${video.id}`} key={`${video.id}-${set}`}>{video.client} — {video.title}</a>)}</div>)}
         </div>
       </nav>}
-      <div className="footer-meta"><span>Strategy · Video · Campaigns · Digital</span><a className="top-link" href="#top">Back to top ↑</a><span className="footer-copyright">© {new Date().getFullYear()} TranterGrey <a className="footer-login" href="/login">Login</a></span></div>
+      <div className="footer-meta"><span>Strategy · Video · Campaigns · Digital</span><a className="top-link" href="#top">Back to top ↑</a><span className="footer-copyright">© {new Date().getFullYear()} TranterGrey <a className="footer-legal-link" href="/privacy-policy">Privacy Policy</a><a className="footer-legal-link" href="/terms-and-conditions">Terms &amp; Conditions</a><a className="footer-login" href="/login">Login</a></span></div>
     </div>
   </footer>;
 }

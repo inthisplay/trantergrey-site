@@ -35,6 +35,7 @@ import './collections.css';
 import './meet.css';
 import './video-projects.css';
 import './footer.css';
+import './legal.css';
 
 export const metadata: Metadata = {
   title: 'TranterGrey — Marketing in motion.',
