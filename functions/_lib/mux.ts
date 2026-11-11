@@ -17,7 +17,7 @@ type MuxAsset = {
   static_renditions?: { status?: string; files?: Array<{ id?: string; name?: string; status?: string; resolution?: string; resolution_tier?: string }> };
 };
 
-type MuxResponse<T> = { data?: T; total_row_count?: number; error?: { message?: string }; message?: string };
+type MuxResponse<T> = { data?: T; total_row_count?: number; next_cursor?: string; error?: { message?: string }; message?: string };
 
 function authorization(env: AdminEnvironment) {
   const id = env.MUX_TOKEN_ID?.trim();
@@ -98,13 +98,19 @@ async function muxFetch<T>(env: AdminEnvironment, path: string, init?: RequestIn
 
 export async function getMuxLibraryAssets(env: AdminEnvironment) {
   const assets: MuxLibraryAsset[] = [];
-  for (let page = 1; page <= 100; page += 1) {
-    const response = await fetch(`https://api.mux.com/video/v1/assets?limit=100&page=${page}`, { headers: { Authorization: authorization(env) } });
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  for (let page = 0; page < 100; page += 1) {
+    const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : '?limit=100';
+    const response = await fetch(`https://api.mux.com/video/v1/assets${query}`, { headers: { Authorization: authorization(env) } });
     if (!response.ok) throw new Error(`Mux returned ${response.status} while reading the library.`);
     const payload = await response.json() as MuxResponse<MuxAsset[]>;
-    const pageAssets = (payload.data ?? []).map(normalize).filter((asset): asset is MuxLibraryAsset => Boolean(asset));
+    const normalized = (payload.data ?? []).map(normalize).filter((asset): asset is MuxLibraryAsset => Boolean(asset));
+    const pageAssets = normalized.filter((asset) => !seen.has(asset.id));
+    pageAssets.forEach((asset) => seen.add(asset.id));
     assets.push(...pageAssets);
-    if (pageAssets.length < 100 || (payload.total_row_count !== undefined && assets.length >= payload.total_row_count)) break;
+    cursor = payload.next_cursor || null;
+    if (!cursor || pageAssets.length === 0) break;
   }
   return assets.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
