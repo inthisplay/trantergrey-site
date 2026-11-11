@@ -88,7 +88,7 @@ export function WatchShell({ unbranded = false }: { unbranded?: boolean }) {
   useEffect(() => {
     const search = new URLSearchParams(window.location.search);
     const collectionSlug = search.get('collection');
-    const videoSlug = search.get('slug');
+    const videoSlug = search.get('slug') || (unbranded ? window.location.pathname.split('/').filter(Boolean).at(-1) : '');
     const isCollection = Boolean(collectionSlug);
     const slug = collectionSlug || videoSlug || '';
     if (!slug) { setError('This video link is incomplete.'); return; }
