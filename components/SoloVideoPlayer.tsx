@@ -22,7 +22,14 @@ export type SoloVideoVariant = {
 
 type RatioGroupTile = {
   height: number;
-  rowStart: boolean;
+  left: number;
+  top: number;
+  width: number;
+};
+
+type RatioGroupLayout = {
+  height: number;
+  tiles: RatioGroupTile[];
   width: number;
 };
 
@@ -192,36 +199,116 @@ function numericAspectRatio(value: string | null) {
   return Number(match[1]) / Number(match[2]);
 }
 
-function arrangeRatioGroup(ratios: number[], width: number, height: number) {
-  const gap = Math.min(20, Math.max(8, width * 0.02));
-  let best: { height: number; rows: number[][] } | null = null;
-  const boundaryCount = Math.max(0, ratios.length - 1);
+type RatioKind = 'horiz' | 'sqr' | 'vert' | 'other';
 
-  for (let mask = 0; mask < 2 ** boundaryCount; mask += 1) {
-    const rows: number[][] = [[]];
-    ratios.forEach((ratio, index) => {
-      rows[rows.length - 1].push(index);
-      if (index < boundaryCount && mask & (1 << index)) rows.push([]);
-    });
-    const widthLimit = Math.min(...rows.map((row) => {
-      const ratioTotal = row.reduce((sum, index) => sum + ratios[index], 0);
-      return (width - gap * Math.max(0, row.length - 1)) / ratioTotal;
-    }));
-    const heightLimit = (height - gap * Math.max(0, rows.length - 1)) / rows.length;
-    const tileHeight = Math.max(0, Math.min(widthLimit, heightLimit));
-    if (!best || tileHeight > best.height) best = { height: tileHeight, rows };
+function ratioKind(value: number): RatioKind {
+  if (Math.abs(value - (16 / 9)) < .04) return 'horiz';
+  if (Math.abs(value - 1) < .04) return 'sqr';
+  if (Math.abs(value - (9 / 16)) < .04) return 'vert';
+  return 'other';
+}
+
+function arrangeRatioGroup(ratios: number[], availableWidth: number, availableHeight: number): RatioGroupLayout {
+  const empty = { width: 0, height: 0, tiles: [] as RatioGroupTile[] };
+  if (availableWidth <= 0 || availableHeight <= 0) return empty;
+  const gap = 10;
+
+  const kinds = ratios.map(ratioKind);
+  const byKind = (kind: RatioKind) => kinds.indexOf(kind);
+  const horiz = byKind('horiz');
+  const sqr = byKind('sqr');
+  const vert = byKind('vert');
+  const tiles: Array<RatioGroupTile | undefined> = Array.from({ length: ratios.length });
+  const add = (index: number, left: number, top: number, width: number, height: number) => {
+    if (index >= 0) tiles[index] = { left, top, width, height };
+  };
+  const containerRatio = availableWidth / availableHeight;
+
+  // Group A: 16:9 + 1:1 + 9:16.
+  if (horiz >= 0 && sqr >= 0 && vert >= 0 && ratios.length === 3) {
+    if (containerRatio <= 1.405) {
+      const width = Math.min(availableWidth, (availableHeight - gap) / (9 / 16 + (25 / 52) * (16 / 9)));
+      const topHeight = width * 9 / 16;
+      const lowerWidth = width - gap;
+      const squareWidth = lowerWidth * 27 / 52;
+      const verticalWidth = lowerWidth * 25 / 52;
+      const bottomHeight = verticalWidth * 16 / 9;
+      add(horiz, 0, 0, width, topHeight);
+      add(sqr, 0, topHeight + gap, squareWidth, squareWidth);
+      add(vert, squareWidth + gap, topHeight + gap, verticalWidth, bottomHeight);
+      return { width, height: topHeight + gap + bottomHeight, tiles: tiles as RatioGroupTile[] };
+    }
+    const width = Math.min(availableWidth, availableHeight / (4 / 9) + gap * 2);
+    const contentWidth = width - gap * 2;
+    const leftHeight = contentWidth * .27;
+    const verticalWidth = contentWidth * .25;
+    const verticalHeight = verticalWidth * 16 / 9;
+    add(horiz, 0, (verticalHeight - leftHeight) / 2, contentWidth * .48, leftHeight);
+    add(sqr, contentWidth * .48 + gap, (verticalHeight - leftHeight) / 2, contentWidth * .27, leftHeight);
+    add(vert, contentWidth * .75 + gap * 2, 0, verticalWidth, verticalHeight);
+    return { width, height: verticalHeight, tiles: tiles as RatioGroupTile[] };
   }
 
-  if (!best || best.height <= 0) return { gap, tiles: [] as RatioGroupTile[] };
-  const rowStarts = new Set(best.rows.map((row) => row[0]));
-  return {
-    gap,
-    tiles: ratios.map((ratio, index) => ({
-      height: best.height,
-      rowStart: index !== 0 && rowStarts.has(index),
-      width: best.height * ratio,
-    })),
-  };
+  // Group B: 16:9 + 1:1.
+  if (horiz >= 0 && sqr >= 0 && ratios.length === 2) {
+    if (containerRatio <= 4 / 3) {
+      const width = Math.min(availableWidth, .64 * (availableHeight - gap));
+      add(horiz, 0, 0, width, width * 9 / 16);
+      add(sqr, 0, width * 9 / 16 + gap, width, width);
+      return { width, height: width * 25 / 16 + gap, tiles: tiles as RatioGroupTile[] };
+    }
+    const width = Math.min(availableWidth, availableHeight / .36 + gap);
+    const contentWidth = width - gap;
+    const tileHeight = contentWidth * .36;
+    add(horiz, 0, 0, contentWidth * 16 / 25, tileHeight);
+    add(sqr, contentWidth * 16 / 25 + gap, 0, contentWidth * 9 / 25, tileHeight);
+    return { width, height: tileHeight, tiles: tiles as RatioGroupTile[] };
+  }
+
+  // Group C: 16:9 + 9:16. The container ratio replaces the prototype's viewport-width threshold.
+  if (horiz >= 0 && vert >= 0 && ratios.length === 2) {
+    if (containerRatio <= 1.5) {
+      const horizontalWidth = Math.min(availableWidth, Math.max(0, availableHeight - gap) * 16 / 9);
+      const horizontalHeight = horizontalWidth * 9 / 16;
+      const remainingHeight = Math.max(0, availableHeight - horizontalHeight - gap);
+      const preferredVerticalHeight = availableHeight * .6;
+      const verticalHeight = Math.min(remainingHeight, preferredVerticalHeight, horizontalWidth * 16 / 9);
+      const verticalWidth = verticalHeight * 9 / 16;
+      add(horiz, 0, 0, horizontalWidth, horizontalHeight);
+      add(vert, (horizontalWidth - verticalWidth) / 2, horizontalHeight + gap, verticalWidth, verticalHeight);
+      return { width: horizontalWidth, height: horizontalHeight + gap + verticalHeight, tiles: tiles as RatioGroupTile[] };
+    }
+    const width = Math.min(availableWidth, availableHeight / (16 / 27) + gap);
+    const contentWidth = width - gap;
+    const horizontalWidth = contentWidth * 2 / 3;
+    const horizontalHeight = horizontalWidth * 9 / 16;
+    const verticalWidth = contentWidth / 3;
+    const verticalHeight = verticalWidth * 16 / 9;
+    add(horiz, 0, (verticalHeight - horizontalHeight) / 2, horizontalWidth, horizontalHeight);
+    add(vert, horizontalWidth + gap, 0, verticalWidth, verticalHeight);
+    return { width, height: verticalHeight, tiles: tiles as RatioGroupTile[] };
+  }
+
+  // Group D: 1:1 + 9:16.
+  if (sqr >= 0 && vert >= 0 && ratios.length === 2) {
+    if (containerRatio <= 18 / 25) {
+      const width = Math.min(availableWidth, .36 * (availableHeight - gap));
+      add(sqr, 0, 0, width, width);
+      add(vert, 0, width + gap, width, width * 16 / 9);
+      return { width, height: width * 25 / 9 + gap, tiles: tiles as RatioGroupTile[] };
+    }
+    const width = Math.min(availableWidth, availableHeight * 9 / 8 + gap);
+    const tileWidth = (width - gap) / 2;
+    const verticalHeight = tileWidth * 16 / 9;
+    add(sqr, 0, (verticalHeight - tileWidth) / 2, tileWidth, tileWidth);
+    add(vert, tileWidth + gap, 0, tileWidth, verticalHeight);
+    return { width, height: verticalHeight, tiles: tiles as RatioGroupTile[] };
+  }
+
+  // A one-ratio or unsupported group retains its intrinsic ratio within the supplied box.
+  const ratio = ratios[0] || 16 / 9;
+  const height = Math.min(availableHeight, availableWidth / ratio);
+  return { width: height * ratio, height, tiles: [{ left: 0, top: 0, width: height * ratio, height }] };
 }
 
 function selectorLabel(variant: SoloVideoVariant) {
@@ -253,8 +340,9 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
   const [noticeKind, setNoticeKind] = useState<'info' | 'success' | 'error'>('info');
   const syncedVideos = useRef(new Map<string, HTMLVideoElement>());
   const syncing = useRef(false);
+  const mediaRegionRef = useRef<HTMLDivElement>(null);
   const ratioGroupRef = useRef<HTMLDivElement>(null);
-  const [ratioGroupLayout, setRatioGroupLayout] = useState<{ gap: number; tiles: RatioGroupTile[] }>({ gap: 0, tiles: [] });
+  const [ratioGroupLayout, setRatioGroupLayout] = useState<RatioGroupLayout>({ width: 0, height: 0, tiles: [] });
   useEffect(() => {
     if (standaloneHref) return;
     const requested = variantFromRatioParam(variants, new URLSearchParams(window.location.search).get('ratio'));
@@ -275,23 +363,22 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
   useLayoutEffect(() => {
     if (!showingAll) return;
     const group = ratioGroupRef.current;
-    if (!group) return;
+    const region = mediaRegionRef.current;
+    if (!group || !region) return;
     const update = () => {
-      const bounds = group.getBoundingClientRect();
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-      const availableHeight = Math.max(0, viewportHeight - bounds.top - 24);
-      setRatioGroupLayout(arrangeRatioGroup(variants.map((variant) => numericAspectRatio(variant.aspectRatio)), bounds.width, availableHeight));
+      const style = window.getComputedStyle(region);
+      const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+      const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+      const availableWidth = Math.max(0, region.clientWidth - horizontalPadding);
+      const availableHeight = Math.max(0, region.clientHeight - verticalPadding);
+      setRatioGroupLayout(arrangeRatioGroup(variants.map((variant) => numericAspectRatio(variant.aspectRatio)), availableWidth, availableHeight));
     };
     const frame = window.requestAnimationFrame(update);
     const observer = new ResizeObserver(update);
-    observer.observe(group);
-    window.addEventListener('resize', update);
-    window.visualViewport?.addEventListener('resize', update);
+    observer.observe(region);
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener('resize', update);
-      window.visualViewport?.removeEventListener('resize', update);
     };
   }, [showingAll, variants]);
 
@@ -417,11 +504,10 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
       <button type="button" className={showingAll ? 'active' : ''} onClick={() => selectRatio('all')}>All</button>
       {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => selectRatio(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
     </div>}
-    {showingAll ? <div className="solo-video-all-stages" ref={ratioGroupRef} style={{ '--ratio-group-gap': `${ratioGroupLayout.gap}px` } as CSSProperties}>{variants.map((variant, index) => {
+    <div className="solo-video-media-region" ref={mediaRegionRef}>{showingAll ? <div className="solo-video-all-stages" ref={ratioGroupRef} style={{ width: `${ratioGroupLayout.width}px`, height: `${ratioGroupLayout.height}px` }}>{variants.map((variant, index) => {
       const tile = ratioGroupLayout.tiles[index];
-      return <Fragment key={variant.assetId}>{tile?.rowStart && <span className="solo-video-ratio-row-break" aria-hidden="true" />}
-        <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} style={tile ? { width: `${tile.width}px`, height: `${tile.height}px` } : undefined}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div></Fragment>;
-    })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}
+      return <Fragment key={variant.assetId}><div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} style={tile ? { left: `${tile.left}px`, top: `${tile.top}px`, width: `${tile.width}px`, height: `${tile.height}px` } : undefined}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div></Fragment>;
+    })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`} style={{ aspectRatio: ratio }}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}</div>
     <div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" onClick={copyUrl}>

@@ -20,7 +20,7 @@ export function VideoModal({ video, onClose, children }: { video: ModalVideo | n
   if (!video?.muxPlaybackId || typeof document === 'undefined') return null;
   return createPortal(
     <div className="video-modal" role="dialog" aria-modal="true" aria-label={video.title} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="modal-shell"><div className="modal-bar"><p>{video.client} — {video.title}</p><button autoFocus onClick={onClose}>Close ×</button></div>{children || <div className="modal-player"><MuxVideoPlayer key={video.muxPlaybackId} assetId={video.id} playbackId={video.muxPlaybackId} poster={video.thumbnail} title={video.title} autoPlay /></div>}</div>
+      <div className="modal-shell"><div className="modal-bar"><p>{video.client} — {video.title}</p><button autoFocus onClick={onClose}>Close ×</button></div>{children ? <div className="modal-body">{children}</div> : <div className="modal-player"><MuxVideoPlayer key={video.muxPlaybackId} assetId={video.id} playbackId={video.muxPlaybackId} poster={video.thumbnail} title={video.title} autoPlay /></div>}</div>
     </div>,
     document.body,
   );

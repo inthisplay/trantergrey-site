@@ -2,13 +2,25 @@
 /* Public video pages keep the film dominant; collection landing pages retain the large display title. */
 .solo-video-heading h1{font-size:clamp(1.65rem,3vw,3.1rem);line-height:1.02;letter-spacing:-.045em}.collection-page .solo-video-heading h1{font-size:clamp(1.75rem,4vw,3.75rem);line-height:1;letter-spacing:-.05em}
 
-/* Public watch presentation */
-.solo-video-player{
-  --solo-player-max-height:calc(100svh - 300px);
-  --solo-player-width-height-cap:48.375vw;
-  position:relative;
+/* The parent owns the available canvas. The media component only fills that box. */
+.solo-video-public-media-region{
+  --media-max-height:50rem;
   width:min(100%,1600px);
+  max-width:100%;
   margin-inline:auto;
+}
+
+.solo-video-player{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  width:100%;
+  max-width:100%;
+  height:var(--media-max-height);
+  max-height:100%;
+  margin-inline:auto;
+  min-height:0;
+  padding-top:56px;
 }
 .tg-player-bottom input{appearance:none;background:var(--bright)}.tg-player-bottom input::-webkit-slider-thumb{width:2px;height:17px;appearance:none;border:0;border-radius:0!important;background:var(--bright);cursor:grab}.tg-player-bottom input::-moz-range-thumb{width:2px;height:17px;border:0;border-radius:0!important;background:var(--bright);cursor:grab}
 .tg-player-bottom>.tg-player-controls{position:relative;z-index:2;margin-left:auto!important;justify-content:flex-end;touch-action:manipulation}.tg-player-bottom>.tg-player-controls button{position:relative;z-index:1;touch-action:manipulation}
@@ -23,49 +35,62 @@
   height:100%;
 }
 
-.solo-video-player.has-actions{
-  --solo-player-max-height:calc(100svh - 360px);
-  padding-top:56px;
-  width:fit-content;
-  max-width:100%;
-}
-
 .solo-video-stage{
   isolation:isolate;
-  width:100%;
   overflow:hidden;
   border:1px solid rgba(245,242,237,.09);
   background:#050505;
   box-shadow:0 12px 24px rgba(0,0,0,.32),0 36px 88px rgba(0,0,0,.5);
 }
 
-.solo-video-player>.solo-video-stage{
-  width:fit-content;
-  max-width:100%;
-  margin-inline:auto;
-}
-
 .solo-video-stage>div{
   width:100%;
-  max-height:none;
+  height:100%;
 }
 
-.solo-video-stage:not(.portrait)>div{
-  width:auto;
-  height:min(var(--solo-player-max-height),var(--solo-player-width-height-cap));
+.solo-video-media-region{
+  display:flex;
+  flex:1 1 auto;
+  min-height:0;
   max-width:100%;
+  max-height:100%;
+  padding:16px;
+  overflow:hidden;
+  align-items:center;
+  justify-content:center;
 }
 
-.solo-video-stage.portrait{
-  width:min(520px,100%);
-  margin-inline:auto;
+.solo-video-media-region>.solo-video-stage{
+  display:grid;
+  width:auto;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
+  place-items:center;
 }
 
-.solo-video-stage.portrait>div{
-  width:100%;
+.solo-video-media-region>.solo-video-stage>div{
+  width:auto;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
 }
 
-.solo-video-all-stages{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:var(--ratio-group-gap,12px);width:min(100%,1180px);margin-inline:auto}.solo-video-all-stages .solo-video-stage{flex:0 0 auto;min-width:0;min-height:0;margin:0}.solo-video-all-stages .solo-video-stage>div{width:100%;height:100%;max-height:none}.solo-video-ratio-row-break{flex-basis:100%;height:0}@media(max-width:800px){.solo-video-player{--solo-player-max-height:calc(100svh - 240px);--solo-player-width-height-cap:50.625vw}.solo-video-all-stages{width:100%}}
+.solo-video-all-stages{
+  position:relative;
+  flex:0 0 auto;
+  max-width:100%;
+  max-height:100%;
+}
+
+.solo-video-all-stages .solo-video-stage{
+  position:absolute;
+  min-width:0;
+  min-height:0;
+  margin:0;
+}
+
+.solo-video-all-stages .solo-video-stage>div{width:100%;height:100%;max-height:none}
 
 .solo-videojs-player,
 .solo-video-stage .solo-videojs-skin{
@@ -224,7 +249,7 @@
 }
 
 .solo-video-presentation{
-  width:fit-content;
+  width:min(100%,1600px);
   max-width:100%;
   margin-inline:auto;
 }
@@ -246,8 +271,6 @@
   }
 
   .solo-video-player.has-actions{
-    --solo-player-max-height:calc(100svh - 240px);
-    padding-top:0;
     width:100%;
   }
 
@@ -318,17 +341,53 @@
   }
 }
 
-.video-ratio-preview {
-  max-height: calc(100dvh - 125px);
-  overflow: auto;
-  padding: 16px;
+.video-modal .modal-shell{
+  width:min(1400px,100%);
+  display:flex;
+  flex-direction:column;
+  height:min(900px,calc(100dvh - 48px));
+  max-height:calc(100dvh - 48px);
+  min-height:0;
 }
-.video-ratio-preview .solo-video-all-stages { --ratio-stage-height:clamp(160px,54dvh,480px); }
+
+.video-modal .modal-body{
+  display:flex;
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+}
+
+.video-ratio-preview {
+  --media-max-height:100%;
+  display:flex;
+  flex:1 1 auto;
+  min-height:0;
+  max-height:100%;
+  overflow:auto;
+  padding:16px;
+}
+
+.video-ratio-preview .solo-video-player{
+  height:100%;
+}
+.video-ratio-preview .solo-video-player.has-actions {
+  /* `width: fit-content` is useful on the standalone watch page, but in a
+     Safari modal it creates a circular percentage-size calculation and can
+     collapse a one-ratio player to a vertical line. */
+  width: 100%;
+}
+.video-ratio-preview .solo-video-player.has-actions > .solo-video-stage {
+  width: 100%;
+}
 
 /* Optically center the Pixelarticons artwork within the playback button. */
 .tg-player-transport .tg-player-play svg {
   transform: translateX(1px);
 }
+
+/* This must follow the base multi-ratio hover rules so every idle tile keeps its play control. */
+.solo-video-all-stages .tg-player-transport{display:flex}
+.solo-video-all-stages .tg-player-interface:not(.started){opacity:1}
 
 .solo-collection-header {
   display: flex;
