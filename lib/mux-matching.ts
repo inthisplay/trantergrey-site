@@ -29,15 +29,11 @@ export type MatchedMuxLibraryAsset = MuxLibraryAsset & {
   downloadsEnabled?: boolean;
 };
 
-function inferredClient(assetTitle: string, candidates: VimeoMatchCandidate[]) {
+type KnownClient = { client: string; normalized: string };
+
+function inferredClient(assetTitle: string, clients: KnownClient[]) {
   const normalizedAsset = normalizedTitle(assetTitle);
-  const knownClients = [...new Set(candidates.map((video) => video.client?.trim()).filter((client): client is string => Boolean(client)))];
-  return knownClients
-    .sort((first, second) => second.length - first.length)
-    .find((client) => {
-      const name = normalizedTitle(client);
-      return name && (normalizedAsset === name || normalizedAsset.startsWith(name + ' '));
-    }) ?? null;
+  return clients.find(({ normalized }) => normalized && (normalizedAsset === normalized || normalizedAsset.startsWith(normalized + ' ')))?.client ?? null;
 }
 
 function normalizedTitle(value: string, loose = false) {
@@ -101,29 +97,34 @@ function asMatch(video: VimeoMatchCandidate, confidence: number, basis: VimeoAss
 export function matchMuxAssetsToVimeo(assets: MuxLibraryAsset[], rawCandidates: VimeoMatchCandidate[]): MatchedMuxLibraryAsset[] {
   const candidates = rawCandidates.filter((video) => video.id && video.title && Number.isFinite(video.duration));
   const byId = new Map(candidates.map((video) => [video.id, video]));
+  const clients = [...new Set(candidates.map((video) => video.client?.trim()).filter((client): client is string => Boolean(client)))]
+    .sort((first, second) => second.length - first.length)
+    .map((client) => ({ client, normalized: normalizedTitle(client) }));
 
   return assets.map((asset) => {
     if (asset.vimeoId) {
       const exact = byId.get(asset.vimeoId);
       const vimeoMatch = exact ? asMatch(exact, 1, 'embedded-id') : null;
-      return { ...asset, client: asset.historicClient || vimeoMatch?.client || inferredClient(asset.title, candidates), vimeoMatch, vimeoSuggestion: null, matchIssue: null, libraryStatus: 'unreviewed', localTags: [] };
+      return { ...asset, client: asset.historicClient || vimeoMatch?.client || inferredClient(asset.title, clients), vimeoMatch, vimeoSuggestion: null, matchIssue: null, libraryStatus: 'unreviewed', localTags: [] };
     }
 
-    const ranked = candidates.map((video) => {
-      const similarity = titleScore(asset.title, video);
+    const ranked = candidates.flatMap((video) => {
       const durationDifference = Math.abs(asset.duration - Math.round(video.duration));
       const durationClose = durationDifference <= 3;
+      if (!durationClose) return [];
+      const similarity = titleScore(asset.title, video);
+      if (similarity < 0.84) return [];
       const confidence = durationClose ? Math.min(0.99, similarity * 0.94 + 0.05) : similarity * 0.72;
-      return { video, confidence, similarity, durationClose };
-    }).filter((item) => item.durationClose && item.similarity >= 0.84).sort((a, b) => b.confidence - a.confidence);
+      return [{ video, confidence, similarity, durationClose }];
+    }).sort((a, b) => b.confidence - a.confidence);
 
     const best = ranked[0];
-    if (!best || best.confidence < 0.89) return { ...asset, client: asset.historicClient || inferredClient(asset.title, candidates), vimeoMatch: null, vimeoSuggestion: null, matchIssue: null, libraryStatus: 'unreviewed', localTags: [] };
+    if (!best || best.confidence < 0.89) return { ...asset, client: asset.historicClient || inferredClient(asset.title, clients), vimeoMatch: null, vimeoSuggestion: null, matchIssue: null, libraryStatus: 'unreviewed', localTags: [] };
     const runnerUp = ranked[1];
     if (runnerUp && best.confidence - runnerUp.confidence < 0.03 && runnerUp.video.id !== best.video.id) {
-      return { ...asset, client: asset.historicClient || inferredClient(asset.title, candidates), vimeoMatch: null, vimeoSuggestion: null, matchIssue: 'ambiguous', libraryStatus: 'unreviewed', localTags: [] };
+      return { ...asset, client: asset.historicClient || inferredClient(asset.title, clients), vimeoMatch: null, vimeoSuggestion: null, matchIssue: 'ambiguous', libraryStatus: 'unreviewed', localTags: [] };
     }
     const vimeoSuggestion = asMatch(best.video, best.confidence, 'title-and-duration');
-    return { ...asset, client: asset.historicClient || vimeoSuggestion.client || inferredClient(asset.title, candidates), vimeoMatch: null, vimeoSuggestion, matchIssue: null, libraryStatus: 'unreviewed', localTags: [] };
+    return { ...asset, client: asset.historicClient || vimeoSuggestion.client || inferredClient(asset.title, clients), vimeoMatch: null, vimeoSuggestion, matchIssue: null, libraryStatus: 'unreviewed', localTags: [] };
   });
 }
