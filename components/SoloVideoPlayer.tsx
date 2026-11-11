@@ -2,7 +2,7 @@
 
 import { PlaybackIcon } from './PlaybackIcon';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import '@videojs/react/video/skin.css';
 import { VideoPlayer, VideoSkin } from '@videojs/react/video';
 import { MuxVideo } from '@videojs/react/media/mux-video';
@@ -18,6 +18,12 @@ export type SoloVideoVariant = {
   duration: number;
   downloadsEnabled: boolean;
   maxResolution: string | null;
+};
+
+type RatioGroupTile = {
+  height: number;
+  rowStart: boolean;
+  width: number;
 };
 
 export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, keyboardShortcuts = true, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; keyboardShortcuts?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
@@ -180,6 +186,44 @@ function cssAspectRatio(value: string | null) {
   return match ? `${match[1]} / ${match[2]}` : '16 / 9';
 }
 
+function numericAspectRatio(value: string | null) {
+  const match = value?.match(/^\s*(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)\s*$/);
+  if (!match) return 16 / 9;
+  return Number(match[1]) / Number(match[2]);
+}
+
+function arrangeRatioGroup(ratios: number[], width: number, height: number) {
+  const gap = Math.min(20, Math.max(8, width * 0.02));
+  let best: { height: number; rows: number[][] } | null = null;
+  const boundaryCount = Math.max(0, ratios.length - 1);
+
+  for (let mask = 0; mask < 2 ** boundaryCount; mask += 1) {
+    const rows: number[][] = [[]];
+    ratios.forEach((ratio, index) => {
+      rows[rows.length - 1].push(index);
+      if (index < boundaryCount && mask & (1 << index)) rows.push([]);
+    });
+    const widthLimit = Math.min(...rows.map((row) => {
+      const ratioTotal = row.reduce((sum, index) => sum + ratios[index], 0);
+      return (width - gap * Math.max(0, row.length - 1)) / ratioTotal;
+    }));
+    const heightLimit = (height - gap * Math.max(0, rows.length - 1)) / rows.length;
+    const tileHeight = Math.max(0, Math.min(widthLimit, heightLimit));
+    if (!best || tileHeight > best.height) best = { height: tileHeight, rows };
+  }
+
+  if (!best || best.height <= 0) return { gap, tiles: [] as RatioGroupTile[] };
+  const rowStarts = new Set(best.rows.map((row) => row[0]));
+  return {
+    gap,
+    tiles: ratios.map((ratio, index) => ({
+      height: best.height,
+      rowStart: index !== 0 && rowStarts.has(index),
+      width: best.height * ratio,
+    })),
+  };
+}
+
 function selectorLabel(variant: SoloVideoVariant) {
   const value = variant.aspectRatio?.replace(/\s/g, '');
   if (value === '9:16' || value === '9/16' || value === '4:5' || value === '4/5') return 'Vert';
@@ -209,6 +253,8 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
   const [noticeKind, setNoticeKind] = useState<'info' | 'success' | 'error'>('info');
   const syncedVideos = useRef(new Map<string, HTMLVideoElement>());
   const syncing = useRef(false);
+  const ratioGroupRef = useRef<HTMLDivElement>(null);
+  const [ratioGroupLayout, setRatioGroupLayout] = useState<{ gap: number; tiles: RatioGroupTile[] }>({ gap: 0, tiles: [] });
   useEffect(() => {
     if (standaloneHref) return;
     const requested = variantFromRatioParam(variants, new URLSearchParams(window.location.search).get('ratio'));
@@ -225,6 +271,29 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
   const isPortrait = numericRatio ? Number(numericRatio[1]) < Number(numericRatio[2]) : false;
   const downloadVariants = showingAll ? variants.filter((variant) => variant.downloadsEnabled) : selected.downloadsEnabled ? [selected] : [];
   const downloadAllQualities = downloadQualities.filter((quality) => downloadVariants.every((variant) => availableDownloadQualities(variant.maxResolution).includes(quality)));
+
+  useLayoutEffect(() => {
+    if (!showingAll) return;
+    const group = ratioGroupRef.current;
+    if (!group) return;
+    const update = () => {
+      const bounds = group.getBoundingClientRect();
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const availableHeight = Math.max(0, viewportHeight - bounds.top - 24);
+      setRatioGroupLayout(arrangeRatioGroup(variants.map((variant) => numericAspectRatio(variant.aspectRatio)), bounds.width, availableHeight));
+    };
+    const frame = window.requestAnimationFrame(update);
+    const observer = new ResizeObserver(update);
+    observer.observe(group);
+    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+    };
+  }, [showingAll, variants]);
 
   function showNotice(message: string, kind: 'info' | 'success' | 'error' = 'info') {
     setNotice(message);
@@ -348,7 +417,11 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
       <button type="button" className={showingAll ? 'active' : ''} onClick={() => selectRatio('all')}>All</button>
       {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => selectRatio(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
     </div>}
-    {showingAll ? <div className="solo-video-all-stages">{variants.map((variant) => <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} key={variant.assetId} style={{ '--variant-ratio': cssAspectRatio(variant.aspectRatio) } as CSSProperties}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div>)}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}
+    {showingAll ? <div className="solo-video-all-stages" ref={ratioGroupRef} style={{ '--ratio-group-gap': `${ratioGroupLayout.gap}px` } as CSSProperties}>{variants.map((variant, index) => {
+      const tile = ratioGroupLayout.tiles[index];
+      return <Fragment key={variant.assetId}>{tile?.rowStart && <span className="solo-video-ratio-row-break" aria-hidden="true" />}
+        <div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} style={tile ? { width: `${tile.width}px`, height: `${tile.height}px` } : undefined}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div></Fragment>;
+    })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}
     <div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" onClick={copyUrl}>
