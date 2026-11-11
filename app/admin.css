@@ -287,6 +287,10 @@
   gap: 8px;
   padding: 5px 0;
 }
+.mux-collection-ratio-options .mux-collection-ratio-option {
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+}
 .mux-collection-ratio-options input[type='checkbox'] {
   width: auto;
   accent-color: var(--bright);

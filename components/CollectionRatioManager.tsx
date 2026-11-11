@@ -53,18 +53,25 @@ export function CollectionRatioManager({ collectionId, entries, videoCount, onDe
     </header>
     {(open || message) && <section className="mux-collection-ratio-manager">
       {open && <form className="mux-bulk-simple-form" onSubmit={save}>
-        <p>Choose two or more videos to group. Unselected ratios stay in their current groups.</p>
+        <p>Choose two or more collection videos to group. Existing multi-ratio groups stay intact unless all of their versions are selected.</p>
         <label><span>Group title</span><input required maxLength={160} value={title} disabled={saving} onChange={(event) => setTitle(event.target.value)} /></label>
-        <div className="mux-collection-ratio-options">{entries.map(({ project, assets }) => <fieldset key={project.id} disabled={saving}>
-          <legend>{project.title}</legend>
-          {assets.map(({ asset, variant }) => <label key={asset.id}>
-            <input type="checkbox" checked={selected.includes(asset.id)} onChange={(event) => {
+        <div className="mux-collection-ratio-options">
+          {entries.flatMap(({ project, assets }) => assets.length === 1 ? assets.map(({ asset, variant }) => <label className="mux-collection-ratio-option" key={asset.id}>
+            <input type="checkbox" disabled={saving} checked={selected.includes(asset.id)} onChange={(event) => {
               setSelected(event.target.checked ? [...selected, asset.id] : selected.filter((id) => id !== asset.id));
               if (event.target.checked && !title.trim()) setTitle(project.title);
             }} />
             {asset.title} · {asset.aspectRatio || variant.label}
-          </label>)}
-        </fieldset>)}</div>
+          </label>) : <fieldset key={project.id} disabled={saving}>
+            <legend>{project.title} · ratio group</legend>
+            {assets.map(({ asset, variant }) => <label key={asset.id}>
+              <input type="checkbox" checked={selected.includes(asset.id)} onChange={(event) => {
+                setSelected(event.target.checked ? [...selected, asset.id] : selected.filter((id) => id !== asset.id));
+                if (event.target.checked && !title.trim()) setTitle(project.title);
+              }} />
+              {asset.title} · {asset.aspectRatio || variant.label}
+            </label>)}
+          </fieldset>)}</div>
         <button type="submit" disabled={saving || selected.length < 2 || !title.trim()}>{saving ? 'Saving…' : 'Save ratio group'}</button>
       </form>}
       {message && <p role="status">{message}</p>}
