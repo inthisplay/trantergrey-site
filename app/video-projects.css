@@ -262,6 +262,62 @@
   margin-bottom:0;
 }
 
+/* A shareable client link can deliberately opt out of all TranterGrey chrome. */
+.unbranded-video-page{
+  display:grid;
+  min-height:100svh;
+  box-sizing:border-box;
+  place-items:center;
+  background:#eeeeec;
+  padding:clamp(24px,5vw,80px);
+}
+body:has(.unbranded-video-page) .site-header,
+body:has(.unbranded-video-page) .site-footer{display:none}
+body:has(.unbranded-video-page) .solo-video-page{background:#eeeeec}
+.unbranded-video-frame{
+  width:min(100%,1180px);
+}
+.unbranded-video-frame .solo-video-player{
+  --media-max-height:min(76svh,740px);
+  height:auto;
+  padding-top:0;
+}
+.unbranded-video-frame .solo-video-media-region{
+  display:block;
+  flex:none;
+  padding:0;
+  overflow:visible;
+}
+.unbranded-video-frame .solo-video-stage{
+  width:100%;
+  box-shadow:0 20px 45px rgba(23,25,29,.13),0 5px 15px rgba(23,25,29,.09);
+}
+.unbranded-video-frame .solo-video-actions{
+  position:static;
+  justify-content:flex-end;
+  margin-top:16px;
+}
+.unbranded-video-frame .solo-video-actions button{
+  border-color:rgba(23,25,29,.24);
+  background:rgba(255,255,255,.62);
+  color:#25272a;
+}
+.unbranded-video-frame .solo-video-actions button:hover{
+  border-color:#25272a;
+  background:#25272a;
+  color:#fff;
+}
+.unbranded-video-frame .solo-video-notification{
+  border-color:rgba(23,25,29,.2);
+  background:#fff;
+  color:#25272a;
+}
+@media(max-width:620px){
+  .unbranded-video-page{padding:20px;align-items:center}
+  .unbranded-video-frame .solo-video-actions{margin-top:12px}
+  .unbranded-video-frame .solo-video-action-buttons{justify-content:flex-end}
+}
+
 @media(max-width:620px){
   .solo-video-actions{
     position:static;

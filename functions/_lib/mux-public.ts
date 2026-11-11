@@ -17,12 +17,12 @@ export async function publicWatchData(env: AdminEnvironment, slug: string) {
   if (project) {
     const assets = await Promise.all(project.variants.map((variant) => getMuxLibraryAsset(env, variant.assetId).catch(() => null)));
     const variants = assets.flatMap((asset, index) => asset ? [publicVariant(asset, project.variants[index].label, metadata)].filter((item): item is PublicVariant => Boolean(item)) : []);
-    return { title: project.title, client: project.client, description: project.description, variants, collections: store.collections.filter((collection) => project.collectionIds.includes(collection.id)) };
+    return { title: project.title, client: project.client, description: project.description, unbrandedPublicPage: project.unbrandedPublicPage === true, variants, collections: store.collections.filter((collection) => project.collectionIds.includes(collection.id)) };
   }
   if (!/^[A-Za-z0-9]+$/.test(slug)) return null;
   const asset = await getMuxLibraryAsset(env, slug).catch(() => null); if (!asset) return null;
   const saved = metadata[asset.id]; const variant = publicVariant(asset, ratioLabel(asset.aspectRatio), metadata);
-  return { title: saved?.title || asset.title, client: saved?.client || '', description: '', variants: variant ? [variant] : [], collections: [] };
+  return { title: saved?.title || asset.title, client: saved?.client || '', description: '', unbrandedPublicPage: false, variants: variant ? [variant] : [], collections: [] };
 }
 
 export async function publicCollectionData(env: AdminEnvironment, slug: string) {

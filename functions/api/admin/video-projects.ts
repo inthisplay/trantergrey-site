@@ -12,10 +12,10 @@ export async function onRequestPost({ request, env }: Context) {
 export async function onRequestPatch({ request, env }: Context) {
   const denied = await adminResponse(request, env); if (denied) return denied;
   try {
-    const body = await request.json() as { projectId?: unknown; title?: unknown; collectionId?: unknown; assetIds?: unknown };
+    const body = await request.json() as { projectId?: unknown; title?: unknown; unbrandedPublicPage?: unknown; collectionId?: unknown; assetIds?: unknown };
     const project = 'assetIds' in body
       ? await regroupVideoRatios(env, body, body.collectionId === undefined ? await getMuxLibraryAssets(env) : undefined)
-      : await updateVideoProject(env, body.projectId, { title: body.title });
+      : await updateVideoProject(env, body.projectId, { ...('title' in body ? { title: body.title } : {}), ...('unbrandedPublicPage' in body ? { unbrandedPublicPage: body.unbrandedPublicPage } : {}) });
     return Response.json({ project });
   }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not update this video project.' }, { status: 400 }); }

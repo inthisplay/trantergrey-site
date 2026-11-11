@@ -24,12 +24,14 @@ function muxThumbnailUrl(playbackId: string, time: number) {
   return `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${time}&width=960`;
 }
 
-export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRenditions, projectSlug, duration, thumbnailTime, thumbnailUrl, downloadsEnabled }: {
+export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRenditions, projectId, projectSlug, unbrandedPublicPage, duration, thumbnailTime, thumbnailUrl, downloadsEnabled }: {
   assetId: string;
   playbackId: string | null;
   playbackPolicy: string | null;
   staticRenditions: Rendition[];
+  projectId: string | null;
   projectSlug: string | null;
+  unbrandedPublicPage: boolean;
   duration: number;
   thumbnailTime: number;
   thumbnailUrl: string | null;
@@ -43,6 +45,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
   const [selectedThumbnailTime, setSelectedThumbnailTime] = useState(thumbnailTime);
   const [savedThumbnail, setSavedThumbnail] = useState(thumbnailUrl);
   const [publicDownloadsEnabled, setPublicDownloadsEnabled] = useState(downloadsEnabled);
+  const [unbrandedPage, setUnbrandedPage] = useState(unbrandedPublicPage);
   const readyDownload = renditions.find((rendition) => rendition.status === 'ready' && rendition.url);
   const pendingDownload = renditions.some((rendition) => ['preparing', 'processing'].includes(rendition.status));
   const publicPlayback = playbackPolicy === 'public' && Boolean(playbackId);
@@ -153,6 +156,16 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     const updated = await run('public-downloads', () => postJson('/api/admin/mux-assets/metadata', { assetId, downloadsEnabled: next }), next ? 'Public downloads enabled.' : 'Public downloads disabled.');
     if (updated) setPublicDownloadsEnabled(next);
   };
+  const toggleUnbrandedPage = async () => {
+    if (!projectId) return;
+    const next = !unbrandedPage;
+    const updated = await run('unbranded-page', () => fetch('/api/admin/video-projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, unbrandedPublicPage: next }) }).then(async (response) => {
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error || 'Could not update the public page.');
+      return payload;
+    }), next ? 'Unbranded public page enabled.' : 'Branded public page restored.');
+    if (updated) setUnbrandedPage(next);
+  };
   const replaceVideo = async (file: File | undefined) => {
     if (!file) return;
     if (!window.confirm('Replace this Mux video with the selected file? The shareable page will stay the same and the current Mux asset will be permanently deleted after the replacement is ready.')) return;
@@ -207,6 +220,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     </section>
     <section><small>Download</small><p>Mux prepares the MP4 only when someone asks for it.</p><button className="primary" type="button" onClick={download} disabled={Boolean(busy) || downloadRequested}>{downloadRequested || busy === 'download' ? 'Preparing…' : 'Download'}</button></section>
     <section><small>Public download</small><p>{publicDownloadsEnabled ? 'Visitors can request an MP4 from the public video page.' : 'The download button is hidden on the public video page.'}</p><button type="button" onClick={togglePublicDownloads} disabled={Boolean(busy)}>{busy === 'public-downloads' ? 'Updating…' : publicDownloadsEnabled ? 'Disable downloads' : 'Enable downloads'}</button></section>
+    {projectId && <section><small>Public page style</small><p>{unbrandedPage ? 'This shared page is a simple light-grey video viewer with share and embed controls.' : 'This shared page uses the standard TranterGrey navigation and footer.'}</p><button type="button" onClick={toggleUnbrandedPage} disabled={Boolean(busy)}>{busy === 'unbranded-page' ? 'Updating…' : unbrandedPage ? 'Use branded page' : 'Make page unbranded'}</button></section>}
     <section><small>Playback</small><p>{publicPlayback ? 'This video has a public Mux playback ID.' : 'Its public page exists, but playback is currently unavailable.'}</p><button type="button" onClick={togglePlayback} disabled={Boolean(busy)}>{busy === 'playback' ? 'Updating…' : publicPlayback ? 'Disable public playback' : 'Enable public playback'}</button></section>
     <section className="danger"><small>Danger zone</small><p>Deletion permanently removes the asset from Mux.</p><button type="button" onClick={deleteVideo} disabled={Boolean(busy)}>{busy === 'delete' ? 'Deleting…' : 'Delete from Mux'}</button></section>
     {message && <p className="mux-action-message" role="status">{message}</p>}

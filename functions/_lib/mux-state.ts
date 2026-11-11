@@ -131,7 +131,7 @@ export async function createVideoProject(env: AdminEnvironment, input: { title?:
   } else if (conflicts.length) throw new Error('One or more selected assets already belong to a video page.');
   if (variants.some((item) => { const asset = byId.get(item.assetId); return !asset?.playbackId || asset.playbackPolicy !== 'public'; })) throw new Error('Every selected asset needs a public Mux playback ID.');
   const validCollections = new Set(store.collections.map((item) => item.id)); const now = new Date().toISOString();
-  const project: VideoProject = { id: crypto.randomUUID(), title, slug, client: text(input.client, 120) || null, description: text(input.description, 1200) || null, variants, collectionIds: ids(input.collectionIds).filter((id) => validCollections.has(id)), createdAt: now, updatedAt: now };
+  const project: VideoProject = { id: crypto.randomUUID(), title, slug, client: text(input.client, 120) || null, description: text(input.description, 1200) || null, unbrandedPublicPage: false, variants, collectionIds: ids(input.collectionIds).filter((id) => validCollections.has(id)), createdAt: now, updatedAt: now };
   await saveProject(env, project); return project;
 }
 
@@ -172,6 +172,7 @@ export async function regroupVideoRatios(env: AdminEnvironment, input: { collect
     title,
     client: survivor?.client ?? sources[0]?.client ?? null,
     description: survivor?.description ?? null,
+    unbrandedPublicPage: survivor?.unbrandedPublicPage ?? false,
     variants,
     collectionIds: [...new Set(sources.flatMap((item) => item.collectionIds))],
     createdAt: survivor?.createdAt ?? now,
@@ -198,14 +199,16 @@ export async function regroupVideoRatios(env: AdminEnvironment, input: { collect
   return project;
 }
 
-export async function updateVideoProject(env: AdminEnvironment, rawId: unknown, patch: { title?: unknown }) {
+export async function updateVideoProject(env: AdminEnvironment, rawId: unknown, patch: { title?: unknown; unbrandedPublicPage?: unknown }) {
   const id = text(rawId, 100);
   const store = await readVideoProjectStore(env);
   const existing = store.projects.find((item) => item.id === id);
   if (!existing) throw new Error('That video page could not be found.');
   const title = 'title' in patch ? text(patch.title, 160) : existing.title;
   if (!title) throw new Error('Give this ratio group a title.');
-  const project = { ...existing, title, updatedAt: new Date().toISOString() };
+  if ('unbrandedPublicPage' in patch && typeof patch.unbrandedPublicPage !== 'boolean') throw new Error('Choose a valid public-page style.');
+  const unbrandedPublicPage = typeof patch.unbrandedPublicPage === 'boolean' ? patch.unbrandedPublicPage : existing.unbrandedPublicPage;
+  const project: VideoProject = { ...existing, title, unbrandedPublicPage, updatedAt: new Date().toISOString() };
   await saveProject(env, project);
   return project;
 }
@@ -225,6 +228,7 @@ export async function replaceVideoAsset(env: AdminEnvironment, previousAsset: Mu
     slug: shortVideoSlug(new Set(store.projects.map((item) => item.slug))),
     client: saved?.client || null,
     description: null,
+    unbrandedPublicPage: false,
     variants,
     collectionIds: [],
     createdAt: now,
@@ -259,7 +263,7 @@ export async function assignShortVideoUrls(env: AdminEnvironment, assets: MuxLib
     if (asset.createdAt && new Date(asset.createdAt).getTime() > uploadGracePeriod) continue;
     const slug = shortVideoSlug(used); used.add(slug);
     const saved = metadata[asset.id];
-    updates.push({ id: crypto.randomUUID(), title: saved?.title || asset.title, slug, client: saved?.client || null, description: null, variants: [{ assetId: asset.id, label: ratioLabel(asset.aspectRatio), aspectRatio: asset.aspectRatio, order: 0 }], collectionIds: [], createdAt: now, updatedAt: now });
+    updates.push({ id: crypto.randomUUID(), title: saved?.title || asset.title, slug, client: saved?.client || null, description: null, unbrandedPublicPage: false, variants: [{ assetId: asset.id, label: ratioLabel(asset.aspectRatio), aspectRatio: asset.aspectRatio, order: 0 }], collectionIds: [], createdAt: now, updatedAt: now });
   }
   for (let index = 0; index < updates.length; index += 20) await Promise.all(updates.slice(index, index + 20).map((project) => saveProject(env, project)));
   return { updated: updates.length };

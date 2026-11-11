@@ -12,6 +12,7 @@ export type VideoProject = {
   legacySlugs?: string[];
   client: string | null;
   description: string | null;
+  unbrandedPublicPage?: boolean;
   variants: VideoProjectVariant[];
   collectionIds: string[];
   createdAt: string;

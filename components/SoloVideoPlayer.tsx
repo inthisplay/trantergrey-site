@@ -331,8 +331,8 @@ function variantFromRatioParam(variants: SoloVideoVariant[], value: string | nul
   })?.assetId ?? null;
 }
 
-export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: string; variants: SoloVideoVariant[]; standaloneHref?: string }) {
-  const [selectedId, setSelectedId] = useState(variants.length > 1 ? 'all' : variants[0]?.assetId ?? '');
+export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = false }: { title: string; variants: SoloVideoVariant[]; standaloneHref?: string; unbranded?: boolean }) {
+  const [selectedId, setSelectedId] = useState(unbranded ? variants[0]?.assetId ?? '' : variants.length > 1 ? 'all' : variants[0]?.assetId ?? '');
   const [downloadState, setDownloadState] = useState<'idle' | 'preparing'>('idle');
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
@@ -468,6 +468,17 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
     }
   }
 
+  async function copyEmbed() {
+    const url = new URL(window.location.href);
+    const code = `<iframe src="${url.href}" title="${title.replace(/"/g, '&quot;')}" width="960" height="540" allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen style="border:0;max-width:100%;"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(code);
+      showNotice('Embed code copied.', 'success');
+    } catch {
+      showNotice('Could not copy the embed code.', 'error');
+    }
+  }
+
   async function getDownload(variant: SoloVideoVariant, quality: DownloadQuality) {
     setDownloadMenuOpen(false);
     setDownloadState('preparing');
@@ -497,9 +508,9 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
     }
   }
 
-  return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}`}>
+  return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}${unbranded ? ' unbranded-player' : ''}`}>
     {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite">{notice}</div>}
-    {variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
+    {!unbranded && variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
       <span>View ratio</span>
       <button type="button" className={showingAll ? 'active' : ''} onClick={() => selectRatio('all')}>All</button>
       {variants.map((variant) => <button type="button" className={variant.assetId === selected.assetId && !showingAll ? 'active' : ''} onClick={() => selectRatio(variant.assetId)} key={variant.assetId}>{selectorLabel(variant)}</button>)}
@@ -517,9 +528,10 @@ export function SoloVideoPlayer({ title, variants, standaloneHref }: { title: st
             <circle cx="18" cy="19" r="2.5" />
             <path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5" />
           </svg>
-          <span>{copyState === 'copied' ? 'Copied!' : 'Copy URL'}</span>
+          <span>{copyState === 'copied' ? 'Copied!' : unbranded ? 'Share' : 'Copy URL'}</span>
         </button>
-        {downloadVariants.length > 0 && <div className="solo-download-picker"><button type="button" disabled={downloadState === 'preparing'} aria-haspopup="menu" aria-expanded={downloadMenuOpen} onClick={() => setDownloadMenuOpen((open) => !open)}>
+        {unbranded && <button type="button" onClick={() => void copyEmbed()}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" /></svg><span>Embed</span></button>}
+        {!unbranded && downloadVariants.length > 0 && <div className="solo-download-picker"><button type="button" disabled={downloadState === 'preparing'} aria-haspopup="menu" aria-expanded={downloadMenuOpen} onClick={() => setDownloadMenuOpen((open) => !open)}>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M5 20h14" /></svg><span>{downloadState === 'preparing' ? 'Preparing…' : 'Download'}</span>
         </button>{downloadMenuOpen && <div className="solo-download-menu" role="menu" aria-label="Download quality">{downloadVariants.length > 1 && <div className="solo-download-menu-group solo-download-menu-all" role="group" aria-label="Download all ratios"><span>Download all</span>{downloadAllQualities.map((quality) => <button type="button" role="menuitem" key={quality} onClick={() => void getAllDownloads(quality)}>{quality === 'highest' ? 'Highest available' : quality}</button>)}</div>}{downloadVariants.map((variant) => <div className="solo-download-menu-group" role="group" aria-label={`${selectorLabel(variant)} quality`} key={variant.assetId}>{downloadVariants.length > 1 && <span>{selectorLabel(variant)}</span>}{availableDownloadQualities(variant.maxResolution).map((quality) => <button type="button" role="menuitem" key={quality} onClick={() => void getDownload(variant, quality)}>{quality === 'highest' ? 'Highest available' : quality}</button>)}</div>)}</div>}</div>}
       </div>
