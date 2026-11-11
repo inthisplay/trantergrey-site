@@ -168,7 +168,7 @@ export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = fal
   };
 
   return <div ref={rootRef} className="solo-videojs-player">
-    <VideoPlayer title={title} poster={poster ?? undefined}>
+    <VideoPlayer poster={poster ?? undefined}>
       <VideoSkin className="solo-videojs-skin">
         <MuxVideo source={{ playbackId }} playsInline crossOrigin="anonymous" autoPlay={autoPlay} />
         <MuxData metadata={{ video_id: assetId, video_title: title }} />
