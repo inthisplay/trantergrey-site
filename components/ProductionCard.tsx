@@ -74,6 +74,7 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
     const prime = (video: HTMLVideoElement) => {
       if (video.dataset.deckPreviewPrimed === 'true') return;
       video.dataset.deckPreviewPrimed = 'true';
+      const wasMuted = video.muted;
       video.muted = true;
       video.defaultMuted = true;
       video.playsInline = true;
@@ -82,12 +83,18 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
       const pauseOnFirstFrame = () => {
         const pause = () => {
           if (!video.paused) video.pause();
+          // Muting is only needed for the automatic preview. Restore normal audio
+          // before someone intentionally presses Play.
+          video.muted = wasMuted;
+          video.defaultMuted = wasMuted;
         };
         // Safari is more dependable at retaining a decoded frame after a brief muted play
-        // than after seeking an unloaded movie. This never enables audio.
+        // than after seeking an unloaded movie. Audio is restored before user playback.
         void video.play().then(() => window.setTimeout(pause, 140)).catch(() => {
           try { video.currentTime = Math.min(0.12, Number.isFinite(video.duration) ? video.duration : 0.12); }
           catch { /* Leave the browser's normal empty-video state intact. */ }
+          video.muted = wasMuted;
+          video.defaultMuted = wasMuted;
         });
       };
 
