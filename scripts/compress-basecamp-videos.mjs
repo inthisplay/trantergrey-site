@@ -79,8 +79,13 @@ for (const input of videos) {
     // colorspace conversion to write broadly playable Rec.709 SDR output.
     ...(media.hdr ? ['-vf', 'colorspace=all=bt709:iall=bt2020:fast=1,format=yuv420p'] : []),
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '24', '-pix_fmt', 'yuv420p',
+    // Safari is more reliable with a constant frame rate and ISO MP4
+    // packaging for converted HDR phone footage, even if the preserved
+    // filename still ends in .mov.
+    ...(media.hdr ? ['-r', '30', '-fps_mode', 'cfr', '-profile:v', 'main', '-g', '60', '-keyint_min', '60'] : []),
     '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709',
-    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', target,
+    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
+    ...(media.hdr ? ['-f', 'mp4'] : []), target,
   ];
   // Map an explicitly usable stream rather than blindly using audio track 0.
   let result = spawnSync('ffmpeg', [...sharedArgs, ...(media.audio ? ['-map', `0:${media.audio.index}`] : ['-an']), ...encodingArgs], { stdio: 'inherit' });

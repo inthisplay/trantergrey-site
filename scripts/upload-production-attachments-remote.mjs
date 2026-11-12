@@ -2,9 +2,13 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-const manifestPath = args.find((value, index) => !value.startsWith('--') && args[index - 1] !== '--offset' && args[index - 1] !== '--limit') || '/private/tmp/production-local-attachments.json';
+const valueFlags = new Set(['--offset', '--limit', '--source-id', '--file-suffix', '--content-type']);
+const manifestPath = args.find((value, index) => !value.startsWith('--') && !valueFlags.has(args[index - 1])) || '/private/tmp/production-local-attachments.json';
 const sourceIds = args.flatMap((value, index) => value === '--source-id' && args[index + 1] ? [args[index + 1]] : []);
 const fileSuffixes = args.flatMap((value, index) => value === '--file-suffix' && args[index + 1] ? [args[index + 1]] : []);
+const contentTypeIndex = args.indexOf('--content-type');
+const contentTypeOverride = contentTypeIndex >= 0 ? args[contentTypeIndex + 1] : null;
+if (contentTypeIndex >= 0 && !contentTypeOverride) throw new Error('--content-type requires a MIME type.');
 const numberAfter = (flag, fallback) => {
   const index = args.indexOf(flag);
   return index >= 0 && Number.isInteger(Number(args[index + 1])) ? Number(args[index + 1]) : fallback;
@@ -25,8 +29,9 @@ const failures = [];
 for (const [index, attachment] of selection.entries()) {
   process.stdout.write(`[${offset + index + 1}/${manifest.staged.length}] ${attachment.filename}\n`);
   try {
-    execFileSync('npx', ['wrangler', 'r2', 'object', 'put', `trantergrey-production-archive/${attachment.r2Key}`, '--remote', '--file', attachment.file, '--content-type', attachment.contentType || 'application/octet-stream'], { stdio: 'pipe' });
-    completed.push(attachment);
+    const contentType = contentTypeOverride || attachment.contentType || 'application/octet-stream';
+    execFileSync('npx', ['wrangler', 'r2', 'object', 'put', `trantergrey-production-archive/${attachment.r2Key}`, '--remote', '--file', attachment.file, '--content-type', contentType], { stdio: 'pipe' });
+    completed.push({ ...attachment, uploadedContentType: contentType });
   } catch (error) {
     failures.push({ sourceId: attachment.sourceId, filename: attachment.filename, reason: error instanceof Error ? error.message : 'R2 upload failed.' });
   }
@@ -36,7 +41,7 @@ const quote = (value) => `'${String(value ?? '').replaceAll("'", "''")}'`;
 // Remote D1 file execution is already atomic and rejects explicit transaction
 // statements, so this deliberately emits plain idempotent updates.
 const sql = [];
-for (const attachment of completed) sql.push(`UPDATE production_attachments SET status='stored', failure_reason=NULL WHERE source_id=${quote(attachment.sourceId)};`);
+for (const attachment of completed) sql.push(`UPDATE production_attachments SET status='stored', content_type=${quote(attachment.uploadedContentType)}, failure_reason=NULL WHERE source_id=${quote(attachment.sourceId)};`);
 for (const failure of failures) sql.push(`UPDATE production_attachments SET status='failed', failure_reason=${quote(failure.reason.slice(0, 900))} WHERE source_id=${quote(failure.sourceId)};`);
 // Keep batch artifacts separate so a resumed upload can never overwrite a
 // concurrently finishing batch's D1 update file.
