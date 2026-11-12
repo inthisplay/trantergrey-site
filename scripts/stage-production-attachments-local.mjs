@@ -43,7 +43,7 @@ for (const row of rows) {
   const compressedFile = exportRelativePath ? join(compressedRoot, exportRelativePath) : '';
   const isVideo = String(row.contentType || '').startsWith('video/');
   const file = isVideo && existsSync(compressedFile) ? compressedFile : sourceFile;
-  const r2Key = row.r2Key || `basecamp/${row.sourceId}/${encodeURIComponent(row.filename)}`;
+  const r2Key = row.r2Key || `basecamp/${row.sourceId}/${row.filename}`;
   const endpoint = `/api/admin/production-board/attachments/${encodeURIComponent(row.sourceId)}`;
   const sourceHtmlUrl = htmlEscape(row.sourceUrl);
   const sourceJson = JSON.stringify({ exportRelativePath, compressed: isVideo && existsSync(compressedFile), originalSourceUrl: row.sourceUrl });

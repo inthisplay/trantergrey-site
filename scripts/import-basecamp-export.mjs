@@ -84,7 +84,9 @@ const preserveAttachments = (value, cardSourceId, commentSourceId, exportFile) =
   if (!filename || !sourceUrl || contentType === 'application/vnd.basecamp.mention') return whole;
   const sourceId = `bc-attachment-${cardSourceId}-${commentSourceId || 'card'}-${String(++attachmentIndex).padStart(4, '0')}`;
   const exportHref = innerHtml.match(/href="[^"?#]*(all-files-images-pdfs-spreadsheets-etc\/[^"?#]+)"/i)?.[1] || '';
-  const r2Key = `basecamp/${sourceId}/${encodeURIComponent(filename)}`;
+  // R2 object names are literal strings. Keep the original filename here;
+  // URL encoding is only for URLs, not object keys.
+  const r2Key = `basecamp/${sourceId}/${filename}`;
   attachmentSql.push(`INSERT INTO production_attachments (source_id,card_source_id,comment_source_id,filename,content_type,byte_size,r2_key,source_url,status,source_json,imported_at) VALUES (${quote(sourceId)},${quote(cardSourceId)},${commentSourceId ? quote(commentSourceId) : 'NULL'},${quote(filename)},${quote(contentType)},${Number.isFinite(byteSize) ? byteSize : 'NULL'},${quote(r2Key)},${quote(sourceUrl)},'pending',${quote(JSON.stringify({ exportFile, sourceUrl, exportHref }))},datetime('now'));`);
   const url = `/api/admin/production-board/attachments/${encodeURIComponent(sourceId)}`; const name = htmlEscape(filename); const link = `<a href="${url}" target="_blank" rel="noreferrer">${name}</a>`;
   if (contentType.startsWith('image/')) return `<figure class="production-imported-attachment production-imported-attachment--image"><a href="${url}" target="_blank" rel="noreferrer"><img src="${url}" alt="${name}" loading="lazy"></a><figcaption>${link}</figcaption></figure>`;
