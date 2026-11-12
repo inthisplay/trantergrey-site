@@ -16,10 +16,13 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
   if (!env.PRODUCTION_ARCHIVE) return Response.json({ error: 'Private production storage is not configured.' }, { status: 503 });
   const attachment = await env.TG_DATA.prepare('SELECT filename, content_type AS contentType, r2_key AS r2Key, status FROM production_attachments WHERE source_id = ?').bind(params.id).first<{ filename: string; contentType: string | null; r2Key: string | null; status: string }>();
   if (!attachment || attachment.status !== 'stored' || !attachment.r2Key) return Response.json({ error: 'This source file is unavailable.' }, { status: 404 });
-  const metadata = await env.PRODUCTION_ARCHIVE.head(attachment.r2Key);
-  if (!metadata) return Response.json({ error: 'The archived file could not be found.' }, { status: 404 });
-  const requestedRange = byteRange(request.headers.get('range'), metadata.size);
-  if (requestedRange === 'invalid') return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${metadata.size}` } });
+  // Pages' private R2 binding supports ranged reads reliably; use the first
+  // byte to obtain the object's full size rather than `head`, which can be
+  // unavailable in a preview binding.
+  const initial = await env.PRODUCTION_ARCHIVE.get(attachment.r2Key, { range: { offset: 0, length: 1 } });
+  if (!initial) return Response.json({ error: 'The archived file could not be found.' }, { status: 404 });
+  const requestedRange = byteRange(request.headers.get('range'), initial.size);
+  if (requestedRange === 'invalid') return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${initial.size}` } });
   const file = requestedRange ? await env.PRODUCTION_ARCHIVE.get(attachment.r2Key, { range: requestedRange }) : await env.PRODUCTION_ARCHIVE.get(attachment.r2Key);
   if (!file) return Response.json({ error: 'The archived file could not be found.' }, { status: 404 });
   const offset = file.range?.offset ?? 0;
@@ -29,7 +32,7 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     headers: {
       'Accept-Ranges': 'bytes',
       'Content-Length': String(length),
-      ...(requestedRange ? { 'Content-Range': `bytes ${offset}-${offset + length - 1}/${metadata.size}` } : {}),
+      ...(requestedRange ? { 'Content-Range': `bytes ${offset}-${offset + length - 1}/${initial.size}` } : {}),
       // The database value tracks the archive's canonical media type. Prefer it
       // over historic source metadata so Safari receives video/mp4 after a repair.
       'Content-Type': attachment.contentType || file.httpMetadata?.contentType || 'application/octet-stream',
