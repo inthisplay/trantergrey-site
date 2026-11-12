@@ -3,6 +3,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const manifestPath = args.find((value, index) => !value.startsWith('--') && args[index - 1] !== '--offset' && args[index - 1] !== '--limit') || '/private/tmp/production-local-attachments.json';
+const sourceIds = args.flatMap((value, index) => value === '--source-id' && args[index + 1] ? [args[index + 1]] : []);
+const fileSuffixes = args.flatMap((value, index) => value === '--file-suffix' && args[index + 1] ? [args[index + 1]] : []);
 const numberAfter = (flag, fallback) => {
   const index = args.indexOf(flag);
   return index >= 0 && Number.isInteger(Number(args[index + 1])) ? Number(args[index + 1]) : fallback;
@@ -12,7 +14,11 @@ const limit = Math.max(1, numberAfter('--limit', Number.MAX_SAFE_INTEGER));
 if (!existsSync(manifestPath)) throw new Error(`Manifest not found: ${manifestPath}`);
 
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-const selection = manifest.staged.slice(offset, offset + limit);
+const selection = sourceIds.length || fileSuffixes.length
+  ? manifest.staged.filter((attachment) => sourceIds.includes(attachment.sourceId) || fileSuffixes.some((suffix) => attachment.file.endsWith(suffix)))
+  : manifest.staged.slice(offset, offset + limit);
+if (sourceIds.length && selection.length !== sourceIds.length) throw new Error('One or more requested source IDs were not present in the manifest.');
+if (fileSuffixes.length && selection.length < fileSuffixes.length) throw new Error('One or more requested file suffixes were not present in the manifest.');
 const completed = [];
 const failures = [];
 
