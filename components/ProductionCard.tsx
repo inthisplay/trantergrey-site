@@ -67,6 +67,45 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
   });
 
   useEffect(() => { load().then(setData).catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to open this card.')); }, [id]);
+  useEffect(() => {
+    const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('.production-card video'));
+    if (!videos.length) return;
+
+    const prime = (video: HTMLVideoElement) => {
+      if (video.dataset.deckPreviewPrimed === 'true') return;
+      video.dataset.deckPreviewPrimed = 'true';
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+
+      const pauseOnFirstFrame = () => {
+        const pause = () => {
+          if (!video.paused) video.pause();
+        };
+        // Safari is more dependable at retaining a decoded frame after a brief muted play
+        // than after seeking an unloaded movie. This never enables audio.
+        void video.play().then(() => window.setTimeout(pause, 140)).catch(() => {
+          try { video.currentTime = Math.min(0.12, Number.isFinite(video.duration) ? video.duration : 0.12); }
+          catch { /* Leave the browser's normal empty-video state intact. */ }
+        });
+      };
+
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) pauseOnFirstFrame();
+      else video.addEventListener('loadeddata', pauseOnFirstFrame, { once: true });
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          prime(entry.target as HTMLVideoElement);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: '160px 0px' });
+    videos.forEach((video) => observer.observe(video));
+    return () => observer.disconnect();
+  }, [data, comment]);
   if (error || !data) return <p className="admin-empty">{error || 'Opening production card…'}</p>;
 
   const card = data.card;
