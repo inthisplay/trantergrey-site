@@ -16,11 +16,11 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
   if (!env.PRODUCTION_ARCHIVE) return Response.json({ error: 'Private production storage is not configured.' }, { status: 503 });
   const attachment = await env.TG_DATA.prepare('SELECT filename, content_type AS contentType, r2_key AS r2Key, status FROM production_attachments WHERE source_id = ?').bind(params.id).first<{ filename: string; contentType: string | null; r2Key: string | null; status: string }>();
   if (!attachment || attachment.status !== 'stored' || !attachment.r2Key) return Response.json({ error: 'This source file is unavailable.' }, { status: 404 });
-  // Pages' private R2 binding supports ranged reads reliably; use the first
-  // byte to obtain the object's full size rather than `head`, which can be
-  // unavailable in a preview binding.
-  const initial = await env.PRODUCTION_ARCHIVE.get(attachment.r2Key, { range: { offset: 0, length: 1 } });
-  if (!initial) {
+  // Fetch the archive object directly first. Some historic uploads are
+  // available through Pages' R2 binding but reject an initial 1-byte range
+  // probe, even though the full object is present.
+  const fullFile = await env.PRODUCTION_ARCHIVE.get(attachment.r2Key);
+  if (!fullFile) {
     console.error('Deck attachment missing from bound archive', {
       attachmentId: params.id,
       r2Key: attachment.r2Key,
@@ -28,18 +28,21 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     });
     return Response.json({ error: 'The archived file could not be found.' }, { status: 404 });
   }
-  const requestedRange = byteRange(request.headers.get('range'), initial.size);
-  if (requestedRange === 'invalid') return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${initial.size}` } });
-  const file = requestedRange ? await env.PRODUCTION_ARCHIVE.get(attachment.r2Key, { range: requestedRange }) : await env.PRODUCTION_ARCHIVE.get(attachment.r2Key);
-  if (!file) return Response.json({ error: 'The archived file could not be found.' }, { status: 404 });
+  const requestedRange = byteRange(request.headers.get('range'), fullFile.size);
+  if (requestedRange === 'invalid') return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${fullFile.size}` } });
+  const rangedFile = requestedRange ? await env.PRODUCTION_ARCHIVE.get(attachment.r2Key, { range: requestedRange }) : null;
+  // Falling back to a standard full response keeps the archive playable in
+  // browsers when R2 declines an otherwise valid range read.
+  const file = rangedFile || fullFile;
+  const servesRange = Boolean(rangedFile && requestedRange);
   const offset = file.range?.offset ?? 0;
   const length = file.range?.length ?? file.size;
   return new Response(file.body, {
-    status: requestedRange ? 206 : 200,
+    status: servesRange ? 206 : 200,
     headers: {
       'Accept-Ranges': 'bytes',
       'Content-Length': String(length),
-      ...(requestedRange ? { 'Content-Range': `bytes ${offset}-${offset + length - 1}/${initial.size}` } : {}),
+      ...(servesRange ? { 'Content-Range': `bytes ${offset}-${offset + length - 1}/${fullFile.size}` } : {}),
       // The database value tracks the archive's canonical media type. Prefer it
       // over historic source metadata so Safari receives video/mp4 after a repair.
       'Content-Type': attachment.contentType || file.httpMetadata?.contentType || 'application/octet-stream',
