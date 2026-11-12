@@ -20,7 +20,14 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
   // byte to obtain the object's full size rather than `head`, which can be
   // unavailable in a preview binding.
   const initial = await env.PRODUCTION_ARCHIVE.get(attachment.r2Key, { range: { offset: 0, length: 1 } });
-  if (!initial) return Response.json({ error: 'The archived file could not be found.' }, { status: 404 });
+  if (!initial) {
+    console.error('Deck attachment missing from bound archive', {
+      attachmentId: params.id,
+      r2Key: attachment.r2Key,
+      status: attachment.status,
+    });
+    return Response.json({ error: 'The archived file could not be found.' }, { status: 404 });
+  }
   const requestedRange = byteRange(request.headers.get('range'), initial.size);
   if (requestedRange === 'invalid') return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${initial.size}` } });
   const file = requestedRange ? await env.PRODUCTION_ARCHIVE.get(attachment.r2Key, { range: requestedRange }) : await env.PRODUCTION_ARCHIVE.get(attachment.r2Key);
