@@ -15,5 +15,15 @@
       "binding": "PRODUCTION_ARCHIVE",
       "bucket_name": "trantergrey-production-archive"
     }
-  ]
+  ],
+  "env": {
+    "preview": {
+      "r2_buckets": [
+        {
+          "binding": "PRODUCTION_ARCHIVE",
+          "bucket_name": "trantergrey-production-archive"
+        }
+      ]
+    }
+  }
 }
