@@ -4,6 +4,16 @@ type Statement = {
   all<T>(): Promise<{ results: T[] }>;
   run(): Promise<unknown>;
 };
+type PrivateBucketObject = {
+  body: ReadableStream;
+  size: number;
+  range?: { offset: number; length: number };
+  httpMetadata?: { contentType?: string };
+};
+type PrivateBucket = {
+  get(key: string, options?: { range?: { offset: number; length?: number } }): Promise<PrivateBucketObject | null>;
+  put(key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
+};
 
 export type AdminEnvironment = {
   ADMIN_PASSWORD?: string;
@@ -12,8 +22,14 @@ export type AdminEnvironment = {
   GOOGLE_REDIRECT_URI?: string;
   MUX_TOKEN_ID?: string;
   MUX_TOKEN_SECRET?: string;
+  // Optional machine credential for the read-only Production Board API.
+  PRODUCTION_API_TOKEN?: string;
   TG_DATA: { prepare(query: string): Statement; batch(statements: Statement[]): Promise<unknown> };
+  PRODUCTION_ARCHIVE?: PrivateBucket;
 };
+
+export type AdminSession = { name: string; email: string | null };
+type AdminIdentity = { name: string; email?: string | null };
 
 const sessionCookie = 'tg_admin';
 const sessionLifetimeSeconds = 60 * 60 * 12;
@@ -40,14 +56,19 @@ export function passwordConfigured(env: AdminEnvironment) {
   return Boolean(env.ADMIN_PASSWORD);
 }
 
-export async function hasAdminSession(request: Request, env: AdminEnvironment) {
+export async function adminSession(request: Request, env: AdminEnvironment): Promise<AdminSession | null> {
   const value = cookie(request, sessionCookie);
-  if (!value) return false;
+  if (!value) return null;
   const session = await env.TG_DATA
-    .prepare('SELECT id FROM admin_sessions WHERE id = ? AND expires_at > ?')
+    .prepare('SELECT user_name AS name, user_email AS email FROM admin_sessions WHERE id = ? AND expires_at > ?')
     .bind(value, new Date().toISOString())
-    .first<{ id: string }>();
-  return Boolean(session);
+    .first<{ name: string | null; email: string | null }>();
+  if (!session) return null;
+  return { name: session.name?.trim() || 'Admin', email: session.email || null };
+}
+
+export async function hasAdminSession(request: Request, env: AdminEnvironment) {
+  return Boolean(await adminSession(request, env));
 }
 
 export async function adminResponse(request: Request, env: AdminEnvironment) {
@@ -55,12 +76,14 @@ export async function adminResponse(request: Request, env: AdminEnvironment) {
   return Response.json({ error: configured(env) ? 'Sign in to use the private library.' : 'Private access has not been configured yet.' }, { status: configured(env) ? 401 : 503 });
 }
 
-export async function adminCookie(env: AdminEnvironment) {
+export async function adminCookie(env: AdminEnvironment, identity: AdminIdentity = { name: 'Admin' }) {
   const value = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + sessionLifetimeSeconds * 1000).toISOString();
+  const name = identity.name.trim().slice(0, 120) || 'Admin';
+  const email = identity.email?.trim().toLowerCase().slice(0, 254) || null;
   await env.TG_DATA
-    .prepare('INSERT INTO admin_sessions (id, expires_at) VALUES (?, ?)')
-    .bind(value, expiresAt)
+    .prepare('INSERT INTO admin_sessions (id, expires_at, user_name, user_email) VALUES (?, ?, ?, ?)')
+    .bind(value, expiresAt, name, email)
     .run();
   return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${sessionLifetimeSeconds}`;
 }

@@ -41,6 +41,7 @@ function AdminMenu() {
     <div id={id} className="header-admin-links" hidden={!visible}>
       <a href="/admin">Admin dashboard</a>
       <a href="/admin/mux">Mux library</a>
+      <a href="/admin/production">The Deck</a>
     </div>
   </div>;
 }

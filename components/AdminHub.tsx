@@ -6,7 +6,8 @@ type Summary = { contacts: number; videos: number };
 
 const links = [
   { href: '/admin/mux', number: '01', title: 'Mux library', description: 'Build solo pages, ratio sets, and campaign collections.' },
-  { href: '/admin/contacts', number: '02', title: 'Contact notes', description: 'Review new-project submissions.' },
+  { href: '/admin/production', number: '02', title: 'The Deck', description: 'Basecamp production archive and working board.' },
+  { href: '/admin/contacts', number: '03', title: 'Contact notes', description: 'Review new-project submissions.' },
 ];
 
 export function AdminHub() {

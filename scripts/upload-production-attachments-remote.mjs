@@ -1,0 +1,46 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+
+const args = process.argv.slice(2);
+const manifestPath = args.find((value, index) => !value.startsWith('--') && args[index - 1] !== '--offset' && args[index - 1] !== '--limit') || '/private/tmp/production-local-attachments.json';
+const numberAfter = (flag, fallback) => {
+  const index = args.indexOf(flag);
+  return index >= 0 && Number.isInteger(Number(args[index + 1])) ? Number(args[index + 1]) : fallback;
+};
+const offset = Math.max(0, numberAfter('--offset', 0));
+const limit = Math.max(1, numberAfter('--limit', Number.MAX_SAFE_INTEGER));
+if (!existsSync(manifestPath)) throw new Error(`Manifest not found: ${manifestPath}`);
+
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const selection = manifest.staged.slice(offset, offset + limit);
+const completed = [];
+const failures = [];
+
+for (const [index, attachment] of selection.entries()) {
+  process.stdout.write(`[${offset + index + 1}/${manifest.staged.length}] ${attachment.filename}\n`);
+  try {
+    execFileSync('npx', ['wrangler', 'r2', 'object', 'put', `trantergrey-production-archive/${attachment.r2Key}`, '--remote', '--file', attachment.file, '--content-type', attachment.contentType || 'application/octet-stream'], { stdio: 'pipe' });
+    completed.push(attachment);
+  } catch (error) {
+    failures.push({ sourceId: attachment.sourceId, filename: attachment.filename, reason: error instanceof Error ? error.message : 'R2 upload failed.' });
+  }
+}
+
+const quote = (value) => `'${String(value ?? '').replaceAll("'", "''")}'`;
+// Remote D1 file execution is already atomic and rejects explicit transaction
+// statements, so this deliberately emits plain idempotent updates.
+const sql = [];
+for (const attachment of completed) sql.push(`UPDATE production_attachments SET status='stored', failure_reason=NULL WHERE source_id=${quote(attachment.sourceId)};`);
+for (const failure of failures) sql.push(`UPDATE production_attachments SET status='failed', failure_reason=${quote(failure.reason.slice(0, 900))} WHERE source_id=${quote(failure.sourceId)};`);
+// Keep batch artifacts separate so a resumed upload can never overwrite a
+// concurrently finishing batch's D1 update file.
+const batchId = `${offset}-${offset + selection.length}`;
+const resultsSql = `/private/tmp/production-attachment-upload-results-${batchId}.sql`;
+writeFileSync(resultsSql, sql.join('\n'));
+// Wrangler's remote `--file` upload can lose its temporary staging object on
+// larger batches. The same idempotent statements are reliable in command mode.
+if (completed.length || failures.length) execFileSync('npx', ['wrangler', 'd1', 'execute', 'trantergrey-site-data', '--remote', '--command', sql.join('\n')], { stdio: 'inherit' });
+const resultsJson = `/private/tmp/production-attachment-upload-results-${batchId}.json`;
+writeFileSync(resultsJson, JSON.stringify({ completed: completed.length, failures, nextOffset: offset + selection.length }, null, 2));
+console.log(JSON.stringify({ completed: completed.length, failed: failures.length, results: resultsJson, nextOffset: offset + selection.length }, null, 2));
+if (failures.length) process.exitCode = 1;

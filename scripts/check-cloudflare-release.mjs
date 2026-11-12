@@ -9,6 +9,7 @@ const requiredFiles = [
   'functions/_middleware.ts',
   'functions/api/admin/session.ts',
   'out/admin/mux.html',
+  'out/admin/production.html',
   'out/mux-asset.html',
   'out/showcase.html',
   'out/watch.html',
@@ -32,6 +33,7 @@ const requiredFiles = [
   'functions/admin/mux/[id].ts',
   'migrations/0005_mux_library.sql',
   'migrations/0006_seed_mux_workspace.sql',
+  'migrations/0008_production_board.sql',
 ];
 
 for (const file of requiredFiles) {

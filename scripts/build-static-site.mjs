@@ -30,6 +30,7 @@ try {
   // These two entry points are static shells backed by Pages Functions. Keep
   // them in the export while the Node-only management sub-pages stay local.
   rmSync(path.join(staging, 'app/admin/collections/[id]'), { recursive: true, force: true });
+  rmSync(path.join(staging, 'app/admin/production/[id]'), { recursive: true, force: true });
   rmSync(path.join(staging, 'app/admin/proposals'), { recursive: true, force: true });
   rmSync(path.join(staging, 'app/[...slug]'), { recursive: true, force: true });
 

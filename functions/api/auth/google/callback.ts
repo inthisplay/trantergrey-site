@@ -29,10 +29,11 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   if (typeof tokens.access_token !== 'string') return loginError(request, 'google');
   const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
   if (!profileResponse.ok) return loginError(request, 'google');
-  const profile = await profileResponse.json() as { email?: unknown; email_verified?: unknown; hd?: unknown };
+  const profile = await profileResponse.json() as { email?: unknown; email_verified?: unknown; hd?: unknown; name?: unknown };
   if (typeof profile.email !== 'string' || profile.email_verified !== true || profile.hd !== 'trantergrey.com' || !isTranterGreyEmail(profile.email)) return loginError(request, 'domain');
+  const displayName = typeof profile.name === 'string' && profile.name.trim() ? profile.name.trim() : profile.email.split('@')[0];
   const headers = new Headers({ Location: new URL('/admin', origin(request)).toString() });
   headers.append('Set-Cookie', `${stateCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
-  headers.append('Set-Cookie', await adminCookie(env));
+  headers.append('Set-Cookie', await adminCookie(env, { name: displayName, email: profile.email }));
   return new Response(null, { status: 303, headers });
 }
