@@ -12,6 +12,7 @@ type PrivateBucketObject = {
 };
 type PrivateBucket = {
   get(key: string, options?: { range?: { offset: number; length?: number } }): Promise<PrivateBucketObject | null>;
+  head(key: string): Promise<{ size: number; httpMetadata?: { contentType?: string } } | null>;
   put(key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
 };
 
