@@ -433,6 +433,54 @@
   width: 100%;
 }
 
+/* In the installed app, the modal owns a smaller viewport than Safari. Keep the
+   ratio player inside that canvas instead of letting its top padding spill below it. */
+@media (max-width: 620px) {
+  .team-app-watch .solo-video-shell {
+    padding: 16px 12px calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .team-app-watch .solo-video-public-media-region {
+    --media-max-height:calc(100dvh - 124px - env(safe-area-inset-bottom));
+  }
+
+  .team-app-watch .solo-video-player {
+    box-sizing: border-box;
+    padding-top: 0;
+  }
+
+  .team-app-watch .solo-video-media-region {
+    padding: 8px;
+  }
+
+  body[data-team-app='true'] .video-modal .modal-bar {
+    height: 48px;
+    gap: 10px;
+    padding-inline: 12px;
+  }
+
+  body[data-team-app='true'] .video-modal .modal-bar p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-team-app='true'] .video-ratio-preview {
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  body[data-team-app='true'] .video-ratio-preview .solo-video-player {
+    box-sizing: border-box;
+    height: 100%;
+    padding-top: 0;
+  }
+
+  body[data-team-app='true'] .video-ratio-preview .solo-video-media-region {
+    padding: 8px;
+  }
+}
+
 /* Optically center the Pixelarticons artwork within the playback button. */
 .tg-player-transport .tg-player-play svg {
   transform: translateX(1px);
