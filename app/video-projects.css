@@ -453,6 +453,18 @@
     padding: 8px;
   }
 
+  .team-app-watch .solo-video-media-region > .solo-video-stage.portrait,
+  body[data-team-app='true'] .video-ratio-preview .solo-video-media-region > .solo-video-stage.portrait {
+    width: auto;
+    height: min(48dvh, 420px);
+    max-height: calc(100dvh - 230px);
+  }
+
+  .team-app-watch .solo-video-media-region > .solo-video-stage.portrait > div,
+  body[data-team-app='true'] .video-ratio-preview .solo-video-media-region > .solo-video-stage.portrait > div {
+    width: auto;
+  }
+
   body[data-team-app='true'] .video-modal .modal-bar {
     height: 48px;
     gap: 10px;
