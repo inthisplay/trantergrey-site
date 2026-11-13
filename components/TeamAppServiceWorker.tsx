@@ -14,7 +14,8 @@ export function TeamAppServiceWorker() {
   }, []);
 
   useEffect(() => {
-    if (!window.location.pathname.startsWith('/app/watch/')) return;
+    const isInternalWatchPage = window.location.pathname.startsWith('/app/watch/') || (window.location.pathname === '/app/watch' && /(?:^|&)(?:slug|collection)=/.test(window.location.search.slice(1)));
+    if (!isInternalWatchPage) return;
     const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
     const isInstalled = window.matchMedia('(display-mode: standalone)').matches || navigatorWithStandalone.standalone === true;
     if (isInstalled) return;
