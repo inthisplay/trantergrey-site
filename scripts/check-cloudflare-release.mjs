@@ -10,6 +10,13 @@ const requiredFiles = [
   'functions/api/admin/session.ts',
   'out/admin/mux.html',
   'out/admin/production.html',
+  'out/app.html',
+  'out/app/mux.html',
+  'out/app/deck.html',
+  'out/app/videos.html',
+  'out/app/kanban.html',
+  'out/manifest.webmanifest',
+  'out/sw.js',
   'out/mux-asset.html',
   'out/showcase.html',
   'out/watch.html',
@@ -34,6 +41,10 @@ const requiredFiles = [
   'migrations/0005_mux_library.sql',
   'migrations/0006_seed_mux_workspace.sql',
   'migrations/0008_production_board.sql',
+  'migrations/0017_internal_api_foundation.sql',
+  'functions/api/internal/v1/videos.ts',
+  'functions/api/internal/v1/cards.ts',
+  'functions/api/internal/v1/cards/[id]/videos.ts',
 ];
 
 for (const file of requiredFiles) {
@@ -47,7 +58,7 @@ for (const page of ['out/watch.html', 'out/showcase.html', 'out/work.html']) {
   if (!readFileSync(page, 'utf8').includes('<meta name="robots" content="noindex, nofollow"')) throw new Error(`${page} must prevent search indexing.`);
 }
 const staticHeaders = readFileSync('out/_headers', 'utf8');
-for (const path of ['/watch', '/showcase', '/work']) {
+for (const path of ['/watch', '/showcase', '/work', '/app', '/app/*']) {
   if (!staticHeaders.includes(`${path}\n  X-Robots-Tag: noindex, nofollow, noarchive`)) throw new Error(`${path} must send an X-Robots-Tag header.`);
 }
 
@@ -160,5 +171,12 @@ const muxMigration = readFileSync('migrations/0005_mux_library.sql', 'utf8');
 for (const table of ['mux_asset_metadata', 'mux_video_projects', 'mux_video_collections']) {
   if (!muxMigration.includes(`CREATE TABLE IF NOT EXISTS ${table}`)) throw new Error(`D1 migration is missing ${table}.`);
 }
+
+const internalApiMigration = readFileSync('migrations/0017_internal_api_foundation.sql', 'utf8');
+for (const table of ['production_card_video_links', 'production_card_activity', 'mux_asset_ingests', 'api_integration_credentials']) {
+  if (!internalApiMigration.includes(`CREATE TABLE IF NOT EXISTS ${table}`)) throw new Error(`Internal API migration is missing ${table}.`);
+}
+const internalApi = readFileSync('functions/_lib/internal-api.ts', 'utf8');
+if (!internalApi.includes('requireApiScope') || !internalApi.includes('api_integration_credentials')) throw new Error('Internal API authentication is incomplete.');
 
 console.log('Cloudflare release checks passed.');

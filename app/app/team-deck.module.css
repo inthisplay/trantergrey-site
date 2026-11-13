@@ -1,0 +1,185 @@
+.column {
+  overflow: hidden;
+}
+
+.column > summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 88px;
+  padding: 0 16px;
+}
+
+.column > summary > h2 {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+  margin: 0 !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+.column > summary > h2 small {
+  float: none !important;
+  margin: 0 !important;
+  white-space: nowrap;
+}
+
+.column > summary::after {
+  flex: 0 0 24px;
+  margin: 0;
+  text-align: center;
+}
+
+.cardList {
+  padding: 0 10px 10px;
+}
+
+.card {
+  position: relative;
+  min-height: 82px;
+  padding-right: 50px !important;
+}
+
+.card > a {
+  display: grid;
+  gap: 6px;
+  color: inherit;
+}
+
+.grabber {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: grid;
+  gap: 3px;
+  width: 26px;
+  height: 34px;
+  margin: 0;
+  transform: translateY(-50%);
+  place-content: center;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+
+.grabber:active {
+  cursor: grabbing;
+}
+
+.grabber i {
+  display: block;
+  width: 14px;
+  height: 1px;
+  background: rgba(23, 19, 21, .48);
+}
+
+.dragging {
+  opacity: .38;
+}
+
+.dropTarget {
+  border-color: #98333d !important;
+  box-shadow: inset 0 0 0 2px rgba(152, 51, 61, .22);
+  background: rgba(152, 51, 61, .07) !important;
+}
+
+.dropTarget > summary {
+  background: rgba(152, 51, 61, .1);
+}
+
+.dragOverlay {
+  z-index: 9999;
+  width: min(78vw, 320px);
+  margin: 0;
+  border-color: #98333d !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .28);
+  pointer-events: none;
+}
+
+.cardDetail {
+  padding-bottom: calc(120px + env(safe-area-inset-bottom));
+}
+
+.cardDetail :global(.production-card) {
+  max-width: 850px;
+  margin: 0;
+}
+
+@media (max-width: 620px) {
+  .cardDetail {
+    padding: 14px 12px calc(120px + env(safe-area-inset-bottom));
+    overflow-x: clip;
+  }
+
+  .cardDetail :global(.production-card section) {
+    padding: 18px 16px;
+  }
+
+  .cardDetail :global(.production-card .production-card-notes) {
+    padding: 18px 16px;
+  }
+
+  .cardDetail :global(.production-card .production-card-notes > div),
+  .cardDetail :global(.production-card .production-notes-display) {
+    padding-left: 14px;
+  }
+
+  .cardDetail :global(.production-card-heading),
+  .cardDetail :global(.production-card-heading > div:first-child),
+  .cardDetail :global(.production-properties > div) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .cardDetail :global(.production-properties > div) {
+    flex: 1 1 100%;
+  }
+
+  .cardDetail :global(.production-card a),
+  .cardDetail :global(.production-card p),
+  .cardDetail :global(.production-card li),
+  .cardDetail :global(.production-card blockquote) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .cardDetail :global(.production-comment-composer-bar) {
+    display: block;
+    padding: 12px 14px;
+  }
+
+  .cardDetail :global(.production-comment-editor) {
+    padding: 18px 14px;
+  }
+
+  .cardDetail :global(.production-comment-form) {
+    margin-top: 14px;
+  }
+
+  .cardDetail :global(.production-comment-form > div) {
+    min-width: 0;
+  }
+
+  .cardDetail :global(.production-comment-upload-status),
+  .cardDetail :global(.production-comment-upload-error) {
+    padding-inline: 14px;
+  }
+
+  .cardDetail :global(.production-comment-tools) {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+
+  .cardDetail :global(.production-comment-tool-divider) {
+    flex: 0 0 1px;
+  }
+
+}

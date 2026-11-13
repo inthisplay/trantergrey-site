@@ -21,6 +21,7 @@ declare module 'slate' {
   }
 }
 const emptyValue: Descendant[] = [{ type: 'paragraph', children: [{ text: '' }] }];
+const isEmptyComment = (value: Descendant[]) => value.length === 1 && SlateElement.isElement(value[0]) && value[0].type === 'paragraph' && value[0].children.every((child) => 'text' in child && child.text === '');
 const duration = (value: number) => `${Math.floor(value / 60)}:${String(Math.round(value % 60)).padStart(2, '0')}`;
 const withMuxAssets = (editor: BaseEditor & ReactEditor) => {
   const { isVoid } = editor;
@@ -86,7 +87,8 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
   const editor = useMemo(() => withMuxAssets(withReact(createEditor())), []);
   const renderElement = useCallback((props: RenderElementProps) => <Element {...props} />, []);
   const renderLeaf = useCallback((props: RenderLeafProps) => <Leaf {...props} />, []);
-  const update = (nextValue: Descendant[]) => onChange(nextValue);
+  const [isEmpty, setIsEmpty] = useState(() => isEmptyComment(initialValue));
+  const update = (nextValue: Descendant[]) => { setIsEmpty(isEmptyComment(nextValue)); onChange(nextValue); };
   const [muxPickerOpen, setMuxPickerOpen] = useState(false);
   const [muxAssets, setMuxAssets] = useState<MuxPickerAsset[]>([]);
   const [muxSearch, setMuxSearch] = useState(client || '');
@@ -156,13 +158,13 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
       <ToolbarButton label="1." title="Numbered list" active={isBlockActive(editor, 'numbered-list')} onMouseDown={() => toggleBlock(editor, 'numbered-list')} />
       <ToolbarButton label="•" title="Bulleted list" active={isBlockActive(editor, 'bulleted-list')} onMouseDown={() => toggleBlock(editor, 'bulleted-list')} />
       <span className="production-comment-tool-divider" />
-      <ToolbarButton label="▶" title="Attach Mux video" active={muxPickerOpen} onMouseDown={() => setMuxPickerOpen((open) => !open)} />
+      <ToolbarButton label={<><span className="production-comment-mux-play">▶</span><span>MUX</span></>} title="Attach Mux video" active={muxPickerOpen} onMouseDown={() => setMuxPickerOpen((open) => !open)} />
       <span className="production-comment-tool-divider" />
       <ToolbarButton label="≡" title="Align left" active={isAlignActive(editor, 'left')} onMouseDown={() => toggleAlignment(editor, 'left')} />
       <ToolbarButton label="≡" title="Align center" active={isAlignActive(editor, 'center')} onMouseDown={() => toggleAlignment(editor, 'center')} />
       <ToolbarButton label="≡" title="Align right" active={isAlignActive(editor, 'right')} onMouseDown={() => toggleAlignment(editor, 'right')} />
       <ToolbarButton label="☰" title="Justify" active={isAlignActive(editor, 'justify')} onMouseDown={() => toggleAlignment(editor, 'justify')} />
     </div></div>{muxPickerOpen && <div className="production-mux-picker"><input autoFocus value={muxSearch} onChange={(event) => setMuxSearch(event.target.value)} placeholder="Search Mux title, client, or ID…" aria-label="Search Mux library" />{muxLoading && <p>Loading Mux library…</p>}{muxError && <p>{muxError}</p>}{!muxLoading && !muxError && <div>{visibleMuxAssets.map((asset) => <div className="production-mux-picker-item" key={asset.id}><div><button type="button" className="production-mux-picker-select" onMouseDown={(event) => { event.preventDefault(); insertMuxAsset(asset); }}><>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span className="production-mux-picker-placeholder" />}</><span>{asset.client && <small>{asset.client}</small>}<b>{asset.title}</b><em>{muxItemLabel(asset)}</em></span></button>{asset.children && asset.children.length > 0 && <button type="button" className="production-mux-picker-twirl" aria-label={`Show videos in ${asset.title}`} aria-expanded={expandedMuxItems.includes(asset.id)} onMouseDown={(event) => { event.preventDefault(); toggleMuxItem(asset.id); }}>{expandedMuxItems.includes(asset.id) ? '⌄' : '›'}</button>}</div>{expandedMuxItems.includes(asset.id) && asset.children && <div className="production-mux-picker-children">{asset.children.map((child) => <button type="button" key={child.id} onMouseDown={(event) => { event.preventDefault(); insertMuxAsset(child); }}>{child.thumbnailUrl ? <img src={child.thumbnailUrl} alt="" /> : <span className="production-mux-picker-placeholder" />}<span>{child.client && <small>{child.client}</small>}<b>{child.title}</b><em>{muxItemLabel(child)}</em></span></button>)}</div>}</div>)}{muxAssets.length > 0 && visibleMuxAssets.length === 0 && <p>No Mux videos match that search.</p>}</div>}</div>}
-    <Slate editor={editor} initialValue={initialValue} onValueChange={update}><Editable className="production-comment-editor" renderElement={renderElement} renderLeaf={renderLeaf} onKeyDown={onKeyDown} placeholder="Add an update, question, or useful context…" /></Slate>{dragDepth > 0 && <div className="production-comment-drop-message">Drop files to attach them</div>}{uploading.length > 0 && <p className="production-comment-upload-status">Uploading {uploading.join(', ')}…</p>}{uploadError && <p className="production-comment-upload-error">{uploadError}</p>}
+    <Slate editor={editor} initialValue={initialValue} onValueChange={update}><div className="production-comment-editor-wrap"><Editable className="production-comment-editor" renderElement={renderElement} renderLeaf={renderLeaf} onKeyDown={onKeyDown} aria-label="Add an update, question, or useful context" />{isEmpty && <span className="production-comment-placeholder" aria-hidden="true">Add an update, question, or useful context…</span>}</div></Slate>{dragDepth > 0 && <div className="production-comment-drop-message">Drop files to attach them</div>}{uploading.length > 0 && <p className="production-comment-upload-status">Uploading {uploading.join(', ')}…</p>}{uploadError && <p className="production-comment-upload-error">{uploadError}</p>}
   </section>;
 }

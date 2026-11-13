@@ -1,4 +1,5 @@
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../../_lib/admin';
+import { addProductionComment } from '../../../../_lib/production-commands';
 
 type Context = { request: Request; env: AdminEnvironment; params: { id: string } };
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -107,14 +108,9 @@ export async function onRequestPost({ request, env, params }: Context): Promise<
   if (!session) return Response.json({ error: 'Sign in to add a comment.' }, { status: 401 });
   const body = await request.json().catch(() => null) as { body?: unknown } | null;
   if (!body || !body.body || typeof body.body !== 'object') return Response.json({ error: 'Enter a comment.' }, { status: 400 });
-  const author = session.name; const bodyJson = JSON.stringify(body.body); const bodyHtml = Array.isArray(body.body) ? slateHtml(body.body) : editorHtml(body.body as EditorPayload);
-  if (!bodyHtml.replace(/<[^>]*>/g, '').trim() || bodyJson.length > 10000) return Response.json({ error: 'Enter a comment under 10,000 characters.' }, { status: 400 });
-  const card = await env.TG_DATA.prepare('SELECT source_id FROM production_cards WHERE id = ?').bind(params.id).first<{ source_id: string }>();
-  if (!card) return Response.json({ error: 'Production card not found.' }, { status: 404 });
-  const createdAt = new Date().toISOString();
-  const localComment = { id: crypto.randomUUID(), bodyHtml, bodyJson, authorName: author, authorEmail: session.email, createdAt };
-  await env.TG_DATA.prepare('INSERT INTO production_local_comments (id, card_source_id, body_html, body_json, author_name, author_email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(localComment.id, card.source_id, localComment.bodyHtml, localComment.bodyJson, author, session.email, createdAt).run();
-  return Response.json({ localComment }, { status: 201 });
+  const bodyJson = JSON.stringify(body.body); const bodyHtml = Array.isArray(body.body) ? slateHtml(body.body) : editorHtml(body.body as EditorPayload);
+  try { return Response.json({ localComment: await addProductionComment(env, params.id, { bodyHtml, bodyJson }, session) }, { status: 201 }); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Unable to add this comment.' }, { status: 400 }); }
 }
 
 async function editableComment(request: Request, env: AdminEnvironment, cardId: string, commentId: unknown) {

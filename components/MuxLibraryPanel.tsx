@@ -175,7 +175,7 @@ async function jsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
-export function MuxLibraryPanel() {
+export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/admin/mux' }: { combinedSearch?: boolean; loginDestination?: string }) {
   const uploadInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
   const groupReplaceInput = useRef<HTMLInputElement>(null);
@@ -184,6 +184,7 @@ export function MuxLibraryPanel() {
   const [collections, setCollections] = useState<VideoProjectCollection[]>([]);
   const [query, setQuery] = useState('');
   const [client, setClient] = useState('All');
+  const [combinedSearchValue, setCombinedSearchValue] = useState('');
   const [dateRange, setDateRange] = useState<MuxDateRange | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [thumbnailFilter, setThumbnailFilter] = useState<ThumbnailFilter>('all');
@@ -275,7 +276,7 @@ export function MuxLibraryPanel() {
         }
       }
       if (!response) throw new Error('The library could not be reached. Please try again.');
-      if (response.status === 401) { window.location.replace('/login?next=/admin/mux'); return; }
+      if (response.status === 401) { window.location.replace(`/login?next=${encodeURIComponent(loginDestination)}`); return; }
       const payload = await jsonResponse<{ assets?: MatchedMuxLibraryAsset[]; projects?: VideoProject[]; collections?: VideoProjectCollection[]; error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || 'Unable to open the Mux library.');
       setAssets(payload.assets ?? []);
@@ -574,6 +575,21 @@ export function MuxLibraryPanel() {
 
   const clients = useMemo(() => ['All', ...Array.from(new Set((assets ?? []).map(clientName))).sort()], [assets]);
   const searchLibrary = useMemo(() => createMuxSearch(assets ?? []), [assets]);
+  const combinedSearchSuggestions = useMemo(() => Array.from(new Set([
+    ...clients.filter((item) => item !== 'All' && item !== 'Unassigned'),
+    ...(assets ?? []).map((asset) => asset.title.trim()).filter(Boolean),
+  ])).sort((first, second) => first.localeCompare(second)).slice(0, 500), [assets, clients]);
+  function updateCombinedSearch(value: string) {
+    setCombinedSearchValue(value);
+    const matchingClient = clients.find((item) => item !== 'All' && item.localeCompare(value, undefined, { sensitivity: 'accent' }) === 0);
+    if (matchingClient) {
+      setClient(matchingClient);
+      setQuery('');
+      return;
+    }
+    setClient('All');
+    setQuery(value);
+  }
   const assetDates = useMemo(() => new Map((assets ?? []).flatMap((asset) => {
     const value = libraryDate(asset);
     if (!value) return [];
@@ -1320,15 +1336,14 @@ export function MuxLibraryPanel() {
     </aside>}
     {duplicateRatioWarning && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => setDuplicateRatioWarning(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDuplicateRatioWarning(null)} aria-label="Close">×</button><div className="mux-bulk-delete"><p>Duplicate ratio</p><h3>Group these anyway?</h3><span>Two or more selected videos appear to share the same ratio. You can cancel and adjust the selection, or continue with this ratio group.</span><div className="mux-collection-delete-actions"><button type="button" onClick={() => setDuplicateRatioWarning(null)}>Cancel</button><button className="danger" type="button" onClick={() => createRatioGroup(duplicateRatioWarning.uploadIds, duplicateRatioWarning.title, true)}>Continue</button></div></div></div></div>}
     <div className="mux-library-toolbar">
-      <label className="mux-search"><span>Search title, client, or Mux ID</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Mux" /></label>
-      <label className="mux-select"><span>Client</span><select value={client} onChange={(event) => setClient(event.target.value)}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select><ChevronDown className="mux-select-chevron" aria-hidden="true" /></label>
+      {combinedSearch ? <label className="mux-search"><span>Search titles or clients</span><input value={combinedSearchValue} onChange={(event) => updateCombinedSearch(event.target.value)} placeholder="Search a title or client" list="mux-library-search-suggestions" /><datalist id="mux-library-search-suggestions">{combinedSearchSuggestions.map((suggestion) => <option value={suggestion} key={suggestion} />)}</datalist></label> : <><label className="mux-search"><span>Search title, client, or Mux ID</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Mux" /></label><label className="mux-select"><span>Client</span><select value={client} onChange={(event) => setClient(event.target.value)}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select><ChevronDown className="mux-select-chevron" aria-hidden="true" /></label></>}
       <MuxDateFilter range={dateRange} years={dateYears} onChange={setDateRange} />
     </div>
     <div className="mux-library-subtoolbar">
       <div className="mux-filter-set mux-status-filter"><span>Status</span>{(['all', 'published', 'unreviewed', 'hidden'] as StatusFilter[]).map((item) => <button className={statusFilter === item ? 'active' : ''} onClick={() => setStatusFilter(item)} key={item}><span>{item === 'unreviewed' ? 'unpublished' : item}</span><b>{statusCounts[item].toLocaleString()}</b></button>)}</div>
       <div className="mux-filter-set"><span>Thumbnail</span><button className={thumbnailFilter === 'all' ? 'active' : ''} onClick={() => setThumbnailFilter('all')}><span>all</span></button><button className={thumbnailFilter === 'needs-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('needs-thumbnail')}><span>needs selection</span><b>{thumbnailCounts.needsThumbnail.toLocaleString()}</b></button><button className={thumbnailFilter === 'custom-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('custom-thumbnail')}><span>selected</span><b>{thumbnailCounts.customThumbnail.toLocaleString()}</b></button></div>
       <div className="mux-filter-set"><span>Index by</span>{(['date', 'client'] as GroupMode[]).map((item) => <button className={groupMode === item ? 'active' : ''} onClick={() => setGroupMode(item)} key={item}>{item === 'date' ? 'Timeline' : 'Client'}</button>)}</div>
-      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setStatusFilter('all'); setThumbnailFilter('all'); setDateRange(null); }}>Clear filters</button>}
+      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setCombinedSearchValue(''); setStatusFilter('all'); setThumbnailFilter('all'); setDateRange(null); }}>Clear filters</button>}
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{matches.length.toLocaleString()}</strong> of {assets.length.toLocaleString()} assets</p>

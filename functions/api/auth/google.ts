@@ -1,7 +1,8 @@
-import { origin, type AdminEnvironment } from '../../_lib/admin';
+import { origin, safeDestination, type AdminEnvironment } from '../../_lib/admin';
 
 type Context = { request: Request; env: AdminEnvironment };
 const stateCookie = 'tg_google_oauth_state';
+const destinationCookie = 'tg_google_oauth_next';
 const stateLifetime = 60 * 10;
 
 function redirectUri(request: Request, env: AdminEnvironment) {
@@ -10,6 +11,7 @@ function redirectUri(request: Request, env: AdminEnvironment) {
 
 export async function onRequestGet({ request, env }: Context): Promise<Response> {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return Response.redirect(new URL('/login?error=google-config', origin(request)), 303);
+  const destination = safeDestination(new URL(request.url).searchParams.get('next'));
   const state = crypto.randomUUID();
   const authorizeUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authorizeUrl.searchParams.set('client_id', env.GOOGLE_CLIENT_ID);
@@ -18,5 +20,8 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   authorizeUrl.searchParams.set('scope', 'openid email profile');
   authorizeUrl.searchParams.set('hd', 'trantergrey.com');
   authorizeUrl.searchParams.set('state', state);
-  return new Response(null, { status: 303, headers: { Location: authorizeUrl.toString(), 'Set-Cookie': `${stateCookie}=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${stateLifetime}` } });
+  const headers = new Headers({ Location: authorizeUrl.toString() });
+  headers.append('Set-Cookie', `${stateCookie}=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${stateLifetime}`);
+  headers.append('Set-Cookie', `${destinationCookie}=${encodeURIComponent(destination)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${stateLifetime}`);
+  return new Response(null, { status: 303, headers });
 }

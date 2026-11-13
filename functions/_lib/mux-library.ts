@@ -1,7 +1,7 @@
 import { matchMuxAssetsToVimeo, type MatchedMuxLibraryAsset, type VimeoMatchCandidate } from '../../lib/mux-matching';
 import type { AdminEnvironment } from './admin';
 import { getMuxLibraryAssets, muxThumbnailUrl } from './mux';
-import { assignShortVideoUrls, readMuxMetadata, readVideoProjectStore } from './mux-state';
+import { readMuxMetadata, readVideoProjectStore } from './mux-state';
 import publishedLibrarySeed from '../../lib/published-vimeo-library.json';
 
 type VimeoRecord = VimeoMatchCandidate & {
@@ -12,13 +12,11 @@ type VimeoRecord = VimeoMatchCandidate & {
 };
 
 export async function readEnrichedMuxLibrary(env: AdminEnvironment) {
-  const [muxAssets, metadata, initialStore] = await Promise.all([
+  const [muxAssets, metadata, store] = await Promise.all([
     getMuxLibraryAssets(env),
     readMuxMetadata(env),
     readVideoProjectStore(env),
   ]);
-  const migration = await assignShortVideoUrls(env, muxAssets);
-  const store = migration.updated ? await readVideoProjectStore(env) : initialStore;
   // Keep the bundled historic archive only to preserve legacy dates and client
   // names while Mux metadata is being completed. No runtime Vimeo state or API
   // is consulted by the Mux catalog.

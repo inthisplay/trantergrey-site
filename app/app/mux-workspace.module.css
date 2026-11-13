@@ -1,0 +1,29 @@
+.workspace {
+  min-height: 100dvh;
+  margin: calc(-22px - env(safe-area-inset-top)) -5vw calc(-92px - env(safe-area-inset-bottom));
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 680px) {
+  .workspace {
+    margin-right: -8vw;
+    margin-left: -8vw;
+  }
+}
+
+@media (max-width: 620px) {
+  .content {
+    padding-top: 32px !important;
+  }
+
+  .content > h1 {
+    height: 64px;
+    margin: 0 0 24px !important;
+    line-height: 64px !important;
+  }
+
+  .content :global(.mux-mobile-upload-trigger) {
+    top: 40px !important;
+    min-height: 48px;
+  }
+}

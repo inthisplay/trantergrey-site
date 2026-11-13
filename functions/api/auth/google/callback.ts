@@ -1,7 +1,8 @@
-import { adminCookie, isTranterGreyEmail, origin, sameValue, type AdminEnvironment } from '../../../_lib/admin';
+import { adminCookie, isTranterGreyEmail, origin, safeDestination, sameValue, type AdminEnvironment } from '../../../_lib/admin';
 
 type Context = { request: Request; env: AdminEnvironment };
 const stateCookie = 'tg_google_oauth_state';
+const destinationCookie = 'tg_google_oauth_next';
 
 function cookie(request: Request, name: string) {
   const value = request.headers.get('cookie') || '';
@@ -12,8 +13,16 @@ function redirectUri(request: Request, env: AdminEnvironment) {
   return env.GOOGLE_REDIRECT_URI || new URL('/api/auth/google/callback', origin(request)).toString();
 }
 
+function destination(request: Request) {
+  try { return safeDestination(decodeURIComponent(cookie(request, destinationCookie) || '')); }
+  catch { return '/admin'; }
+}
+
 function loginError(request: Request, error: string) {
-  return Response.redirect(new URL(`/login?error=${error}`, origin(request)), 303);
+  const location = new URL('/login', origin(request));
+  location.searchParams.set('error', error);
+  location.searchParams.set('next', destination(request));
+  return Response.redirect(location, 303);
 }
 
 export async function onRequestGet({ request, env }: Context): Promise<Response> {
@@ -32,8 +41,9 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   const profile = await profileResponse.json() as { email?: unknown; email_verified?: unknown; hd?: unknown; name?: unknown };
   if (typeof profile.email !== 'string' || profile.email_verified !== true || profile.hd !== 'trantergrey.com' || !isTranterGreyEmail(profile.email)) return loginError(request, 'domain');
   const displayName = typeof profile.name === 'string' && profile.name.trim() ? profile.name.trim() : profile.email.split('@')[0];
-  const headers = new Headers({ Location: new URL('/admin', origin(request)).toString() });
+  const headers = new Headers({ Location: new URL(destination(request), origin(request)).toString() });
   headers.append('Set-Cookie', `${stateCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+  headers.append('Set-Cookie', `${destinationCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
   headers.append('Set-Cookie', await adminCookie(env, { name: displayName, email: profile.email }));
   return new Response(null, { status: 303, headers });
 }
