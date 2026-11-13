@@ -371,7 +371,7 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
       const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
       const availableWidth = Math.max(0, region.clientWidth - horizontalPadding);
       const availableHeight = Math.max(0, region.clientHeight - verticalPadding);
-      const layoutHeight = compact ? Math.min(availableHeight, Math.round(window.innerHeight * .48)) : availableHeight;
+      const layoutHeight = compact ? Math.min(availableHeight, Math.round(window.innerHeight * .32), 280) : availableHeight;
       setRatioGroupLayout(arrangeRatioGroup(variants.map((variant) => numericAspectRatio(variant.aspectRatio)), availableWidth, layoutHeight));
     };
     const frame = window.requestAnimationFrame(update);
@@ -509,7 +509,7 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
     }
   }
 
-  const compactPortraitStyle = compact && isPortrait ? { aspectRatio: ratio, height: 'min(48dvh, 420px)', maxHeight: 'calc(100dvh - 230px)', width: 'auto' } : { aspectRatio: ratio };
+  const compactPortraitStyle = compact && isPortrait ? { aspectRatio: ratio, height: 'min(32dvh, 280px)', maxHeight: 'calc(100dvh - 300px)', width: 'auto' } : { aspectRatio: ratio };
 
   return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}${unbranded ? ' unbranded-player' : ''}${compact ? ' compact-player' : ''}`}>
     {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite">{notice}</div>}
