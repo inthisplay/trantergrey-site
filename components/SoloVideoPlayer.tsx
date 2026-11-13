@@ -371,7 +371,8 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
       const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
       const availableWidth = Math.max(0, region.clientWidth - horizontalPadding);
       const availableHeight = Math.max(0, region.clientHeight - verticalPadding);
-      setRatioGroupLayout(arrangeRatioGroup(variants.map((variant) => numericAspectRatio(variant.aspectRatio)), availableWidth, availableHeight));
+      const layoutHeight = compact ? Math.min(availableHeight, Math.round(window.innerHeight * .48)) : availableHeight;
+      setRatioGroupLayout(arrangeRatioGroup(variants.map((variant) => numericAspectRatio(variant.aspectRatio)), availableWidth, layoutHeight));
     };
     const frame = window.requestAnimationFrame(update);
     const observer = new ResizeObserver(update);
@@ -380,7 +381,7 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
       window.cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [showingAll, variants]);
+  }, [compact, showingAll, variants]);
 
   function showNotice(message: string, kind: 'info' | 'success' | 'error' = 'info') {
     setNotice(message);
