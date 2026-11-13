@@ -331,7 +331,7 @@ function variantFromRatioParam(variants: SoloVideoVariant[], value: string | nul
   })?.assetId ?? null;
 }
 
-export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = false }: { title: string; variants: SoloVideoVariant[]; standaloneHref?: string; unbranded?: boolean }) {
+export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = false, compact = false }: { title: string; variants: SoloVideoVariant[]; standaloneHref?: string; unbranded?: boolean; compact?: boolean }) {
   const [selectedId, setSelectedId] = useState(unbranded ? variants[0]?.assetId ?? '' : variants.length > 1 ? 'all' : variants[0]?.assetId ?? '');
   const [downloadState, setDownloadState] = useState<'idle' | 'preparing'>('idle');
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
@@ -508,7 +508,9 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
     }
   }
 
-  return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}${unbranded ? ' unbranded-player' : ''}`}>
+  const compactPortraitStyle = compact && isPortrait ? { aspectRatio: ratio, height: 'min(48dvh, 420px)', maxHeight: 'calc(100dvh - 230px)', width: 'auto' } : { aspectRatio: ratio };
+
+  return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}${unbranded ? ' unbranded-player' : ''}${compact ? ' compact-player' : ''}`}>
     {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite">{notice}</div>}
     {!unbranded && variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
       <span>View ratio</span>
@@ -518,7 +520,7 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
     <div className="solo-video-media-region" ref={mediaRegionRef}>{showingAll ? <div className="solo-video-all-stages" ref={ratioGroupRef} style={{ width: `${ratioGroupLayout.width}px`, height: `${ratioGroupLayout.height}px` }}>{variants.map((variant, index) => {
       const tile = ratioGroupLayout.tiles[index];
       return <Fragment key={variant.assetId}><div className={`solo-video-stage solo-video-all-stage-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' solo-video-all-stage-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} style={tile ? { left: `${tile.left}px`, top: `${tile.top}px`, width: `${tile.width}px`, height: `${tile.height}px` } : undefined}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div></Fragment>;
-    })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`} style={{ aspectRatio: ratio }}><div style={{ aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}</div>
+    })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`} style={compactPortraitStyle}><div style={compact && isPortrait ? { aspectRatio: ratio, width: 'auto' } : { aspectRatio: ratio }}><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}</div>
     <div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" onClick={copyUrl}>

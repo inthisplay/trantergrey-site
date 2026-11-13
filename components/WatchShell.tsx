@@ -10,7 +10,7 @@ import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 type VideoData = { title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
 type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
-export function WatchShell({ unbranded = false, linkBase = '/watch' }: { unbranded?: boolean; linkBase?: string }) {
+export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlayer = false }: { unbranded?: boolean; linkBase?: string; compactPlayer?: boolean }) {
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
   const [archiveUrl, setArchiveUrl] = useState('');
@@ -135,7 +135,7 @@ export function WatchShell({ unbranded = false, linkBase = '/watch' }: { unbrand
     })}</div> : <p className="solo-video-unavailable">No videos have been added to this collection yet.</p>}
     <VideoModal video={preview} onClose={closePreview}>
       {preview && <div className="video-ratio-preview">
-        <SoloVideoPlayer key={preview.href} title={preview.title} variants={preview.variants} standaloneHref={preview.href} />
+        <SoloVideoPlayer key={preview.href} title={preview.title} variants={preview.variants} standaloneHref={preview.href} compact={compactPlayer} />
       </div>}
     </VideoModal>
   </section>;
@@ -147,6 +147,6 @@ export function WatchShell({ unbranded = false, linkBase = '/watch' }: { unbrand
   </div></section>;
 
   return <section className="solo-video-shell">
-    {video ? <div className="solo-video-presentation"><div className="solo-video-public-media-region"><SoloVideoPlayer title={video.title} variants={video.variants} /></div><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`${linkBase}/collection/${item.slug}`} key={item.id}>{item.name} →</a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
+    {video ? <div className="solo-video-presentation"><div className="solo-video-public-media-region"><SoloVideoPlayer title={video.title} variants={video.variants} compact={compactPlayer} /></div><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`${linkBase}/collection/${item.slug}`} key={item.id}>{item.name} →</a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
   </section>;
 }
