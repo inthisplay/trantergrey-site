@@ -9,7 +9,7 @@ export function TeamAppVideos() {
     <section className={styles.content}>
       <p className="eyebrow">Private control room / video source</p>
       <h1>Mux.</h1>
-      <MuxLibraryPanel combinedSearch loginDestination="/app/mux" publicPageBase="/app/watch" publicLinksOpenInNewTab={false} />
+      <MuxLibraryPanel combinedSearch loginDestination="/app/mux" publicPageBase="/app/watch" publicLinksOpenInNewTab={false} compactPreviews />
     </section>
   </section>;
 }
