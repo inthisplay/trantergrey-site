@@ -10,7 +10,7 @@ import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 type VideoData = { title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
 type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
-export function WatchShell({ unbranded = false }: { unbranded?: boolean }) {
+export function WatchShell({ unbranded = false, linkBase = '/watch' }: { unbranded?: boolean; linkBase?: string }) {
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
   const [archiveUrl, setArchiveUrl] = useState('');
@@ -75,7 +75,7 @@ export function WatchShell({ unbranded = false }: { unbranded?: boolean }) {
       const variant = video?.variants[0];
       if (!response.ok || !video || !variant) throw new Error('Video unavailable');
       if (!controller.signal.aborted) {
-        setPreview({ id: variant.assetId, title: video.title, client: video.client || project.client || 'TranterGrey', thumbnail: variant.thumbnailUrl || project.thumbnailUrl || '', muxPlaybackId: variant.playbackId, variants: video.variants, href: `/watch/${project.slug}` });
+        setPreview({ id: variant.assetId, title: video.title, client: video.client || project.client || 'TranterGrey', thumbnail: variant.thumbnailUrl || project.thumbnailUrl || '', muxPlaybackId: variant.playbackId, variants: video.variants, href: `${linkBase}/${project.slug}` });
       }
     } catch {
       if (!controller.signal.aborted) setPreviewError(`Could not open “${project.title}.” Try again or open its video page.`);
@@ -118,7 +118,7 @@ export function WatchShell({ unbranded = false }: { unbranded?: boolean }) {
     </header>
     {previewError && <p role="alert">{previewError}</p>}
     {collection.projects.length ? <div className="solo-collection-grid">{collection.projects.map((project) => {
-      const href = `/watch/${project.slug}`;
+      const href = `${linkBase}/${project.slug}`;
       return <article className="solo-collection-card" key={project.id}>
         <a href={href} onClick={(event) => void openPreview(event, project)} aria-haspopup="dialog" aria-busy={loadingSlug === project.slug}>
           <span>{project.thumbnailUrl ? <img src={project.thumbnailUrl} alt="" /> : <i>Preview unavailable</i>}</span>
@@ -147,6 +147,6 @@ export function WatchShell({ unbranded = false }: { unbranded?: boolean }) {
   </div></section>;
 
   return <section className="solo-video-shell">
-    {video ? <div className="solo-video-presentation"><div className="solo-video-public-media-region"><SoloVideoPlayer title={video.title} variants={video.variants} /></div><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`/watch/collection/${item.slug}`} key={item.id}>{item.name} →</a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
+    {video ? <div className="solo-video-presentation"><div className="solo-video-public-media-region"><SoloVideoPlayer title={video.title} variants={video.variants} /></div><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`${linkBase}/collection/${item.slug}`} key={item.id}>{item.name} →</a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
   </section>;
 }

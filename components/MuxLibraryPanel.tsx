@@ -175,7 +175,7 @@ async function jsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
-export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/admin/mux' }: { combinedSearch?: boolean; loginDestination?: string }) {
+export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/admin/mux', publicPageBase = '/watch', publicLinksOpenInNewTab = true }: { combinedSearch?: boolean; loginDestination?: string; publicPageBase?: string; publicLinksOpenInNewTab?: boolean }) {
   const uploadInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
   const groupReplaceInput = useRef<HTMLInputElement>(null);
@@ -255,6 +255,18 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [replacingProjectId, setReplacingProjectId] = useState('');
   const [replacingAssetId, setReplacingAssetId] = useState('');
   const [replacementProgress, setReplacementProgress] = useState<ReplacementProgress | null>(null);
+
+  useEffect(() => {
+    if (publicLinksOpenInNewTab) return;
+    const openInsideTeamApp = (event: MouseEvent) => {
+      const link = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>(`a[href^="${publicPageBase}/"]`);
+      if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      window.location.assign(link.href);
+    };
+    document.addEventListener('click', openInsideTeamApp);
+    return () => document.removeEventListener('click', openInsideTeamApp);
+  }, [publicLinksOpenInNewTab, publicPageBase]);
 
   async function refreshLibrary() {
     if (libraryRequestActive.current) return;
@@ -769,11 +781,15 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   }
 
   function publicPath(asset: MatchedMuxLibraryAsset) {
+    return `${publicPageBase}/${projectByAssetId.get(asset.id)?.slug ?? asset.id}`;
+  }
+
+  function sharePath(asset: MatchedMuxLibraryAsset) {
     return `/watch/${projectByAssetId.get(asset.id)?.slug ?? asset.id}`;
   }
 
   async function copyPublicUrl(asset: MatchedMuxLibraryAsset) {
-    const publicUrl = new URL(publicPath(asset), window.location.origin).toString();
+    const publicUrl = new URL(sharePath(asset), window.location.origin).toString();
     try {
       await navigator.clipboard.writeText(publicUrl);
       setCopiedAssetId(asset.id);
@@ -1352,7 +1368,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const marker = index === 0 && <div className="mux-library-time-marker"><span>{groupMode === 'date' ? <><strong>{group.title}</strong><small>{group.eyebrow}</small></> : <strong>{group.title}</strong>}</span><i aria-hidden="true" /></div>;
 
       if (item.kind === 'collection') {
-        const publicHref = `/watch/collection/${item.collection.slug}`;
+        const publicHref = `${publicPageBase}/collection/${item.collection.slug}`;
         const previews = [item.representative, ...item.assets.filter((preview) => preview.id !== item.representative.id)].slice(0, 3);
         const actionKey = `collection-${item.collection.id}`;
         if (selectionMode) return <div className="mux-library-flow-cell mux-library-collection-cell" key={`collection-${item.collection.id}`}>
@@ -1369,20 +1385,20 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
           {marker}
           <article className="mux-collection-card">
             <div className={`mux-library-thumb mux-library-thumb-with-actions mux-collection-stack${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}>
-              <a className="mux-library-thumb-primary mux-collection-stack-primary" href={publicHref} target="_blank" rel="noreferrer" aria-label={`Open ${item.collection.name}`}>
+              <a className="mux-library-thumb-primary mux-collection-stack-primary" href={publicHref} target={publicLinksOpenInNewTab ? '_blank' : undefined} rel={publicLinksOpenInNewTab ? 'noreferrer' : undefined} aria-label={`Open ${item.collection.name}`}>
                 {previews.map((preview, previewIndex) => <span className={`mux-collection-stack-frame ${previewIndex === 0 ? 'front' : previewIndex === 1 ? 'middle' : 'back'}`} key={preview.id}>{preview.thumbnailUrl ? <img src={preview.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}</span>)}
                 <b>{item.assets.length} videos</b>
               </a>
               <MobileActionsToggle title={item.collection.name} expanded={openMobileActions === actionKey} onClick={() => setOpenMobileActions((current) => current === actionKey ? '' : actionKey)} />
-              <div className="mux-library-hover-actions mux-collection-hover-actions" role="group" aria-label={`Actions for ${item.collection.name}`}><button type="button" onClick={() => { setManagingCollectionId(item.collection.id); setCollectionNameDraft(item.collection.name); setCollectionTagsDraft((item.collection.tags ?? []).join(', ')) }}><QuickActionLabel icon="manage">Manage</QuickActionLabel></button><a href={publicHref} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectCollectionForBulk(item.assets)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" onClick={() => { setManagingCollectionId(item.collection.id); setCollectionNameDraft(item.collection.name); setCollectionTagsDraft((item.collection.tags ?? []).join(', ')) }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment(item.assets)}><QuickActionLabel icon="client">{item.assets.some((asset) => clientName(asset) !== 'Unassigned') ? 'Change client' : 'Add client'}</QuickActionLabel></button><button type="button" disabled={savingCollection} onClick={() => void changeCollectionStatus(item.collection, item.assets, item.assets.every((asset) => asset.libraryStatus === 'published') ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{item.assets.every((asset) => asset.libraryStatus === 'published') ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingCollection} onClick={() => void changeCollectionStatus(item.collection, item.assets, item.assets.every((asset) => asset.libraryStatus === 'hidden') ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{item.assets.every((asset) => asset.libraryStatus === 'hidden') ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" onClick={() => void copyCollectionUrl(item.collection)}><QuickActionLabel icon="copy">{copiedCollectionId === item.collection.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button className="danger" type="button" onClick={() => setDeleteCollectionId(item.collection.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div>
+              <div className="mux-library-hover-actions mux-collection-hover-actions" role="group" aria-label={`Actions for ${item.collection.name}`}><button type="button" onClick={() => { setManagingCollectionId(item.collection.id); setCollectionNameDraft(item.collection.name); setCollectionTagsDraft((item.collection.tags ?? []).join(', ')) }}><QuickActionLabel icon="manage">Manage</QuickActionLabel></button><a href={publicHref} target={publicLinksOpenInNewTab ? '_blank' : undefined} rel={publicLinksOpenInNewTab ? 'noreferrer' : undefined}><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectCollectionForBulk(item.assets)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" onClick={() => { setManagingCollectionId(item.collection.id); setCollectionNameDraft(item.collection.name); setCollectionTagsDraft((item.collection.tags ?? []).join(', ')) }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment(item.assets)}><QuickActionLabel icon="client">{item.assets.some((asset) => clientName(asset) !== 'Unassigned') ? 'Change client' : 'Add client'}</QuickActionLabel></button><button type="button" disabled={savingCollection} onClick={() => void changeCollectionStatus(item.collection, item.assets, item.assets.every((asset) => asset.libraryStatus === 'published') ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{item.assets.every((asset) => asset.libraryStatus === 'published') ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingCollection} onClick={() => void changeCollectionStatus(item.collection, item.assets, item.assets.every((asset) => asset.libraryStatus === 'hidden') ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{item.assets.every((asset) => asset.libraryStatus === 'hidden') ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" onClick={() => void copyCollectionUrl(item.collection)}><QuickActionLabel icon="copy">{copiedCollectionId === item.collection.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button className="danger" type="button" onClick={() => setDeleteCollectionId(item.collection.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div>
             </div>
-            <div className="mux-library-card-copy mux-collection-card-copy"><p>Collection · {item.assets.length} videos</p><h2><a href={publicHref} target="_blank" rel="noreferrer">{item.collection.name}</a></h2></div>
+            <div className="mux-library-card-copy mux-collection-card-copy"><p>Collection · {item.assets.length} videos</p><h2><a href={publicHref} target={publicLinksOpenInNewTab ? '_blank' : undefined} rel={publicLinksOpenInNewTab ? 'noreferrer' : undefined}>{item.collection.name}</a></h2></div>
           </article>
         </div>;
       }
 
       if (item.kind === 'project') {
-        const publicHref = `/watch/${item.project.slug}`;
+        const publicHref = `${publicPageBase}/${item.project.slug}`;
         const allPublished = item.assets.every((asset) => asset.libraryStatus === 'published');
         const allHidden = item.assets.every((asset) => asset.libraryStatus === 'hidden');
         const sharedTags = item.assets[0]?.localTags ?? [];
@@ -1404,7 +1420,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
               <MobileActionsToggle title={item.project.title} expanded={openMobileActions === actionKey} onClick={() => setOpenMobileActions((current) => current === actionKey ? '' : actionKey)} />
               <div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${item.project.title}`}><button type="button" disabled={!item.assets.every(canPreviewAsset)} title={item.assets.every(canPreviewAsset) ? undefined : 'Mux is still preparing one or more video ratios.'} onClick={() => { setPreviewProjectId(item.project.id); setPreviewAssetId(item.representative.id); }}><QuickActionLabel icon="view">Play</QuickActionLabel></button><a href={`/admin/mux/${item.representative.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicHref} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectProjectForBulk(item.project, item.assets)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingProjectId === item.project.id} onClick={() => { setReplaceProjectId(item.project.id); groupReplaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingProjectId === item.project.id ? 'Replacing…' : 'Replace videos'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(item.representative)}><QuickActionLabel icon="copy">{copiedAssetId === item.representative.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment(item.assets)}><QuickActionLabel icon="client">{item.project.client || item.assets.some((asset) => clientName(asset) !== 'Unassigned') ? 'Change client' : 'Add client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsProjectId(item.project.id); setTagsDraft(sharedTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingProjectId === item.project.id} onClick={() => void changeProjectStatus(item.project, item.assets, allPublished ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{allPublished ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingProjectId === item.project.id} onClick={() => void changeProjectStatus(item.project, item.assets, allHidden ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{allHidden ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingProjectId === item.project.id} onClick={() => setDeleteProjectId(item.project.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></>}
             </div>
-            <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{item.project.client || clientName(item.representative)}{item.assets.some(hasMuxError) && <em> · Error</em>}</span><b>{publicationLabel(allPublished ? 'published' : 'unreviewed')}</b></p>{item.assets.some((projectAsset) => !projectAsset.hasCustomThumbnail) && <p className="mux-thumbnail-needed">{item.assets.filter((projectAsset) => !projectAsset.hasCustomThumbnail).length} need thumbnail</p>}<h2><a href={publicHref} target="_blank" rel="noreferrer">{item.project.title}</a></h2></div>
+            <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{item.project.client || clientName(item.representative)}{item.assets.some(hasMuxError) && <em> · Error</em>}</span><b>{publicationLabel(allPublished ? 'published' : 'unreviewed')}</b></p>{item.assets.some((projectAsset) => !projectAsset.hasCustomThumbnail) && <p className="mux-thumbnail-needed">{item.assets.filter((projectAsset) => !projectAsset.hasCustomThumbnail).length} need thumbnail</p>}<h2><a href={publicHref} target={publicLinksOpenInNewTab ? '_blank' : undefined} rel={publicLinksOpenInNewTab ? 'noreferrer' : undefined}>{item.project.title}</a></h2></div>
           </article>
         </div>;
       }
