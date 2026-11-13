@@ -494,3 +494,26 @@
   margin-top: 8px;
   font-size: 13px;
 }
+
+.solo-collection-download button:disabled {
+  position: relative;
+  overflow: hidden;
+}
+
+.solo-collection-download button:disabled::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 20%, var(--bright) 50%, transparent 80%);
+  animation: solo-download-progress 1.15s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .solo-collection-download button:disabled::after {
+    background: var(--bright);
+    animation: none;
+  }
+}

@@ -17,7 +17,7 @@ type LibraryStatus = MatchedMuxLibraryAsset['libraryStatus'];
 type StatusFilter = LibraryStatus | 'all';
 type ThumbnailFilter = 'all' | 'needs-thumbnail' | 'custom-thumbnail';
 type GroupMode = 'date' | 'client';
-type BulkAction = 'ratio' | 'project' | 'collection' | 'client' | 'detach' | 'delete' | null;
+type BulkAction = 'ratio' | 'project' | 'collection' | 'add-to-collection' | 'client' | 'detach' | 'delete' | null;
 type LibraryDisplayItem =
   | { kind: 'asset'; asset: MatchedMuxLibraryAsset }
   | { kind: 'collection'; collection: VideoProjectCollection; assets: MatchedMuxLibraryAsset[]; representative: MatchedMuxLibraryAsset }
@@ -197,6 +197,7 @@ export function MuxLibraryPanel() {
   const [projectDescription, setProjectDescription] = useState('');
   const [projectCollectionIds, setProjectCollectionIds] = useState<string[]>([]);
   const [collectionName, setCollectionName] = useState('');
+  const [existingCollectionId, setExistingCollectionId] = useState('');
   const [clientAssignment, setClientAssignment] = useState('');
   const [saving, setSaving] = useState<'project' | 'collection' | 'client' | 'detach' | 'delete' | ''>('');
   const [workspaceMessage, setWorkspaceMessage] = useState('');
@@ -226,6 +227,9 @@ export function MuxLibraryPanel() {
   const [savingAssetId, setSavingAssetId] = useState('');
   const [savingProjectId, setSavingProjectId] = useState('');
   const [error, setError] = useState('');
+  const libraryRequestActive = useRef(false);
+  const [refreshingLibrary, setRefreshingLibrary] = useState(false);
+  const [locallyProcessingAssetIds, setLocallyProcessingAssetIds] = useState<string[]>([]);
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [isDraggingUpload, setIsDraggingUpload] = useState(false);
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
@@ -252,8 +256,25 @@ export function MuxLibraryPanel() {
   const [replacementProgress, setReplacementProgress] = useState<ReplacementProgress | null>(null);
 
   async function refreshLibrary() {
+    if (libraryRequestActive.current) return;
+    libraryRequestActive.current = true;
+    setRefreshingLibrary(true);
     try {
-      const response = await fetch('/api/mux/library', { cache: 'no-store' });
+      let response: Response | undefined;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          response = await fetch('/api/mux/library', { cache: 'no-store', signal: AbortSignal.timeout(30000) });
+        } catch (reason) {
+          if (attempt === 2) throw reason;
+        }
+        if (response && ![502, 503, 504].includes(response.status)) break;
+        if (attempt < 2) {
+          await response?.body?.cancel();
+          response = undefined;
+          await new Promise((resolve) => window.setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+      if (!response) throw new Error('The library could not be reached. Please try again.');
       if (response.status === 401) { window.location.replace('/login?next=/admin/mux'); return; }
       const payload = await jsonResponse<{ assets?: MatchedMuxLibraryAsset[]; projects?: VideoProject[]; collections?: VideoProjectCollection[]; error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || 'Unable to open the Mux library.');
@@ -263,6 +284,9 @@ export function MuxLibraryPanel() {
       setError('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to open the Mux library.');
+    } finally {
+      libraryRequestActive.current = false;
+      setRefreshingLibrary(false);
     }
   }
 
@@ -272,10 +296,16 @@ export function MuxLibraryPanel() {
   }, []);
 
   useEffect(() => {
-    if (!assets?.some(isProcessingAsset)) return;
-    const interval = window.setInterval(() => { void refreshLibrary(); }, 5000);
+    if (!assets || !locallyProcessingAssetIds.length) return;
+    const processingIds = locallyProcessingAssetIds.filter((id) => assets.some((asset) => asset.id === id && isProcessingAsset(asset)));
+    if (processingIds.length !== locallyProcessingAssetIds.length) {
+      setLocallyProcessingAssetIds(processingIds);
+      return;
+    }
+    if (!processingIds.length) return;
+    const interval = window.setInterval(() => { void refreshLibrary(); }, 15000);
     return () => window.clearInterval(interval);
-  }, [assets]);
+  }, [assets, locallyProcessingAssetIds]);
 
   useEffect(() => {
     if (!workspaceMessage) return;
@@ -326,6 +356,7 @@ export function MuxLibraryPanel() {
       const assetId = await waitForMuxAsset(payload.id);
       await saveUploadMetadata(assetId, plan);
       update({ assetId, progress: 100, state: 'complete' });
+      setLocallyProcessingAssetIds((current) => current.includes(assetId) ? current : [...current, assetId]);
       window.setTimeout(() => void refreshLibrary(), 2500);
       return assetId;
     } catch (reason) {
@@ -1112,6 +1143,40 @@ export function MuxLibraryPanel() {
     finally { setSaving(''); }
   }
 
+  async function addToExistingCollection(event: FormEvent) {
+    event.preventDefault();
+    const collection = collections.find((item) => item.id === existingCollectionId);
+    if (!collection) return;
+
+    setSaving('collection');
+    setWorkspaceMessage('');
+    try {
+      const response = await fetch('/api/admin/video-collections', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          collectionId: collection.id,
+          name: collection.name,
+          assetIds: selectedIds,
+          clientsByAssetId: Object.fromEntries(selectedAssets.map((asset) => [asset.id, clientName(asset)])),
+        }),
+      });
+      const payload = await jsonResponse<{ collection?: VideoProjectCollection; projects?: VideoProject[]; collections?: VideoProjectCollection[]; error?: string }>(response);
+      if (!response.ok || !payload.collection || !payload.projects || !payload.collections) throw new Error(payload.error || 'Could not add the videos to this collection.');
+      setProjects(payload.projects);
+      setCollections(payload.collections);
+      setExistingCollectionId('');
+      setSelectedIds([]);
+      setBulkAction(null);
+      setSelectionMode(false);
+      setWorkspaceMessage(`Added ${selectedIds.length} ${selectedIds.length === 1 ? 'video' : 'videos'} to “${payload.collection.name}”.`);
+    } catch (reason) {
+      setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not add the videos to this collection.');
+    } finally {
+      setSaving('');
+    }
+  }
+
   async function createSelectedRatioGroup(event: FormEvent) {
     event.preventDefault();
     if (!canCreateRatioGroup) return;
@@ -1204,7 +1269,9 @@ export function MuxLibraryPanel() {
     setSelectionMode(false); setSelectedIds([]); setVariantLabels({}); setBulkAction(null); setSelectingProjectId(''); setSelectingCollectionId('');
   }
 
-  if (error) return <p className="admin-empty">{error}</p>;
+  const errorLogLink = <p><a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">Open Cloudflare to view error logs ↗</a><br /><small>Select trantergrey-site-git → current deployment → View details → Functions. Start live logs, then click Try again here to capture the error.</small></p>;
+
+  if (error && !assets) return <div className="admin-empty" role="alert"><p>{error}</p><button type="button" disabled={refreshingLibrary} onClick={() => void refreshLibrary()}>{refreshingLibrary ? 'Retrying…' : 'Try again'}</button>{errorLogLink}</div>;
   if (!assets) return <p className="admin-empty">Reading the Mux library…</p>;
 
   const sharedMatchingClients = clients.filter((name) => name !== 'All' && name !== 'Unassigned' && name.toLowerCase().includes(uploadClient.trim().toLowerCase())).slice(0, 8);
@@ -1213,6 +1280,7 @@ export function MuxLibraryPanel() {
   const ratioGroupByUploadId = new Map(uploadRatioGroups.flatMap((group) => group.uploadIds.map((uploadId) => [uploadId, group])));
 
   return <>
+    {error && <div className="admin-empty" role="alert"><p>The library could not refresh. Showing the last loaded videos. {error}</p><button type="button" disabled={refreshingLibrary} onClick={() => void refreshLibrary()}>{refreshingLibrary ? 'Retrying…' : 'Try again'}</button>{errorLogLink}</div>}
     {workspaceMessage && <div className="mux-workspace-message" role="status" aria-live="polite">{workspaceMessage}</div>}
     {replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing{replacementProgress.total > 1 ? ` ${replacementProgress.current} of ${replacementProgress.total}` : ''}</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? 'Mux is processing' : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><i><i style={{ width: `${replacementProgress.progress}%` }} /></i></div>}
     <input ref={replaceInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" onChange={(event) => { const file = event.target.files?.[0]; if (file && replaceTargetId) void replaceVideo(file, replaceTargetId); }} />
@@ -1349,7 +1417,7 @@ export function MuxLibraryPanel() {
       </div>
     </VideoModal> : previewAsset && <div className="mux-player-modal" role="dialog" aria-modal="true" aria-label={`Preview ${previewAsset.title}`} onMouseDown={closePreview}><div className="mux-player-modal-panel" onMouseDown={(event) => event.stopPropagation()}><button className="mux-player-modal-close" type="button" aria-label="Close preview" onClick={closePreview}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg></button>{previewAsset.playbackId && previewAsset.playbackPolicy === 'public' ? <MuxVideoPlayer key={previewAsset.id} assetId={previewAsset.id} playbackId={previewAsset.playbackId} poster={previewAsset.thumbnailUrl} title={previewProject?.title || previewAsset.title} autoPlay /> : <p>Preview unavailable while Mux finishes processing this asset.</p>}</div></div>}
       {selectingGroupTitle && <div className="mux-bulk-modal mux-group-selection-modal" role="dialog" aria-modal="true" aria-label={`Select videos from ${selectingGroupTitle}`} onMouseDown={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }} aria-label="Close">×</button><header><p>Select from group</p><h3>{selectingGroupTitle}</h3><span>{selectingGroupAssets.filter((asset) => selectedIds.includes(asset.id)).length} of {selectingGroupAssets.length} selected</span></header><div className="mux-group-selection-grid">{selectingGroupAssets.map((asset) => <button className={selectedIds.includes(asset.id) ? 'selected' : ''} type="button" key={asset.id} onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)}><span>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <i>Preview unavailable</i>}<b>{duration(asset.duration)}</b><em>{selectedIds.includes(asset.id) ? '✓' : '+'}</em></span><strong>{asset.title}</strong><small>{friendlyAssetRatio(asset)}</small></button>)}</div><footer><button type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}>Done</button></footer></div></div>}
-      {selectionMode && <div className="mux-bulk-bar"><div><strong>{selectedIds.length}</strong><span>{selectedIds.length === 1 ? 'video selected' : 'videos selected'}</span></div><nav><button disabled={!selectedIds.length} onClick={() => void copyShowcaseUrl()}>{showcaseCopied ? 'Temp showcase copied' : 'Create temp showcase'}</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('collection')}>Create collection</button><button disabled={!canCreateRatioGroup} title={canCreateRatioGroup ? undefined : 'Select at least two ready videos with different aspect ratios'} onClick={() => { setProjectTitle(selectedAssets[0].title); setBulkAction('ratio'); }}>Create ratio group</button><button disabled={!selectedIds.length} onClick={() => { setClientAssignment(selectedAssets.map(clientName).find((name) => name !== 'Unassigned') || ''); setBulkAction('client'); }}>Add to client</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('detach')}>Remove from pages</button><button className="danger" disabled={!selectedIds.length} onClick={() => setBulkAction('delete')}>Delete</button></nav><button className="mux-bulk-close" onClick={exitSelectionMode} aria-label="Exit selection mode">×</button></div>}
+      {selectionMode && <div className="mux-bulk-bar"><div><strong>{selectedIds.length}</strong><span>{selectedIds.length === 1 ? 'video selected' : 'videos selected'}</span></div><nav><button disabled={!selectedIds.length} onClick={() => void copyShowcaseUrl()}>{showcaseCopied ? 'Temp showcase copied' : 'Create temp showcase'}</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('collection')}>Create collection</button><button disabled={!selectedIds.length || !collections.length} onClick={() => { setExistingCollectionId(''); setBulkAction('add-to-collection'); }}>Add to collection</button><button disabled={!canCreateRatioGroup} title={canCreateRatioGroup ? undefined : 'Select at least two ready videos with different aspect ratios'} onClick={() => { setProjectTitle(selectedAssets[0].title); setBulkAction('ratio'); }}>Create ratio group</button><button disabled={!selectedIds.length} onClick={() => { setClientAssignment(selectedAssets.map(clientName).find((name) => name !== 'Unassigned') || ''); setBulkAction('client'); }}>Add to client</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('detach')}>Remove from pages</button><button className="danger" disabled={!selectedIds.length} onClick={() => setBulkAction('delete')}>Delete</button></nav><button className="mux-bulk-close" onClick={exitSelectionMode} aria-label="Exit selection mode">×</button></div>}
     {bulkAction && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => !saving && setBulkAction(null)}><div onMouseDown={(event) => event.stopPropagation()}>
       <button className="mux-bulk-modal-close" type="button" onClick={() => setBulkAction(null)} aria-label="Close">×</button>
       {bulkAction === 'project' && <form className="mux-project-builder" onSubmit={createProject}><div className="mux-builder-head"><div><p>New solo page</p><h3>{selectedAssets.length} {selectedAssets.length === 1 ? 'asset' : 'ratio variants'}</h3></div></div><div className="mux-builder-fields"><label><span>Title</span><input required value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} /></label><label><span>Client</span><input value={projectClient} onChange={(event) => setProjectClient(event.target.value)} /></label><label className="wide"><span>Short description (optional)</span><textarea value={projectDescription} onChange={(event) => setProjectDescription(event.target.value)} rows={2} /></label></div><div className="mux-builder-variants">{selectedAssets.map((asset) => <div key={asset.id}><img src={asset.thumbnailUrl || ''} alt="" /><span><strong>{asset.title}</strong><small>{asset.aspectRatio || 'Ratio unavailable'}</small></span><input value={variantLabels[asset.id] || ratioLabel(asset.aspectRatio)} onChange={(event) => setVariantLabels((current) => ({ ...current, [asset.id]: event.target.value }))} aria-label={`Label for ${asset.title}`} /></div>)}</div>{collections.length > 0 && <fieldset className="mux-builder-collections"><legend>Add to collections</legend>{collections.map((item) => <label key={item.id}><input type="checkbox" checked={projectCollectionIds.includes(item.id)} onChange={() => setProjectCollectionIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} />{item.name}</label>)}</fieldset>}<div className="mux-builder-submit"><span>URL: /watch/{videoProjectSlug(projectTitle) || 'your-video'}</span><button type="submit" disabled={saving === 'project'}>{saving === 'project' ? 'Building page…' : 'Create video page'}</button></div></form>}
@@ -1361,6 +1429,7 @@ export function MuxLibraryPanel() {
         <button type="submit" disabled={!canCreateRatioGroup || saving === 'project'}>{saving === 'project' ? 'Creating…' : 'Create ratio group'}</button>
       </form>}
       {bulkAction === 'collection' && <form className="mux-bulk-simple-form" onSubmit={createCollection}><p>New collection</p><h3>Group this campaign.</h3><label><span>Collection name</span><input autoFocus required value={collectionName} onChange={(event) => setCollectionName(event.target.value)} /></label><small>The selected videos will collapse into one stacked collection card with its own public page.</small><button type="submit" disabled={saving === 'collection'}>{saving === 'collection' ? 'Creating…' : 'Create collection'}</button></form>}
+      {bulkAction === 'add-to-collection' && <form className="mux-bulk-simple-form" onSubmit={addToExistingCollection}><p>Add to collection</p><h3>{selectedIds.length} {selectedIds.length === 1 ? 'video' : 'videos'}</h3><label><span>Collection</span><select autoFocus required value={existingCollectionId} onChange={(event) => setExistingCollectionId(event.target.value)}><option value="">Choose a collection</option>{collections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><small>A solo video gets its own shareable page automatically. Selecting one video from a ratio group adds that group’s complete ratio set.</small><button type="submit" disabled={saving === 'collection' || !existingCollectionId}>{saving === 'collection' ? 'Adding…' : 'Add to collection'}</button></form>}
       {bulkAction === 'client' && <form className="mux-bulk-simple-form" onSubmit={assignClient}><p>Client assignment</p><h3>{selectedIds.length} {selectedIds.length === 1 ? 'video' : 'videos'}</h3><label><span>Client name</span><input autoFocus required value={clientAssignment} onChange={(event) => setClientAssignment(event.target.value)} list="mux-client-names" /></label><datalist id="mux-client-names">{clients.filter((name) => name !== 'All' && name !== 'Unassigned').map((name) => <option value={name} key={name} />)}</datalist><button type="submit" disabled={saving === 'client'}>{saving === 'client' ? 'Assigning…' : 'Assign client'}</button></form>}
       {bulkAction === 'detach' && <div className="mux-bulk-delete"><p>Remove from pages</p><h3>Remove {selectedIds.length} {selectedIds.length === 1 ? 'video' : 'videos'}?</h3><span>The selected videos will be removed from their shareable pages but remain safely stored in Mux.</span><button type="button" disabled={saving === 'detach'} onClick={detachSelectedFromPages}>{saving === 'detach' ? 'Removing…' : 'Remove from shareable pages'}</button></div>}
       {bulkAction === 'delete' && <div className="mux-bulk-delete"><p>Permanent deletion</p><h3>Delete {selectedIds.length} {selectedIds.length === 1 ? 'video' : 'videos'}?</h3><span>Shareable pages using these videos will be cleaned up first, then the Mux files will be permanently deleted.</span><button type="button" disabled={saving === 'delete'} onClick={deleteSelected}>{saving === 'delete' ? 'Deleting…' : 'Delete videos and clean up pages'}</button></div>}

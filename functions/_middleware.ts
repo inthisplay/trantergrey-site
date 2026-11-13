@@ -16,8 +16,16 @@ type Context = { request: Request; env: AdminEnvironment; next: () => Promise<Re
 const noindexPaths = new Set(['/watch', '/showcase', '/work']);
 
 export async function onRequest({ request, env, next }: Context) {
-  const response = await next();
   const url = new URL(request.url);
+  let response: Response;
+  try {
+    response = await next();
+  } catch (error) {
+    if (!url.pathname.startsWith('/api/')) throw error;
+    const reference = crypto.randomUUID();
+    console.error('API request failed', { reference, path: url.pathname, message: error instanceof Error ? error.message : 'Unknown error' });
+    return Response.json({ error: `This service is temporarily unavailable. Please try again. Reference: ${reference}` }, { status: 503, headers: { 'Cache-Control': 'private, no-store' } });
+  }
   const pathname = url.pathname;
   if (!noindexPaths.has(pathname) && !pathname.startsWith('/watch/')) return response;
 

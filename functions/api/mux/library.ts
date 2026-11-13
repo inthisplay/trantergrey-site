@@ -48,5 +48,8 @@ export async function onRequestGet({ request, env }: Context) {
     ].sort((left, right) => Date.parse(right.createdAt || '') - Date.parse(left.createdAt || ''));
     return Response.json({ ...library, commentItems }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
-  catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Unable to read the Mux library.' }, { status: 502 }); }
+  catch (error) {
+    console.error('Mux library request failed', error instanceof Error ? error.message : 'Unknown error');
+    return Response.json({ error: error instanceof Error ? error.message : 'Unable to read the Mux library.' }, { status: 502, headers: { 'Cache-Control': 'private, no-store' } });
+  }
 }

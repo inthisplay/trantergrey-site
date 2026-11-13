@@ -102,9 +102,7 @@ export async function getMuxLibraryAssets(env: AdminEnvironment) {
   let cursor: string | null = null;
   for (let page = 0; page < 100; page += 1) {
     const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : '?limit=100';
-    const response = await fetch(`https://api.mux.com/video/v1/assets${query}`, { headers: { Authorization: authorization(env) } });
-    if (!response.ok) throw new Error(`Mux returned ${response.status} while reading the library.`);
-    const payload = await response.json() as MuxResponse<MuxAsset[]>;
+    const payload = await readMuxLibraryPage(env, query);
     const normalized = (payload.data ?? []).map(normalize).filter((asset): asset is MuxLibraryAsset => Boolean(asset));
     const pageAssets = normalized.filter((asset) => !seen.has(asset.id));
     pageAssets.forEach((asset) => seen.add(asset.id));
@@ -113,6 +111,31 @@ export async function getMuxLibraryAssets(env: AdminEnvironment) {
     if (!cursor || pageAssets.length === 0) break;
   }
   return assets.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
+async function readMuxLibraryPage(env: AdminEnvironment, query: string): Promise<MuxResponse<MuxAsset[]>> {
+  const headers = { Authorization: authorization(env) };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(`https://api.mux.com/video/v1/assets${query}`, { headers, signal: AbortSignal.timeout(10000) });
+      if (!response.ok) {
+        await response.body?.cancel();
+        if (attempt === 0 && [429, 502, 503, 504].includes(response.status)) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+        throw new Error(`Mux returned ${response.status} while reading the library.`);
+      }
+      const payload = await response.json() as MuxResponse<MuxAsset[]>;
+      if (!payload || !Array.isArray(payload.data)) throw new Error('Mux returned an invalid library response.');
+      return payload;
+    } catch (error) {
+      // Only retry transport failures here; HTTP retries are handled above.
+      if (attempt === 0 && error instanceof Error && ['TypeError', 'TimeoutError', 'AbortError'].includes(error.name)) continue;
+      throw error;
+    }
+  }
+  throw new Error('Mux is temporarily unavailable.');
 }
 
 export async function getMuxLibraryAsset(env: AdminEnvironment, assetId: string) {
