@@ -24,7 +24,7 @@ type LibraryDisplayItem =
   | { kind: 'collection'; collection: VideoProjectCollection; assets: MatchedMuxLibraryAsset[]; representative: MatchedMuxLibraryAsset }
   | { kind: 'project'; project: VideoProject; assets: MatchedMuxLibraryAsset[]; representative: MatchedMuxLibraryAsset };
 type LibraryDropTarget = { kind: 'asset' | 'collection' | 'project'; id: string };
-type PendingLibraryDrop = { source: MatchedMuxLibraryAsset; target: MatchedMuxLibraryAsset };
+type PendingLibraryDrop = { sources: MatchedMuxLibraryAsset[]; target: MatchedMuxLibraryAsset };
 type UploadState = { id: string; name: string; title: string; client: string; tags: string; variantLabel: string; assetId?: string; progress: number; state: 'uploading' | 'complete' | 'error'; error?: string; saving?: boolean; thumbnailFailed?: boolean };
 type UploadDestination = 'solo' | 'collection';
 type UploadRatioGroup = { id: string; title: string; uploadIds: string[] };
@@ -45,11 +45,11 @@ function MobileActionsToggle({ title, expanded, onClick }: { title: string; expa
   return <button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={onClick}><span aria-hidden="true"><i /><i /><i /></span></button>;
 }
 
-function MuxLibraryDndCard({ children, className, draggableAsset, dropTarget }: { children: ReactNode; className?: string; draggableAsset?: MatchedMuxLibraryAsset; dropTarget: LibraryDropTarget }) {
-  const draggable = useDraggable({ id: `mux-drag:${dropTarget.kind}:${dropTarget.id}`, data: draggableAsset ? { assetId: draggableAsset.id } : undefined, disabled: !draggableAsset });
+function MuxLibraryDndCard({ children, className, draggableAssets, dragLabel, dropTarget }: { children: ReactNode; className?: string; draggableAssets?: MatchedMuxLibraryAsset[]; dragLabel?: string; dropTarget: LibraryDropTarget }) {
+  const draggable = useDraggable({ id: `mux-drag:${dropTarget.kind}:${dropTarget.id}`, data: draggableAssets?.length ? { assetIds: draggableAssets.map((asset) => asset.id), previewAssetId: draggableAssets[0].id, dragLabel: dragLabel || draggableAssets[0].title, sourceTarget: dropTarget } : undefined, disabled: !draggableAssets?.length });
   const droppable = useDroppable({ id: `mux-drop:${dropTarget.kind}:${dropTarget.id}`, data: dropTarget });
   const setNodeRef = useCallback((node: HTMLElement | null) => { draggable.setNodeRef(node); droppable.setNodeRef(node); }, [draggable, droppable]);
-  return <article ref={setNodeRef} className={`${className ?? ''} mux-library-dnd-card${draggableAsset ? ' mux-library-dnd-card--draggable' : ''}${draggable.isDragging ? ' is-library-dragging' : ''}${droppable.isOver ? ' is-library-drop-target' : ''}`.trim()} style={{ transform: CSS.Translate.toString(draggable.transform) }} {...(draggableAsset ? draggable.attributes : {})} {...(draggableAsset ? draggable.listeners : {})}>{children}</article>;
+  return <article ref={setNodeRef} className={`${className ?? ''} mux-library-dnd-card${draggableAssets?.length ? ' mux-library-dnd-card--draggable' : ''}${draggable.isDragging ? ' is-library-dragging' : ''}${droppable.isOver ? ' is-library-drop-target' : ''}`.trim()} style={{ transform: CSS.Translate.toString(draggable.transform) }} {...(draggableAssets?.length ? draggable.attributes : {})} {...(draggableAssets?.length ? draggable.listeners : {})}>{children}</article>;
 }
 
 function duration(value: number) {
@@ -220,7 +220,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [previewProjectId, setPreviewProjectId] = useState('');
   const [openMobileActions, setOpenMobileActions] = useState('');
   const [hoveredQuickActionsCard, setHoveredQuickActionsCard] = useState('');
-  const [activeLibraryDragAssetId, setActiveLibraryDragAssetId] = useState('');
+  const [activeLibraryDrag, setActiveLibraryDrag] = useState<{ assetId: string; label: string } | null>(null);
   const [pendingLibraryDrop, setPendingLibraryDrop] = useState<PendingLibraryDrop | null>(null);
   const [droppedGroupTitle, setDroppedGroupTitle] = useState('');
   const [libraryDropSaving, setLibraryDropSaving] = useState<'collection' | 'ratio' | 'add' | ''>('');
@@ -724,9 +724,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     && hasDistinctRatios(selectedAssets)
     && selectedAssets.every((asset) => asset.status === 'ready' && asset.playbackPolicy === 'public' && asset.playbackId);
   const libraryDndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-  const activeLibraryDragAsset = activeLibraryDragAssetId ? assetsById.get(activeLibraryDragAssetId) : undefined;
-  const pendingDropAssets = pendingLibraryDrop ? [pendingLibraryDrop.source, pendingLibraryDrop.target] : [];
-  const canCreateDroppedRatioGroup = pendingDropAssets.length === 2
+  const activeLibraryDragAsset = activeLibraryDrag ? assetsById.get(activeLibraryDrag.assetId) : undefined;
+  const pendingDropAssets = pendingLibraryDrop ? [...new Map([...pendingLibraryDrop.sources, pendingLibraryDrop.target].map((asset) => [asset.id, asset])).values()] : [];
+  const canCreateDroppedRatioGroup = pendingDropAssets.length >= 2
     && hasDistinctRatios(pendingDropAssets)
     && pendingDropAssets.every((asset) => asset.status === 'ready' && asset.playbackPolicy === 'public' && asset.playbackId);
 
@@ -1254,27 +1254,52 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     }
   }
 
-  async function addDroppedAssetToCollection(source: MatchedMuxLibraryAsset, collection: VideoProjectCollection) {
+  async function addDroppedAssetsToCollection(sources: MatchedMuxLibraryAsset[], collection: VideoProjectCollection) {
+    if (!sources.length) return;
     setLibraryDropSaving('add');
     setWorkspaceMessage('');
     try {
       const response = await fetch('/api/admin/video-collections', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ collectionId: collection.id, name: collection.name, assetIds: [source.id], clientsByAssetId: { [source.id]: clientName(source) } }),
+        body: JSON.stringify({ collectionId: collection.id, name: collection.name, assetIds: sources.map((asset) => asset.id), clientsByAssetId: Object.fromEntries(sources.map((asset) => [asset.id, clientName(asset)])) }),
       });
       const payload = await jsonResponse<{ collection?: VideoProjectCollection; projects?: VideoProject[]; collections?: VideoProjectCollection[]; error?: string }>(response);
       if (!response.ok || !payload.collection || !payload.projects || !payload.collections) throw new Error(payload.error || 'Could not add the video to this collection.');
       setProjects(payload.projects);
       setCollections(payload.collections);
-      setWorkspaceMessage(`Added “${source.title}” to “${payload.collection.name}”.`);
+      setWorkspaceMessage(`Added ${sources.length === 1 ? `“${sources[0].title}”` : `${sources.length} videos`} to “${payload.collection.name}”.`);
     } catch (reason) {
       setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not add the video to this collection.');
     } finally { setLibraryDropSaving(''); }
   }
 
-  async function addDroppedAssetToRatioGroup(source: MatchedMuxLibraryAsset, project: VideoProject) {
+  async function mergeDroppedCollectionIntoCollection(source: VideoProjectCollection, sources: MatchedMuxLibraryAsset[], destination: VideoProjectCollection) {
+    if (!sources.length || source.id === destination.id) return;
+    setLibraryDropSaving('add');
+    setWorkspaceMessage('');
+    try {
+      const attach = await fetch('/api/admin/video-collections', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ collectionId: destination.id, name: destination.name, assetIds: sources.map((asset) => asset.id), clientsByAssetId: Object.fromEntries(sources.map((asset) => [asset.id, clientName(asset)])) }),
+      });
+      const attachPayload = await jsonResponse<{ error?: string }>(attach);
+      if (!attach.ok) throw new Error(attachPayload.error || 'Could not add the collection videos.');
+
+      const remove = await fetch('/api/admin/video-collections', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ collectionId: source.id }) });
+      const removePayload = await jsonResponse<{ error?: string }>(remove);
+      if (!remove.ok) throw new Error(removePayload.error || 'The videos were added, but the source collection could not be removed.');
+
+      await refreshLibrary();
+      setWorkspaceMessage(`Merged “${source.name}” into “${destination.name}”.`);
+    } catch (reason) {
+      setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not merge those collections.');
+    } finally { setLibraryDropSaving(''); }
+  }
+
+  async function addDroppedAssetsToRatioGroup(sources: MatchedMuxLibraryAsset[], project: VideoProject) {
+    if (!sources.length) return;
     const projectAssets = project.variants.map((variant) => assetsById.get(variant.assetId)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset));
-    const groupAssets = [...projectAssets, source];
+    const groupAssets = [...new Map([...projectAssets, ...sources].map((asset) => [asset.id, asset])).values()];
     if (projectAssets.length !== project.variants.length || !hasDistinctRatios(groupAssets) || !groupAssets.every((asset) => asset.status === 'ready' && asset.playbackPolicy === 'public' && asset.playbackId)) {
       setWorkspaceMessage('That video must be ready, public, and use a new ratio before it can join this ratio group.');
       return;
@@ -1286,7 +1311,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const payload = await jsonResponse<{ project?: VideoProject; error?: string }>(response);
       if (!response.ok || !payload.project) throw new Error(payload.error || 'Could not add the video to this ratio group.');
       await refreshLibrary();
-      setWorkspaceMessage(`Added “${source.title}” to “${payload.project.title}”.`);
+      setWorkspaceMessage(`Added ${sources.length === 1 ? `“${sources[0].title}”` : `${sources.length} videos`} to “${payload.project.title}”.`);
     } catch (reason) {
       setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not add the video to this ratio group.');
     } finally { setLibraryDropSaving(''); }
@@ -1294,13 +1319,14 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
 
   async function createDroppedGroup(kind: 'collection' | 'ratio') {
     if (!pendingLibraryDrop || !droppedGroupTitle.trim()) return;
-    const { source, target } = pendingLibraryDrop;
-    const assetIds = [source.id, target.id];
+    const { sources, target } = pendingLibraryDrop;
+    const groupedAssets = [...new Map([...sources, target].map((asset) => [asset.id, asset])).values()];
+    const assetIds = groupedAssets.map((asset) => asset.id);
     setLibraryDropSaving(kind);
     setWorkspaceMessage('');
     try {
       if (kind === 'collection') {
-        const response = await fetch('/api/admin/video-collections', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: droppedGroupTitle.trim(), assetIds, clientsByAssetId: Object.fromEntries([source, target].map((asset) => [asset.id, clientName(asset)])) }) });
+        const response = await fetch('/api/admin/video-collections', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: droppedGroupTitle.trim(), assetIds, clientsByAssetId: Object.fromEntries(groupedAssets.map((asset) => [asset.id, clientName(asset)])) }) });
         const payload = await jsonResponse<{ collection?: VideoProjectCollection; projects?: VideoProject[]; collections?: VideoProjectCollection[]; error?: string }>(response);
         if (!response.ok || !payload.collection || !payload.projects || !payload.collections) throw new Error(payload.error || 'Could not create the collection.');
         setProjects(payload.projects); setCollections(payload.collections);
@@ -1321,25 +1347,29 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   }
 
   function handleLibraryDragEnd(event: DragEndEvent) {
-    setActiveLibraryDragAssetId('');
-    const sourceId = event.active.data.current?.assetId as string | undefined;
+    setActiveLibraryDrag(null);
+    const sourceIds = event.active.data.current?.assetIds as string[] | undefined;
     const target = event.over?.data.current as LibraryDropTarget | undefined;
-    const source = sourceId ? assetsById.get(sourceId) : undefined;
-    if (!source || !target || target.id === source.id) return;
+    const sourceTarget = event.active.data.current?.sourceTarget as LibraryDropTarget | undefined;
+    const sources = (sourceIds ?? []).map((id) => assetsById.get(id)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset));
+    if (!sources.length || !target) return;
+    if (sourceTarget?.kind === target.kind && sourceTarget.id === target.id) return;
     if (target.kind === 'collection') {
       const collection = collections.find((item) => item.id === target.id);
-      if (collection) void addDroppedAssetToCollection(source, collection);
+      const sourceCollection = sourceTarget?.kind === 'collection' ? collections.find((item) => item.id === sourceTarget.id) : undefined;
+      if (collection && sourceCollection) void mergeDroppedCollectionIntoCollection(sourceCollection, sources, collection);
+      else if (collection) void addDroppedAssetsToCollection(sources, collection);
       return;
     }
     if (target.kind === 'project') {
       const project = projects.find((item) => item.id === target.id);
-      if (project) void addDroppedAssetToRatioGroup(source, project);
+      if (project) void addDroppedAssetsToRatioGroup(sources.filter((asset) => !project.variants.some((variant) => variant.assetId === asset.id)), project);
       return;
     }
     const targetAsset = assetsById.get(target.id);
-    if (!targetAsset) return;
+    if (!targetAsset || sources.some((asset) => asset.id === targetAsset.id)) return;
     setDroppedGroupTitle(targetAsset.title);
-    setPendingLibraryDrop({ source, target: targetAsset });
+    setPendingLibraryDrop({ sources, target: targetAsset });
   }
 
   async function createProject(event: FormEvent) {
@@ -1473,7 +1503,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{resultTotal.toLocaleString()}</strong> of {statusCounts.all.toLocaleString()} assets</p>
-    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} onDragStart={(event) => setActiveLibraryDragAssetId(String(event.active.data.current?.assetId || ''))} onDragCancel={() => setActiveLibraryDragAssetId('')} onDragEnd={handleLibraryDragEnd}><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
+    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} onDragStart={(event) => { const data = event.active.data.current; const assetId = String(data?.previewAssetId || ''); if (assetId) setActiveLibraryDrag({ assetId, label: String(data?.dragLabel || '') }); }} onDragCancel={() => setActiveLibraryDrag(null)} onDragEnd={handleLibraryDragEnd}><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
       const asset = item.kind === 'asset' ? item.asset : item.representative;
       const marker = index === 0 && <div className="mux-library-time-marker"><span>{groupMode === 'date' ? <><strong>{group.title}</strong><small>{group.eyebrow}</small></> : <strong>{group.title}</strong>}</span><i aria-hidden="true" /></div>;
 
@@ -1493,7 +1523,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         </div>;
         return <div className={`mux-library-flow-cell mux-library-collection-cell${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={`collection-${item.collection.id}`} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard className="mux-collection-card" dropTarget={{ kind: 'collection', id: item.collection.id }}>
+          <MuxLibraryDndCard className="mux-collection-card" draggableAssets={item.assets} dragLabel={item.collection.name} dropTarget={{ kind: 'collection', id: item.collection.id }}>
             <div className={`mux-library-thumb mux-library-thumb-with-actions mux-collection-stack${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}>
               <a className="mux-library-thumb-primary mux-collection-stack-primary" href={publicHref} target={publicLinksOpenInNewTab ? '_blank' : undefined} rel={publicLinksOpenInNewTab ? 'noreferrer' : undefined} aria-label={`Open ${item.collection.name}`}>
                 {previews.map((preview, previewIndex) => <span className={`mux-collection-stack-frame ${previewIndex === 0 ? 'front' : previewIndex === 1 ? 'middle' : 'back'}`} key={preview.id}>{preview.thumbnailUrl ? <img src={preview.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}</span>)}
@@ -1515,7 +1545,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         const actionKey = `project-${item.project.id}`;
         return <div className={`mux-library-flow-cell${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={`project-${item.project.id}`} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard dropTarget={{ kind: 'project', id: item.project.id }}>
+          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : item.assets} dragLabel={item.project.title} dropTarget={{ kind: 'project', id: item.project.id }}>
             <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}>
               {selectionMode ? <button className="mux-library-thumb-primary mux-selectable-thumb mux-project-select-thumb" type="button" onClick={() => setSelectingProjectId(item.project.id)} aria-label={`Select ratios from ${item.project.title}`}>
                 <LibraryThumbnail asset={item.representative} />
@@ -1538,18 +1568,18 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const actionKey = `asset-${asset.id}`;
       return <div className={`mux-library-flow-cell${selectedIds.includes(asset.id) ? ' selected' : ''}${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={asset.id} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard draggableAsset={selectionMode ? undefined : asset} dropTarget={{ kind: 'asset', id: asset.id }}>
+          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : [asset]} dropTarget={{ kind: 'asset', id: asset.id }}>
           {selectionMode ? <button className="mux-library-thumb mux-selectable-thumb" type="button" onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)} aria-label={`${selectedIds.includes(asset.id) ? 'Deselect' : 'Select'} ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <LibraryThumbnail asset={asset} /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b><i>{selectedIds.includes(asset.id) ? '✓' : '+'}</i></button> : <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}><a className="mux-library-thumb-primary" href={`/admin/mux/${asset.id}`} aria-label={`Manage ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <LibraryThumbnail asset={asset} /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b></a><MobileActionsToggle title={asset.title} expanded={openMobileActions === actionKey} onClick={() => setOpenMobileActions((current) => current === actionKey ? '' : actionKey)} /><div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${asset.title}`}><button type="button" disabled={!canPreviewAsset(asset)} title={canPreviewAsset(asset) ? undefined : 'Mux is still preparing this video.'} onClick={() => setPreviewAssetId(asset.id)}><QuickActionLabel icon="view">View</QuickActionLabel></button><a href={`/admin/mux/${asset.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicPath(asset)} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => selectAssetForBulk(asset)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingAssetId === asset.id} onClick={() => { setReplaceTargetId(asset.id); replaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingAssetId === asset.id ? 'Replacing…' : 'Replace video'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(asset)}><QuickActionLabel icon="copy">{copiedAssetId === asset.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment([asset])}><QuickActionLabel icon="client">{clientName(asset) === 'Unassigned' ? 'Add client' : 'Change client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsAssetId(asset.id); setTagsDraft(asset.localTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'published' ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{asset.libraryStatus === 'published' ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'hidden' ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{asset.libraryStatus === 'hidden' ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingAssetId === asset.id} onClick={() => setDeleteAssetId(asset.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></div>}
           <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{!asset.hasCustomThumbnail && <p className="mux-thumbnail-needed">Needs thumbnail</p>}{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
           </MuxLibraryDndCard>
         </div>;
-    }))}</div><DragOverlay dropAnimation={null}>{activeLibraryDragAsset && <div className="mux-library-drag-overlay"><span>{activeLibraryDragAsset.thumbnailUrl ? <img src={activeLibraryDragAsset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}</span><strong>{activeLibraryDragAsset.title}</strong></div>}</DragOverlay></DndContext>{hasMoreItems && <div ref={loadMoreSentinel} className="mux-library-scroll-sentinel" aria-live="polite">Loading more videos…</div>}</>}
+    }))}</div><DragOverlay dropAnimation={null}>{activeLibraryDragAsset && <div className="mux-library-drag-overlay"><span>{activeLibraryDragAsset.thumbnailUrl ? <img src={activeLibraryDragAsset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}</span><strong>{activeLibraryDrag?.label || activeLibraryDragAsset.title}</strong></div>}</DragOverlay></DndContext>{hasMoreItems && <div ref={loadMoreSentinel} className="mux-library-scroll-sentinel" aria-live="polite">Loading more videos…</div>}</>}
     {hasFilters && <div className="mux-drive-search">
       <a href={driveSearchUrl} target="_blank" rel="noreferrer">
         Search Google Drive <ExternalLink aria-hidden="true" />
       </a>
     </div>}
-    {pendingLibraryDrop && <div className="mux-bulk-modal mux-drop-group-modal" role="dialog" aria-modal="true" aria-label="Create a video group" onMouseDown={() => !libraryDropSaving && setPendingLibraryDrop(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setPendingLibraryDrop(null)} aria-label="Close">×</button><section className="mux-drop-group-dialog"><p>New group</p><h3>Group these videos?</h3><span>Choose how the two dropped videos should be grouped.</span><label><span>Group title</span><input autoFocus required maxLength={160} value={droppedGroupTitle} disabled={Boolean(libraryDropSaving)} onChange={(event) => setDroppedGroupTitle(event.target.value)} /></label><ul>{pendingDropAssets.map((asset) => <li key={asset.id}>{asset.title} · {friendlyAssetRatio(asset)}</li>)}</ul><div className="mux-drop-group-actions"><button type="button" disabled={!droppedGroupTitle.trim() || Boolean(libraryDropSaving)} onClick={() => void createDroppedGroup('collection')}>{libraryDropSaving === 'collection' ? 'Creating…' : 'Create collection'}</button><button type="button" disabled={!droppedGroupTitle.trim() || !canCreateDroppedRatioGroup || Boolean(libraryDropSaving)} title={canCreateDroppedRatioGroup ? undefined : 'Both videos must be ready, public, and have different ratios.'} onClick={() => void createDroppedGroup('ratio')}>{libraryDropSaving === 'ratio' ? 'Creating…' : 'Create ratio group'}</button></div></section></div></div>}
+    {pendingLibraryDrop && <div className="mux-bulk-modal mux-drop-group-modal" role="dialog" aria-modal="true" aria-label="Create a video group" onMouseDown={() => !libraryDropSaving && setPendingLibraryDrop(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setPendingLibraryDrop(null)} aria-label="Close">×</button><section className="mux-drop-group-dialog"><p>New group</p><h3>Group these videos?</h3><span>Choose how the dropped videos should be grouped.</span><label><span>Group title</span><input autoFocus required maxLength={160} value={droppedGroupTitle} disabled={Boolean(libraryDropSaving)} onChange={(event) => setDroppedGroupTitle(event.target.value)} /></label><ul>{pendingDropAssets.map((asset) => <li key={asset.id}>{asset.title} · {friendlyAssetRatio(asset)}</li>)}</ul><div className="mux-drop-group-actions"><button type="button" disabled={!droppedGroupTitle.trim() || Boolean(libraryDropSaving)} onClick={() => void createDroppedGroup('collection')}>{libraryDropSaving === 'collection' ? 'Creating…' : 'Create collection'}</button><button type="button" disabled={!droppedGroupTitle.trim() || !canCreateDroppedRatioGroup || Boolean(libraryDropSaving)} title={canCreateDroppedRatioGroup ? undefined : 'Videos must be ready, public, and have different ratios.'} onClick={() => void createDroppedGroup('ratio')}>{libraryDropSaving === 'ratio' ? 'Creating…' : 'Create ratio group'}</button></div></section></div></div>}
 {previewAsset && previewProject && previewProjectVariants.length > 0 ? <VideoModal
       video={{ id: previewAsset.id, title: previewProject.title, client: previewProject.client || clientName(previewAsset), thumbnail: previewAsset.thumbnailUrl || '', muxPlaybackId: previewProjectVariants[0].playbackId }}
       onClose={closePreview}
