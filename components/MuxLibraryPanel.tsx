@@ -5,7 +5,7 @@ import { PlaybackIcon } from './PlaybackIcon';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Check, ChevronDown, Copy, ExternalLink, EyeOff, Label, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
+import { Check, ChevronDown, Copy, ExternalLink, EyeOff, Label, Refresh, Server, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
 import { MuxDateFilter, type MuxDateRange } from './MuxDateFilter';
 import type { MatchedMuxLibraryAsset } from '@/lib/mux-matching';
 import { hasDistinctRatios, ratioLabel, videoProjectSlug, type VideoProject, type VideoProjectCollection } from '@/lib/video-projects-shared';
@@ -34,11 +34,11 @@ type ReplacementProgress = { fileName: string; progress: number; stage: 'uploadi
 type LibraryFacets = { clients: string[]; years: number[]; statusCounts: Record<StatusFilter, number>; thumbnailCounts: { needsThumbnail: number; customThumbnail: number } };
 type DeckCardMatch = { id: string; title: string; client: string };
 
-const quickActionIcons = { view: PlaybackIcon, manage: SettingsCog, public: ExternalLink, select: Check, replace: Refresh, copy: Copy, client: UserPlus, tags: Label, publish: Upload, hide: EyeOff, delete: Trash };
+const quickActionIcons = { view: PlaybackIcon, manage: SettingsCog, deck: Server, public: ExternalLink, select: Check, replace: Refresh, copy: Copy, client: UserPlus, tags: Label, publish: Upload, hide: EyeOff, delete: Trash };
 type QuickActionIcon = keyof typeof quickActionIcons;
 
 function QuickActionLabel({ icon, children }: { icon: QuickActionIcon; children: ReactNode }) {
-  const Icon = quickActionIcons[icon];
+  const Icon = quickActionIcons[children === 'Add to Deck' ? 'deck' : icon];
   return <><Icon className="mux-quick-action-icon" aria-hidden="true" /><span>{icon === 'view' ? 'Play' : children}</span></>;
 }
 
