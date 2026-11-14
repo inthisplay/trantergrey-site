@@ -56,6 +56,22 @@ export async function patchMuxMetadata(env: AdminEnvironment, rawId: unknown, pa
   };
 }
 
+/** Applies one shared metadata patch in a single D1 batch for bulk admin actions. */
+export async function patchMuxMetadataBatch(env: AdminEnvironment, rawIds: unknown, patch: { client?: unknown; tags?: unknown; status?: unknown }) {
+  const assetIds = Array.isArray(rawIds) ? [...new Set(rawIds.map(assetId).filter(Boolean))] : [];
+  if (!assetIds.length) throw new Error('Select at least one video.');
+  const next: MuxAssetMetadata = { client: null, title: null, tags: null, status: null, thumbnailTime: null, downloadsEnabled: null };
+  if ('client' in patch) next.client = text(patch.client, 120) || null;
+  if ('tags' in patch) next.tags = tags(patch.tags);
+  if ('status' in patch) { const value = status(patch.status); if (!value) throw new Error('Choose a valid library status.'); next.status = value; }
+  const fields = [['client', 'client', next.client], ['tags', 'tags', JSON.stringify(next.tags)], ['status', 'status', next.status]] as const;
+  const updatedFields = fields.filter(([key]) => key in patch); if (!updatedFields.length) throw new Error('Choose metadata to update.');
+  const columns = ['asset_id', 'updated_at', ...updatedFields.map(([, column]) => column)]; const assignments = columns.slice(1).map((column) => `${column}=excluded.${column}`); const now = new Date().toISOString();
+  const statements = assetIds.map((id) => env.TG_DATA.prepare(`INSERT INTO mux_asset_metadata (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')}) ON CONFLICT(asset_id) DO UPDATE SET ${assignments.join(', ')}`).bind(id, now, ...updatedFields.map(([, , value]) => value)));
+  for (let start = 0; start < statements.length; start += 75) await env.TG_DATA.batch(statements.slice(start, start + 75));
+  return { assetIds, ...('client' in patch ? { client: next.client } : {}), ...('tags' in patch ? { tags: next.tags ?? [] } : {}), ...('status' in patch ? { status: next.status } : {}) };
+}
+
 export async function deleteMuxMetadata(env: AdminEnvironment, assetIds: string[]) {
   for (const id of assetIds) await env.TG_DATA.prepare('DELETE FROM mux_asset_metadata WHERE asset_id = ?').bind(id).run();
 }

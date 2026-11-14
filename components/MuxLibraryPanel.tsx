@@ -4,8 +4,7 @@ import { PlaybackIcon } from './PlaybackIcon';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { Check, ChevronDown, Copy, ExternalLink, EyeOff, Label, Refresh, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
-import { MuxDateFilter, muxDateKey, type MuxDateRange } from './MuxDateFilter';
-import { createMuxSearch } from '@/lib/mux-search';
+import { MuxDateFilter, type MuxDateRange } from './MuxDateFilter';
 import type { MatchedMuxLibraryAsset } from '@/lib/mux-matching';
 import { hasDistinctRatios, ratioLabel, videoProjectSlug, type VideoProject, type VideoProjectCollection } from '@/lib/video-projects-shared';
 import { CollectionRatioManager } from './CollectionRatioManager';
@@ -28,6 +27,7 @@ type UploadRatioGroup = { id: string; title: string; uploadIds: string[] };
 type DuplicateRatioWarning = { title: string; uploadIds: string[] } | null;
 type UploadPlan = { client: string; tags: string[]; grouping: 'none'; name: string; collectionId: string };
 type ReplacementProgress = { fileName: string; progress: number; stage: 'uploading' | 'processing' | 'swapping'; current: number; total: number };
+type LibraryFacets = { clients: string[]; years: number[]; statusCounts: Record<StatusFilter, number>; thumbnailCounts: { needsThumbnail: number; customThumbnail: number } };
 
 const quickActionIcons = { view: PlaybackIcon, manage: SettingsCog, public: ExternalLink, select: Check, replace: Refresh, copy: Copy, client: UserPlus, tags: Label, publish: Upload, hide: EyeOff, delete: Trash };
 type QuickActionIcon = keyof typeof quickActionIcons;
@@ -99,11 +99,12 @@ function thumbnailFrame(asset: MatchedMuxLibraryAsset): { kind: ThumbnailFrameKi
 
 function LibraryThumbnail({ asset }: { asset: MatchedMuxLibraryAsset }) {
   if (!asset.thumbnailUrl) return <span>Preview unavailable</span>;
+  const source = asset.thumbnailUrl.includes('image.mux.com/') ? asset.thumbnailUrl.replace(/([?&])width=\d+/, '$1width=800') : asset.thumbnailUrl;
   const frame = thumbnailFrame(asset);
-  if (frame.kind === 'landscape') return <img src={asset.thumbnailUrl} alt="" />;
+  if (frame.kind === 'landscape') return <img src={source} alt="" loading="lazy" decoding="async" />;
   return <span className={`mux-library-thumbnail-frame mux-library-thumbnail-frame--${frame.kind}`}>
-    <img className="mux-library-thumbnail-backdrop" src={asset.thumbnailUrl} alt="" />
-    <img className="mux-library-thumbnail-artwork" src={asset.thumbnailUrl} alt="" />
+    <img className="mux-library-thumbnail-backdrop" src={source} alt="" loading="lazy" decoding="async" />
+    <img className="mux-library-thumbnail-artwork" src={source} alt="" loading="lazy" decoding="async" />
     <span className="mux-library-thumbnail-ratio">{frame.label}</span>
   </span>;
 }
@@ -228,7 +229,12 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [savingAssetId, setSavingAssetId] = useState('');
   const [savingProjectId, setSavingProjectId] = useState('');
   const [error, setError] = useState('');
-  const libraryRequestActive = useRef(false);
+  const [matchedAssetIds, setMatchedAssetIds] = useState<string[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [resultTotal, setResultTotal] = useState(0);
+  const [facets, setFacets] = useState<LibraryFacets | null>(null);
+  const loadMoreSentinel = useRef<HTMLDivElement>(null);
+  const libraryRequestSequence = useRef(0);
   const [refreshingLibrary, setRefreshingLibrary] = useState(false);
   const [locallyProcessingAssetIds, setLocallyProcessingAssetIds] = useState<string[]>([]);
   const [uploads, setUploads] = useState<UploadState[]>([]);
@@ -268,15 +274,17 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     return () => document.removeEventListener('click', openInsideTeamApp);
   }, [publicLinksOpenInNewTab, publicPageBase]);
 
-  async function refreshLibrary() {
-    if (libraryRequestActive.current) return;
-    libraryRequestActive.current = true;
+  async function refreshLibrary(cursor: number | null = null) {
+    const requestSequence = ++libraryRequestSequence.current;
     setRefreshingLibrary(true);
     try {
       let response: Response | undefined;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          response = await fetch('/api/mux/library', { cache: 'no-store', signal: AbortSignal.timeout(30000) });
+          const params = new URLSearchParams({ limit: '48', query, client, status: statusFilter, thumbnail: thumbnailFilter });
+          if (dateRange) { params.set('dateStart', dateRange.start); params.set('dateEnd', dateRange.end); }
+          if (cursor !== null) params.set('cursor', String(cursor));
+          response = await fetch(`/api/mux/library?${params}`, { cache: 'no-store', signal: AbortSignal.timeout(30000) });
         } catch (reason) {
           if (attempt === 2) throw reason;
         }
@@ -289,24 +297,31 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       }
       if (!response) throw new Error('The library could not be reached. Please try again.');
       if (response.status === 401) { window.location.replace(`/login?next=${encodeURIComponent(loginDestination)}`); return; }
-      const payload = await jsonResponse<{ assets?: MatchedMuxLibraryAsset[]; projects?: VideoProject[]; collections?: VideoProjectCollection[]; error?: string }>(response);
+      const payload = await jsonResponse<{ assets?: MatchedMuxLibraryAsset[]; projects?: VideoProject[]; collections?: VideoProjectCollection[]; pageAssetIds?: string[]; total?: number; nextCursor?: number | null; facets?: LibraryFacets; error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || 'Unable to open the Mux library.');
-      setAssets(payload.assets ?? []);
-      setProjects(payload.projects ?? []);
-      setCollections(payload.collections ?? []);
+      if (requestSequence !== libraryRequestSequence.current) return;
+      if (cursor === null) {
+        setAssets(payload.assets ?? []); setMatchedAssetIds(payload.pageAssetIds ?? []);
+        setProjects(payload.projects ?? []); setCollections(payload.collections ?? []); setFacets(payload.facets ?? null);
+      } else {
+        setAssets((current) => [...new Map([...(current ?? []), ...(payload.assets ?? [])].map((asset) => [asset.id, asset])).values()]);
+        setMatchedAssetIds((current) => [...new Set([...current, ...(payload.pageAssetIds ?? [])])]);
+      }
+      setResultTotal(payload.total ?? 0); setNextCursor(payload.nextCursor ?? null);
       setError('');
     } catch (reason) {
+      if (requestSequence !== libraryRequestSequence.current) return;
       setError(reason instanceof Error ? reason.message : 'Unable to open the Mux library.');
     } finally {
-      libraryRequestActive.current = false;
-      setRefreshingLibrary(false);
+      if (requestSequence === libraryRequestSequence.current) setRefreshingLibrary(false);
     }
   }
 
 
   useEffect(() => {
-    void refreshLibrary();
-  }, []);
+    const timeout = window.setTimeout(() => { void refreshLibrary(); }, query ? 220 : 0);
+    return () => window.clearTimeout(timeout);
+  }, [query, client, dateRange, statusFilter, thumbnailFilter]);
 
   useEffect(() => {
     if (!assets || !locallyProcessingAssetIds.length) return;
@@ -585,8 +600,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     addFiles(event.dataTransfer.files);
   }
 
-  const clients = useMemo(() => ['All', ...Array.from(new Set((assets ?? []).map(clientName))).sort()], [assets]);
-  const searchLibrary = useMemo(() => createMuxSearch(assets ?? []), [assets]);
+  const clients = facets?.clients ?? ['All'];
   const combinedSearchSuggestions = useMemo(() => Array.from(new Set([
     ...clients.filter((item) => item !== 'All' && item !== 'Unassigned'),
     ...(assets ?? []).map((asset) => asset.title.trim()).filter(Boolean),
@@ -602,29 +616,13 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     setClient('All');
     setQuery(value);
   }
-  const assetDates = useMemo(() => new Map((assets ?? []).flatMap((asset) => {
-    const value = libraryDate(asset);
-    if (!value) return [];
-    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value);
-    return Number.isNaN(date.getTime()) ? [] : [[asset.id, muxDateKey(date)] as const];
-  })), [assets]);
-  const dateYears = useMemo(() => [...new Set([...assetDates.values()].map((date) => Number(date.slice(0, 4))))], [assetDates]);
-  const matches = useMemo(() => searchLibrary(query).filter((asset) =>
-    (client === 'All' || clientName(asset) === client)
-    && (!dateRange || ((assetDates.get(asset.id) ?? '') >= dateRange.start && (assetDates.get(asset.id) ?? '') <= dateRange.end))
-    && (statusFilter === 'all' || asset.libraryStatus === statusFilter)
-    && (thumbnailFilter === 'all' || (thumbnailFilter === 'needs-thumbnail' ? !asset.hasCustomThumbnail : Boolean(asset.hasCustomThumbnail)))
-  ), [searchLibrary, query, client, statusFilter, thumbnailFilter, dateRange, assetDates]);
-  const statusCounts = useMemo(() => ({
-    unreviewed: (assets ?? []).filter((asset) => asset.libraryStatus === 'unreviewed').length,
-    published: (assets ?? []).filter((asset) => asset.libraryStatus === 'published').length,
-    hidden: (assets ?? []).filter((asset) => asset.libraryStatus === 'hidden').length,
-    all: (assets ?? []).length,
-  }), [assets]);
-  const thumbnailCounts = useMemo(() => ({
-    needsThumbnail: (assets ?? []).filter((asset) => !asset.hasCustomThumbnail).length,
-    customThumbnail: (assets ?? []).filter((asset) => asset.hasCustomThumbnail).length,
-  }), [assets]);
+  const dateYears = facets?.years ?? [];
+  const matches = useMemo(() => {
+    const byId = new Map((assets ?? []).map((asset) => [asset.id, asset]));
+    return matchedAssetIds.map((id) => byId.get(id)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset));
+  }, [assets, matchedAssetIds]);
+  const statusCounts = facets?.statusCounts ?? { all: 0, published: 0, unreviewed: 0, hidden: 0 };
+  const thumbnailCounts = facets?.thumbnailCounts ?? { needsThumbnail: 0, customThumbnail: 0 };
   const hasFilters = Boolean(dateRange || query.trim()) || client !== 'All' || statusFilter !== 'all' || thumbnailFilter !== 'all';
   const driveSearchTerm = query.trim() || (client === 'All' || client === 'Unassigned' ? '' : client);
   const driveSearchUrl = `https://drive.google.com/drive/search?q=${encodeURIComponent(['type:video', driveSearchTerm].filter(Boolean).join(' '))}`;
@@ -695,6 +693,16 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     const values = [...grouped.values()];
     return groupMode === 'client' ? values.sort((first, second) => first.title.localeCompare(second.title)) : values;
   }, [displayItems, groupMode]);
+  const hasMoreItems = nextCursor !== null;
+  useEffect(() => {
+    const sentinel = loadMoreSentinel.current;
+    if (!sentinel || !hasMoreItems) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting) && nextCursor !== null) void refreshLibrary(nextCursor);
+    }, { rootMargin: '600px 0px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreItems, nextCursor]);
   const selectedAssets = selectedIds.map((id) => assetsById.get(id)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset));
   const canCreateRatioGroup = selectedAssets.length === selectedIds.length
     && hasDistinctRatios(selectedAssets)
@@ -959,12 +967,8 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     setSavingProjectId(project.id);
     setWorkspaceMessage('');
     try {
-      const responses = await Promise.all(projectAssets.map((asset) => fetch('/api/admin/mux-assets/metadata', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ assetId: asset.id, ...patch }),
-      })));
-      if (responses.some((response) => !response.ok)) throw new Error('Could not update every ratio version.');
+      const response = await fetch('/api/admin/mux-assets/metadata-batch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetIds: projectAssets.map((asset) => asset.id), ...patch }) });
+      const payload = await jsonResponse<{ error?: string }>(response); if (!response.ok) throw new Error(payload.error || 'Could not update every ratio version.');
       setAssets((current) => current?.map((asset) => projectAssets.some((item) => item.id === asset.id) ? {
         ...asset,
         localTags: patch.tags ?? asset.localTags,
@@ -1077,12 +1081,8 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     setSavingCollection(true);
     setWorkspaceMessage('');
     try {
-      const responses = await Promise.all(collectionAssets.map((asset) => fetch('/api/admin/mux-assets/metadata', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ assetId: asset.id, status }),
-      })));
-      if (responses.some((response) => !response.ok)) throw new Error('Could not update every video in this collection.');
+      const response = await fetch('/api/admin/mux-assets/metadata-batch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetIds: collectionAssets.map((asset) => asset.id), status }) });
+      const payload = await jsonResponse<{ error?: string }>(response); if (!response.ok) throw new Error(payload.error || 'Could not update every video in this collection.');
       const collectionAssetIds = new Set(collectionAssets.map((asset) => asset.id));
       setAssets((current) => current?.map((asset) => collectionAssetIds.has(asset.id) ? { ...asset, libraryStatus: status } : asset) ?? null);
       setWorkspaceMessage(`Moved every video in “${collection.name}” to ${status}.`);
@@ -1362,8 +1362,8 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setCombinedSearchValue(''); setStatusFilter('all'); setThumbnailFilter('all'); setDateRange(null); }}>Clear filters</button>}
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
-    <p className="mux-library-result-count"><strong>{matches.length.toLocaleString()}</strong> of {assets.length.toLocaleString()} assets</p>
-    {!assets.length ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
+    <p className="mux-library-result-count"><strong>{resultTotal.toLocaleString()}</strong> of {statusCounts.all.toLocaleString()} assets</p>
+    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
       const asset = item.kind === 'asset' ? item.asset : item.representative;
       const marker = index === 0 && <div className="mux-library-time-marker"><span>{groupMode === 'date' ? <><strong>{group.title}</strong><small>{group.eyebrow}</small></> : <strong>{group.title}</strong>}</span><i aria-hidden="true" /></div>;
 
@@ -1433,7 +1433,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
           <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{!asset.hasCustomThumbnail && <p className="mux-thumbnail-needed">Needs thumbnail</p>}{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
           </article>
         </div>;
-    }))}</div>}
+    }))}</div>{hasMoreItems && <div ref={loadMoreSentinel} className="mux-library-scroll-sentinel" aria-live="polite">Loading more videos…</div>}</>}
     {hasFilters && <div className="mux-drive-search">
       <a href={driveSearchUrl} target="_blank" rel="noreferrer">
         Search Google Drive <ExternalLink aria-hidden="true" />

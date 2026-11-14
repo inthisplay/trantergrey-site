@@ -1,5 +1,6 @@
 import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
-import { deleteMuxAssets } from '../../../_lib/mux';
+import { deleteMuxAssets, invalidateMuxLibraryCache } from '../../../_lib/mux';
+import { invalidateMuxBrowseIndex } from '../../../_lib/mux-library';
 import { deleteMuxMetadata, detachAssetsFromVideoPages, readVideoProjectStore } from '../../../_lib/mux-state';
 
 type Context = { request: Request; env: AdminEnvironment };
@@ -13,7 +14,7 @@ export async function onRequestPost({ request, env }: Context) {
     const protectedSelection = ids.some((id) => protectedIds.has(id));
     if (protectedSelection && body.detachFromPages !== true) throw new Error('Remove selected videos from their shareable pages before deleting them.');
     const pageCleanup = protectedSelection ? await detachAssetsFromVideoPages(env, ids) : undefined;
-    await deleteMuxAssets(env, ids); await deleteMuxMetadata(env, ids);
+    await deleteMuxAssets(env, ids); await deleteMuxMetadata(env, ids); await Promise.all([invalidateMuxLibraryCache(env), invalidateMuxBrowseIndex(env)]);
     return Response.json({ deleted: ids, pageCleanup });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not delete the selected videos.' }, { status: 400 }); }
 }

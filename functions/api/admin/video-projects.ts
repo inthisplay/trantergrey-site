@@ -1,12 +1,13 @@
 import { adminResponse, type AdminEnvironment } from '../../_lib/admin';
 import { getMuxLibraryAssets } from '../../_lib/mux';
+import { invalidateMuxBrowseIndex } from '../../_lib/mux-library';
 import { createVideoProject, deleteVideoProject, readVideoProjectStore, regroupVideoRatios, updateVideoProject } from '../../_lib/mux-state';
 
 type Context = { request: Request; env: AdminEnvironment };
 export async function onRequestGet({ request, env }: Context) { const denied = await adminResponse(request, env); return denied || Response.json(await readVideoProjectStore(env)); }
 export async function onRequestPost({ request, env }: Context) {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  try { return Response.json({ project: await createVideoProject(env, await request.json(), await getMuxLibraryAssets(env)) }, { status: 201 }); }
+  try { const project = await createVideoProject(env, await request.json(), await getMuxLibraryAssets(env)); await invalidateMuxBrowseIndex(env); return Response.json({ project }, { status: 201 }); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not create this video project.' }, { status: 400 }); }
 }
 export async function onRequestPatch({ request, env }: Context) {
@@ -16,12 +17,13 @@ export async function onRequestPatch({ request, env }: Context) {
     const project = 'assetIds' in body
       ? await regroupVideoRatios(env, body, body.collectionId === undefined ? await getMuxLibraryAssets(env) : undefined)
       : await updateVideoProject(env, body.projectId, { ...('title' in body ? { title: body.title } : {}), ...('unbrandedPublicPage' in body ? { unbrandedPublicPage: body.unbrandedPublicPage } : {}) });
+    await invalidateMuxBrowseIndex(env);
     return Response.json({ project });
   }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not update this video project.' }, { status: 400 }); }
 }
 export async function onRequestDelete({ request, env }: Context) {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  try { const body = await request.json() as { projectId?: unknown }; return Response.json({ project: await deleteVideoProject(env, body.projectId) }); }
+  try { const body = await request.json() as { projectId?: unknown }; const project = await deleteVideoProject(env, body.projectId); await invalidateMuxBrowseIndex(env); return Response.json({ project }); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not remove this video page.' }, { status: 400 }); }
 }

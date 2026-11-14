@@ -2,6 +2,12 @@ import type { AdminEnvironment } from './admin';
 import type { MuxLibraryAsset } from '../../lib/mux-shared';
 export type { MuxLibraryAsset } from '../../lib/mux-shared';
 
+// Mux webhooks and local catalog mutations explicitly invalidate this cache.
+// Avoid a timer-based refresh so an idle library makes no Mux API requests.
+const muxLibraryCacheLifetimeMs = Number.POSITIVE_INFINITY;
+type MuxSnapshotRow = { refresh_id: string | null; refreshed_at: string | null };
+type MuxSnapshotAssetRow = { value: string };
+
 type MuxAsset = {
   id?: string;
   status?: string;
@@ -96,7 +102,43 @@ async function muxFetch<T>(env: AdminEnvironment, path: string, init?: RequestIn
   return payload?.data;
 }
 
-export async function getMuxLibraryAssets(env: AdminEnvironment) {
+async function readCachedMuxLibraryAssets(env: AdminEnvironment) {
+  const snapshot = await env.TG_DATA.prepare('SELECT refresh_id, refreshed_at FROM mux_library_snapshot_state WHERE id = ?').bind('library').first<MuxSnapshotRow>();
+  if (!snapshot?.refresh_id || !snapshot.refreshed_at) return null;
+  const refreshedAt = Date.parse(snapshot.refreshed_at);
+  if (!Number.isFinite(refreshedAt)) return null;
+  const rows = await env.TG_DATA.prepare('SELECT value FROM mux_library_assets WHERE refresh_id = ?').bind(snapshot.refresh_id).all<MuxSnapshotAssetRow>();
+  const assets = rows.results.flatMap((row) => {
+    try { const asset = JSON.parse(row.value) as MuxLibraryAsset; return asset?.id ? [asset] : []; }
+    catch { return []; }
+  }).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  return { assets, fresh: Date.now() - refreshedAt < muxLibraryCacheLifetimeMs };
+}
+
+async function writeMuxLibrarySnapshot(env: AdminEnvironment, assets: MuxLibraryAsset[]) {
+  const refreshId = crypto.randomUUID();
+  const refreshedAt = new Date().toISOString();
+  // Keep batches well under D1's statement limit. The old snapshot remains
+  // active until the state row is switched below.
+  for (let start = 0; start < assets.length; start += 100) {
+    await env.TG_DATA.batch(assets.slice(start, start + 100).map((asset) => env.TG_DATA.prepare(
+      'INSERT INTO mux_library_assets (asset_id, refresh_id, value, refreshed_at) VALUES (?, ?, ?, ?)'
+    ).bind(asset.id, refreshId, JSON.stringify(asset), refreshedAt)));
+  }
+  await env.TG_DATA.prepare(`INSERT INTO mux_library_snapshot_state (id, refresh_id, refreshed_at) VALUES (?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET refresh_id=excluded.refresh_id, refreshed_at=excluded.refreshed_at`)
+    .bind('library', refreshId, refreshedAt).run();
+}
+
+/** Marks the local catalog stale without throwing away the last good snapshot. */
+export async function invalidateMuxLibraryCache(env: AdminEnvironment) {
+  await env.TG_DATA.prepare("UPDATE mux_library_snapshot_state SET refreshed_at = ? WHERE id = ?")
+    .bind('1970-01-01T00:00:00.000Z', 'library').run();
+}
+
+export async function getMuxLibraryAssets(env: AdminEnvironment, options: { forceRefresh?: boolean } = {}) {
+  const cached = options.forceRefresh ? null : await readCachedMuxLibraryAssets(env);
+  if (cached?.fresh) return cached.assets;
   const assets: MuxLibraryAsset[] = [];
   const seen = new Set<string>();
   let cursor: string | null = null;
@@ -110,7 +152,10 @@ export async function getMuxLibraryAssets(env: AdminEnvironment) {
     cursor = payload.next_cursor || null;
     if (!cursor || pageAssets.length === 0) break;
   }
-  return assets.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const sorted = assets.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  try { await writeMuxLibrarySnapshot(env, sorted); }
+  catch (error) { console.error('Mux catalog snapshot write failed', error instanceof Error ? error.message : 'Unknown error'); }
+  return sorted;
 }
 
 async function readMuxLibraryPage(env: AdminEnvironment, query: string): Promise<MuxResponse<MuxAsset[]>> {

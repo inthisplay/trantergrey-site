@@ -1,5 +1,6 @@
 import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
 import { patchMuxMetadata } from '../../../_lib/mux-state';
+import { invalidateMuxBrowseIndex } from '../../../_lib/mux-library';
 
 type Context = { request: Request; env: AdminEnvironment };
 export async function onRequestPost({ request, env }: Context) {
@@ -8,6 +9,8 @@ export async function onRequestPost({ request, env }: Context) {
     const body = await request.json() as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
     for (const key of ['client', 'title', 'tags', 'status', 'downloadsEnabled'] as const) if (key in body) patch[key] = body[key];
-    return Response.json(await patchMuxMetadata(env, body.assetId, patch));
+    const result = await patchMuxMetadata(env, body.assetId, patch);
+    await invalidateMuxBrowseIndex(env);
+    return Response.json(result);
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not update that video.' }, { status: 400 }); }
 }

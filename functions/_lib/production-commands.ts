@@ -27,7 +27,16 @@ export async function moveProductionCard(env: AdminEnvironment, cardId: string, 
       .bind(crypto.randomUUID(), card.sourceId, changedAt, actor, JSON.stringify({ columnSourceId: card.columnSourceId, position: card.position }), JSON.stringify({ columnSourceId: input.columnSourceId, position })),
   ];
   for (let start = 0; start < statements.length; start += 75) await env.TG_DATA.batch(statements.slice(start, start + 75));
-  return { moved: true, columnSourceId: input.columnSourceId, position };
+  const [updatedCard, countRows] = await Promise.all([
+    env.TG_DATA.prepare(`SELECT p.id, COALESCE(o.title, p.title) AS title, COALESCE(o.client, '') AS client,
+      COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId, COALESCE(o.due_on, p.due_on) AS dueOn
+      FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ?`).bind(cardId).first(),
+    env.TG_DATA.prepare(`SELECT COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId, COUNT(*) AS cardCount
+      FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id
+      WHERE COALESCE(o.column_source_id, p.column_source_id) IN (?, ?) GROUP BY COALESCE(o.column_source_id, p.column_source_id)`)
+      .bind(card.columnSourceId, input.columnSourceId).all<{ columnSourceId: string; cardCount: number }>(),
+  ]);
+  return { moved: true, columnSourceId: input.columnSourceId, position, card: updatedCard, counts: Object.fromEntries(countRows.results.map((row) => [row.columnSourceId, row.cardCount])) };
 }
 
 export async function addProductionComment(env: AdminEnvironment, cardId: string, input: { bodyHtml: string; bodyJson: string }, actor: { name: string; email: string | null }) {

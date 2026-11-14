@@ -1,5 +1,6 @@
 import { adminResponse, adminSession, origin, type AdminEnvironment } from '../../_lib/admin';
-import { createMuxDirectUpload, getMuxDirectUploadAssetId } from '../../_lib/mux';
+import { createMuxDirectUpload, getMuxDirectUploadAssetId, invalidateMuxLibraryCache } from '../../_lib/mux';
+import { invalidateMuxBrowseIndex } from '../../_lib/mux-library';
 
 type Context = { request: Request; env: AdminEnvironment };
 
@@ -23,6 +24,7 @@ export async function onRequestGet({ request, env }: Context) {
     const uploadId = new URL(request.url).searchParams.get('uploadId') || '';
     const assetId = await getMuxDirectUploadAssetId(env, uploadId);
     await env.TG_DATA.prepare('UPDATE mux_asset_ingests SET asset_id = ? WHERE upload_id = ?').bind(assetId, uploadId).run();
+    if (assetId) await Promise.all([invalidateMuxLibraryCache(env), invalidateMuxBrowseIndex(env)]);
     return Response.json({ assetId });
   }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not check that upload.' }, { status: 400 }); }

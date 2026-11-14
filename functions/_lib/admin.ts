@@ -23,6 +23,8 @@ export type AdminEnvironment = {
   GOOGLE_REDIRECT_URI?: string;
   MUX_TOKEN_ID?: string;
   MUX_TOKEN_SECRET?: string;
+  // This is intentionally separate from the Mux API token.
+  MUX_WEBHOOK_SIGNING_SECRET?: string;
   // Optional machine credential for the read-only Production Board API.
   PRODUCTION_API_TOKEN?: string;
   TG_DATA: { prepare(query: string): Statement; batch(statements: Statement[]): Promise<unknown> };

@@ -1,5 +1,6 @@
 import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
-import { deleteMuxAssets, getMuxLibraryAsset } from '../../../_lib/mux';
+import { deleteMuxAssets, getMuxLibraryAsset, invalidateMuxLibraryCache } from '../../../_lib/mux';
+import { invalidateMuxBrowseIndex } from '../../../_lib/mux-library';
 import { deleteMuxMetadata, replaceVideoAsset } from '../../../_lib/mux-state';
 
 type Context = { request: Request; env: AdminEnvironment };
@@ -11,7 +12,7 @@ export async function onRequestPost({ request, env }: Context) {
     if (typeof body.assetId !== 'string' || typeof body.replacementAssetId !== 'string') throw new Error('Choose both the existing and replacement video.');
     const [previousAsset, replacementAsset] = await Promise.all([getMuxLibraryAsset(env, body.assetId), getMuxLibraryAsset(env, body.replacementAssetId)]);
     const project = await replaceVideoAsset(env, previousAsset, replacementAsset);
-    await deleteMuxAssets(env, [previousAsset.id]);
+    await deleteMuxAssets(env, [previousAsset.id]); await Promise.all([invalidateMuxLibraryCache(env), invalidateMuxBrowseIndex(env)]);
     await deleteMuxMetadata(env, [previousAsset.id]);
     return Response.json({ project });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not replace this video.' }, { status: 400 }); }
