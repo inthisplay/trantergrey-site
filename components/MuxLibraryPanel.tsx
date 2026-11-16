@@ -381,7 +381,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     const scrollAtEdge = () => {
       const y = libraryDragY.current;
       if (y == null) { frame = requestAnimationFrame(scrollAtEdge); return; }
-      const amount = y < edge ? -Math.min(30, 12 + Math.round((edge - y) * 0.12)) : y > window.innerHeight - edge ? Math.min(30, 12 + Math.round((y - (window.innerHeight - edge)) * 0.12)) : 0;
+      const amount = y < edge ? -Math.min(72, 28 + Math.round((edge - y) * 0.28)) : y > window.innerHeight - edge ? Math.min(72, 28 + Math.round((y - (window.innerHeight - edge)) * 0.28)) : 0;
       if (amount) window.scrollBy(0, amount);
       frame = requestAnimationFrame(scrollAtEdge);
     };
