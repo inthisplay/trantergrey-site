@@ -387,8 +387,10 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const y = libraryDragY.current;
       if (x == null || y == null) { frame = requestAnimationFrame(scrollAtEdge); return; }
       const inGutter = x <= zoneWidth;
-      const direction = inGutter ? (y < window.innerHeight / 2 ? -1 : 1) : y < 80 ? -1 : y > window.innerHeight - 110 ? 1 : 0;
-      const amount = direction * Math.min(72, inGutter ? 46 : 22);
+      const halfHeight = window.innerHeight / 2;
+      const direction = inGutter ? (y < halfHeight ? -1 : 1) : y < 80 ? -1 : y > window.innerHeight - 110 ? 1 : 0;
+      const zoneProgress = inGutter ? Math.min(1, (y < halfHeight ? halfHeight - y : y - halfHeight) / halfHeight) : 0;
+      const amount = direction * (inGutter ? Math.round(30 + zoneProgress * 90) : 22);
       if (amount) window.scrollBy(0, amount);
       frame = requestAnimationFrame(scrollAtEdge);
     };
