@@ -223,6 +223,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [mobileViewport, setMobileViewport] = useState(false);
   const [hoveredQuickActionsCard, setHoveredQuickActionsCard] = useState('');
   const [activeLibraryDrag, setActiveLibraryDrag] = useState<{ assetId: string; label: string } | null>(null);
+  const libraryDragY = useRef<number | null>(null);
   const [pendingLibraryDrop, setPendingLibraryDrop] = useState<PendingLibraryDrop | null>(null);
   const [droppedGroupTitle, setDroppedGroupTitle] = useState('');
   const [libraryDropSaving, setLibraryDropSaving] = useState<'collection' | 'ratio' | 'add' | ''>('');
@@ -375,17 +376,22 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   useEffect(() => {
     if (!activeLibraryDrag) return;
     let frame = 0;
-    const scrollAtEdge = (event: PointerEvent | TouchEvent) => {
-      const point = event instanceof TouchEvent ? event.touches[0] : event;
-      if (!point || frame) return;
-      const edge = 110;
-      const amount = point.clientY < edge ? -18 : point.clientY > window.innerHeight - edge ? 18 : 0;
-      if (!amount) return;
-      frame = requestAnimationFrame(() => { window.scrollBy({ top: amount, behavior: 'auto' }); frame = 0; });
+    const edge = 96;
+    const scrollAtEdge = () => {
+      const y = libraryDragY.current;
+      if (y == null) { frame = requestAnimationFrame(scrollAtEdge); return; }
+      const amount = y < edge ? -Math.max(5, Math.round((edge - y) * 0.22)) : y > window.innerHeight - edge ? Math.max(5, Math.round((y - (window.innerHeight - edge)) * 0.22)) : 0;
+      if (amount) window.scrollBy(0, amount);
+      frame = requestAnimationFrame(scrollAtEdge);
     };
-    addEventListener('pointermove', scrollAtEdge, { passive: true }); addEventListener('touchmove', scrollAtEdge, { passive: true });
-    return () => { removeEventListener('pointermove', scrollAtEdge); removeEventListener('touchmove', scrollAtEdge); if (frame) cancelAnimationFrame(frame); };
+    frame = requestAnimationFrame(scrollAtEdge);
+    return () => { libraryDragY.current = null; if (frame) cancelAnimationFrame(frame); };
   }, [activeLibraryDrag]);
+
+  function updateLibraryDragPosition(event: { active: { rect: { current: { translated: { top: number; height: number } | null } } } }) {
+    const rect = event.active.rect.current.translated;
+    if (rect) libraryDragY.current = rect.top + rect.height / 2;
+  }
 
   async function waitForMuxAsset(uploadId: string) {
     for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -1569,7 +1575,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{resultTotal.toLocaleString()}</strong> of {statusCounts.all.toLocaleString()} assets</p>
-    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} autoScroll={{ threshold: { x: 0.15, y: 0.15 }, acceleration: 12 }} onDragStart={(event) => { const data = event.active.data.current; const assetId = String(data?.previewAssetId || ''); if (assetId) setActiveLibraryDrag({ assetId, label: String(data?.dragLabel || '') }); }} onDragCancel={() => setActiveLibraryDrag(null)} onDragEnd={handleLibraryDragEnd}><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
+    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} autoScroll={false} onDragStart={(event) => { const data = event.active.data.current; const assetId = String(data?.previewAssetId || ''); if (assetId) { updateLibraryDragPosition(event); setActiveLibraryDrag({ assetId, label: String(data?.dragLabel || '') }); } }} onDragMove={updateLibraryDragPosition} onDragCancel={() => setActiveLibraryDrag(null)} onDragEnd={handleLibraryDragEnd}><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
       const asset = item.kind === 'asset' ? item.asset : item.representative;
       const marker = index === 0 && <div className="mux-library-time-marker"><span>{groupMode === 'date' ? <><strong>{group.title}</strong><small>{group.eyebrow}</small></> : <strong>{group.title}</strong>}</span><i aria-hidden="true" /></div>;
 
