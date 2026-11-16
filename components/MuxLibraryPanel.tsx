@@ -50,7 +50,7 @@ function MuxLibraryDndCard({ children, className, draggableAssets, dragLabel, dr
   const draggable = useDraggable({ id: `mux-drag:${dropTarget.kind}:${dropTarget.id}`, data: draggableAssets?.length ? { assetIds: draggableAssets.map((asset) => asset.id), previewAssetId: draggableAssets[0].id, dragLabel: dragLabel || draggableAssets[0].title, sourceTarget: dropTarget } : undefined, disabled: !draggableAssets?.length || !dragEnabled });
   const droppable = useDroppable({ id: `mux-drop:${dropTarget.kind}:${dropTarget.id}`, data: dropTarget });
   const setNodeRef = useCallback((node: HTMLElement | null) => { draggable.setNodeRef(node); droppable.setNodeRef(node); }, [draggable, droppable]);
-  return <article ref={setNodeRef} className={`${className ?? ''} mux-library-dnd-card${draggableAssets?.length ? ' mux-library-dnd-card--draggable' : ''}${draggable.isDragging ? ' is-library-dragging' : ''}${droppable.isOver ? ' is-library-drop-target' : ''}`.trim()} style={{ transform: CSS.Translate.toString(draggable.transform) }} {...(draggableAssets?.length ? draggable.attributes : {})} {...(draggableAssets?.length ? draggable.listeners : {})}>{children}</article>;
+  return <article ref={setNodeRef} className={`${className ?? ''} mux-library-dnd-card${draggableAssets?.length && dragEnabled ? ' mux-library-dnd-card--draggable' : ''}${draggable.isDragging ? ' is-library-dragging' : ''}${droppable.isOver ? ' is-library-drop-target' : ''}`.trim()} style={{ transform: CSS.Translate.toString(draggable.transform) }} {...(draggableAssets?.length && dragEnabled ? draggable.attributes : {})} {...(draggableAssets?.length && dragEnabled ? draggable.listeners : {})}>{children}</article>;
 }
 
 function duration(value: number) {

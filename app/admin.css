@@ -335,7 +335,7 @@
 .mux-library-thumb-with-actions>.mux-library-thumb-primary{position:absolute;inset:0;display:grid;width:auto;aspect-ratio:auto;overflow:hidden}
 /* Collection preview frames intentionally extend past the primary thumbnail. */
 .mux-library-thumb-with-actions.mux-collection-stack>.mux-collection-stack-primary{overflow:visible}
-.mux-mobile-actions-toggle{position:absolute;z-index:12;top:auto;right:auto;bottom:9px;left:9px;display:grid;width:31px;height:31px;aspect-ratio:auto;place-items:center;border:0;background:rgba(8,7,7,.86);padding:0;color:#fff;cursor:pointer}
+.mux-mobile-actions-toggle{position:absolute;z-index:12;top:auto;right:auto;bottom:9px;left:9px;display:grid;width:31px;height:31px;aspect-ratio:auto;place-items:center;border:0;background:transparent;padding:0;color:#fff;cursor:pointer}
 .mux-mobile-actions-toggle::after{position:absolute;top:-9px;right:-28px;bottom:-9px;left:-9px;content:''}
 .mux-mobile-actions-toggle>span{position:static;right:auto;bottom:auto;display:grid;width:13px;height:auto;gap:3px}
 .mux-mobile-actions-toggle>span{place-items:center;font:700 16px/1 var(--mono);letter-spacing:0}
