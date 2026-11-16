@@ -377,6 +377,8 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   useEffect(() => {
     if (!activeLibraryDrag) return;
     let frame = 0;
+    let secondaryPointerId: number | null = null;
+    let lastSecondaryY = 0;
     const edge = 140;
     const scrollAtEdge = () => {
       const y = libraryDragY.current;
@@ -385,8 +387,34 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       if (amount) window.scrollBy(0, amount);
       frame = requestAnimationFrame(scrollAtEdge);
     };
+    const startSecondFingerScroll = (event: PointerEvent) => {
+      if (event.isPrimary || secondaryPointerId !== null) return;
+      secondaryPointerId = event.pointerId;
+      lastSecondaryY = event.clientY;
+    };
+    const moveSecondFingerScroll = (event: PointerEvent) => {
+      if (event.pointerId !== secondaryPointerId) return;
+      const delta = lastSecondaryY - event.clientY;
+      if (delta) window.scrollBy(0, delta);
+      lastSecondaryY = event.clientY;
+    };
+    const endSecondFingerScroll = (event: PointerEvent) => {
+      if (event.pointerId === secondaryPointerId) secondaryPointerId = null;
+    };
+    addEventListener('pointerdown', startSecondFingerScroll, true);
+    addEventListener('pointermove', moveSecondFingerScroll, true);
+    addEventListener('pointerup', endSecondFingerScroll, true);
+    addEventListener('pointercancel', endSecondFingerScroll, true);
     frame = requestAnimationFrame(scrollAtEdge);
-    return () => { libraryDragY.current = null; libraryDragStartY.current = null; if (frame) cancelAnimationFrame(frame); };
+    return () => {
+      removeEventListener('pointerdown', startSecondFingerScroll, true);
+      removeEventListener('pointermove', moveSecondFingerScroll, true);
+      removeEventListener('pointerup', endSecondFingerScroll, true);
+      removeEventListener('pointercancel', endSecondFingerScroll, true);
+      libraryDragY.current = null;
+      libraryDragStartY.current = null;
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, [activeLibraryDrag]);
 
   function beginLibraryDragPosition(event: DragStartEvent) {
