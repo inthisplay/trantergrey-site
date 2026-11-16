@@ -439,20 +439,16 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     if (libraryDragStartY.current != null) libraryDragY.current = libraryDragStartY.current + event.delta.y;
   }
 
-  async function waitForMuxAsset(uploadId: string) {
-    // Mux assigns an asset ID before the asset is ready for a public video
-    // project. Keep the upload in its processing state until the library can
-    // safely use it, rather than exposing a Save button that is guaranteed to
-    // fail for a just-uploaded video.
+  async function waitForMuxAsset(uploadId: string, readyOnly = true) {
     for (let attempt = 0; attempt < 150; attempt += 1) {
       const response = await fetch(`/api/admin/mux-uploads?uploadId=${encodeURIComponent(uploadId)}`, { cache: 'no-store' });
       const payload = await jsonResponse<{ assetId?: string | null; ready?: boolean; status?: string; error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || 'Could not check the Mux upload.');
-      if (payload.assetId && payload.ready) return payload.assetId;
+      if (payload.assetId && (!readyOnly || payload.ready)) return payload.assetId;
       if (payload.status && /(?:error|fail)/i.test(payload.status)) throw new Error('Mux could not process this video. Check its source file and try again.');
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
     }
-    throw new Error('Mux is still preparing this upload. Leave this window open and try saving again once processing finishes.');
+    throw new Error('Mux is still preparing this upload.');
   }
 
   async function saveUploadMetadata(assetId: string, plan: UploadPlan) {
@@ -484,14 +480,16 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         request.open('PUT', payload.url!);
         request.send(file);
       });
-      // The bytes reached Mux, but encoding and public playback are not ready
-      // yet. Keep this distinct from a usable library asset.
+      // Once Mux assigns an asset ID, it can be saved into a project while
+      // encoding continues. The ready wait below is only for UI completion.
       update({ progress: 100, state: 'processing' });
-      const assetId = await waitForMuxAsset(payload.id);
+      const assetId = await waitForMuxAsset(payload.id, false);
       await saveUploadMetadata(assetId, plan);
-      update({ assetId, progress: 100, state: 'complete' });
+      update({ assetId, progress: 100, state: 'processing' });
       setLocallyProcessingAssetIds((current) => current.includes(assetId) ? current : [...current, assetId]);
       window.setTimeout(() => void refreshLibrary(), 2500);
+      await waitForMuxAsset(payload.id);
+      update({ progress: 100, state: 'complete' });
       return assetId;
     } catch (reason) {
       update({ state: 'error', error: reason instanceof Error ? reason.message : 'Could not upload that file.' });
@@ -624,10 +622,10 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   }
 
   async function saveUploadDetails() {
-    if (uploads.some((upload) => upload.state === 'uploading' || upload.state === 'processing')) return;
+    if (uploads.some((upload) => upload.state === 'uploading')) return;
     const readyUploads = uploads.filter((upload): upload is UploadState & { assetId: string } => Boolean(upload.assetId));
     if (!readyUploads.length) {
-      setWorkspaceMessage('There are no completed uploads to save yet.');
+      setWorkspaceMessage('Mux has not created an asset for this upload yet.');
       return;
     }
     if (uploadDestination === 'collection' && !uploadCollectionName.trim()) {
@@ -652,6 +650,12 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       }));
       const failed = responses.find((response) => !response.ok);
       if (failed) { const payload = await jsonResponse<{ error?: string }>(failed); throw new Error(payload.error || 'Could not save these video details.'); }
+      // The upload-start refresh can still be finishing while an editor saves
+      // a new client. Rebuild after metadata is persisted so that older refresh
+      // cannot leave this newly saved video displayed as “Unassigned”.
+      const catalogRefresh = await fetch('/api/admin/mux-refresh', { method: 'POST', cache: 'no-store' });
+      const catalogPayload = await jsonResponse<{ error?: string }>(catalogRefresh);
+      if (!catalogRefresh.ok) throw new Error(catalogPayload.error || 'Video details saved, but the Mux library could not refresh.');
       const groupedIds = new Set(effectiveRatioGroups.flatMap((group) => group.uploadIds));
       const soloAssetIds = readyUploads.filter((upload) => !groupedIds.has(upload.id)).map((upload) => upload.assetId);
       let collectionId = '';
@@ -1588,7 +1592,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <input ref={uploadInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" multiple onChange={chooseUpload} />
       <div><p>Upload to Mux</p><h2>Drop videos here.</h2><span>Direct to Mux.</span></div>
       <button type="button" onClick={() => uploadInput.current?.click()}>Choose videos</button>
-      {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map((upload) => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? `${upload.progress}% uploaded` : upload.state === 'processing' ? 'Mux is preparing video' : upload.state === 'complete' ? 'Ready to save' : 'Could not upload'}</b>{(upload.state === 'uploading' || upload.state === 'processing') && <i><i style={{ width: `${upload.progress}%` }} /></i>}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
+      {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map((upload) => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? `${upload.progress}% uploaded` : upload.state === 'processing' ? upload.assetId ? 'Mux is preparing video · ready to save' : 'Mux is preparing video' : upload.state === 'complete' ? 'Ready to save' : 'Could not upload'}</b>{(upload.state === 'uploading' || upload.state === 'processing') && <i><i style={{ width: `${upload.progress}%` }} /></i>}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
     </section>
     {!uploadDrawerOpen && uploads.length > 0 && <button type="button" onClick={() => setUploadDrawerOpen(true)}>Review unsaved upload details</button>}
     {uploadDrawerOpen && <aside className={`mux-upload-drawer${uploads.length >= 8 ? ' mux-upload-drawer-large' : uploads.length >= 4 ? ' mux-upload-drawer-wide' : ''}`} aria-label="Upload details">
@@ -1614,7 +1618,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
           </article>;
         })}
       </div>
-      <footer><button type="button" onClick={() => setUploadDrawerOpen(false)}>Keep browsing</button><button className="primary" type="button" disabled={savingUploadDetails || uploads.some((upload) => upload.state === 'uploading' || upload.state === 'processing') || !uploads.some((upload) => upload.assetId)} onClick={() => void saveUploadDetails()}>{savingUploadDetails ? 'Saving…' : 'Save upload details'}</button></footer>
+      <footer><button type="button" onClick={() => setUploadDrawerOpen(false)}>Keep browsing</button><button className="primary" type="button" disabled={savingUploadDetails || uploads.some((upload) => upload.state === 'uploading') || !uploads.some((upload) => upload.assetId)} onClick={() => void saveUploadDetails()}>{savingUploadDetails ? 'Saving…' : 'Save upload details'}</button></footer>
     </aside>}
     {duplicateRatioWarning && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => setDuplicateRatioWarning(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDuplicateRatioWarning(null)} aria-label="Close">×</button><div className="mux-bulk-delete"><p>Duplicate ratio</p><h3>Group these anyway?</h3><span>Two or more selected videos appear to share the same ratio. You can cancel and adjust the selection, or continue with this ratio group.</span><div className="mux-collection-delete-actions"><button type="button" onClick={() => setDuplicateRatioWarning(null)}>Cancel</button><button className="danger" type="button" onClick={() => createRatioGroup(duplicateRatioWarning.uploadIds, duplicateRatioWarning.title, true)}>Continue</button></div></div></div></div>}
     <div className="mux-library-toolbar">
