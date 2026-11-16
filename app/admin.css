@@ -338,6 +338,7 @@
 .mux-mobile-actions-toggle{position:absolute;z-index:12;top:auto;right:auto;bottom:9px;left:9px;display:grid;width:31px;height:31px;aspect-ratio:auto;place-items:center;border:0;background:rgba(8,7,7,.86);padding:0;color:#fff;cursor:pointer}
 .mux-mobile-actions-toggle::after{position:absolute;top:-9px;right:-28px;bottom:-9px;left:-9px;content:''}
 .mux-mobile-actions-toggle>span{position:static;right:auto;bottom:auto;display:grid;width:13px;height:auto;gap:3px}
+.mux-mobile-actions-toggle>span{place-items:center;font:700 16px/1 var(--mono);letter-spacing:0}
 .mux-mobile-actions-toggle i{display:block;height:1px;background:currentColor}
 /* Keep the ratio cue in the same lower-left control cluster as quick actions. */
 .mux-library-thumb-with-actions .mux-library-ratio-count{z-index:13;bottom:9px;left:48px}

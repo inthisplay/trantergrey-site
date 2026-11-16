@@ -43,11 +43,11 @@ function QuickActionLabel({ icon, children }: { icon: QuickActionIcon; children:
 }
 
 function MobileActionsToggle({ title, expanded, onClick }: { title: string; expanded: boolean; onClick: () => void }) {
-  return <button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={onClick}><span aria-hidden="true"><i /><i /><i /></span></button>;
+  return <button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={onClick}><span aria-hidden="true">☰</span></button>;
 }
 
-function MuxLibraryDndCard({ children, className, draggableAssets, dragLabel, dropTarget }: { children: ReactNode; className?: string; draggableAssets?: MatchedMuxLibraryAsset[]; dragLabel?: string; dropTarget: LibraryDropTarget }) {
-  const draggable = useDraggable({ id: `mux-drag:${dropTarget.kind}:${dropTarget.id}`, data: draggableAssets?.length ? { assetIds: draggableAssets.map((asset) => asset.id), previewAssetId: draggableAssets[0].id, dragLabel: dragLabel || draggableAssets[0].title, sourceTarget: dropTarget } : undefined, disabled: !draggableAssets?.length });
+function MuxLibraryDndCard({ children, className, draggableAssets, dragLabel, dragEnabled = true, dropTarget }: { children: ReactNode; className?: string; draggableAssets?: MatchedMuxLibraryAsset[]; dragLabel?: string; dragEnabled?: boolean; dropTarget: LibraryDropTarget }) {
+  const draggable = useDraggable({ id: `mux-drag:${dropTarget.kind}:${dropTarget.id}`, data: draggableAssets?.length ? { assetIds: draggableAssets.map((asset) => asset.id), previewAssetId: draggableAssets[0].id, dragLabel: dragLabel || draggableAssets[0].title, sourceTarget: dropTarget } : undefined, disabled: !draggableAssets?.length || !dragEnabled });
   const droppable = useDroppable({ id: `mux-drop:${dropTarget.kind}:${dropTarget.id}`, data: dropTarget });
   const setNodeRef = useCallback((node: HTMLElement | null) => { draggable.setNodeRef(node); droppable.setNodeRef(node); }, [draggable, droppable]);
   return <article ref={setNodeRef} className={`${className ?? ''} mux-library-dnd-card${draggableAssets?.length ? ' mux-library-dnd-card--draggable' : ''}${draggable.isDragging ? ' is-library-dragging' : ''}${droppable.isOver ? ' is-library-drop-target' : ''}`.trim()} style={{ transform: CSS.Translate.toString(draggable.transform) }} {...(draggableAssets?.length ? draggable.attributes : {})} {...(draggableAssets?.length ? draggable.listeners : {})}>{children}</article>;
@@ -220,6 +220,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [previewAssetId, setPreviewAssetId] = useState('');
   const [previewProjectId, setPreviewProjectId] = useState('');
   const [openMobileActions, setOpenMobileActions] = useState('');
+  const [mobileViewport, setMobileViewport] = useState(false);
   const [hoveredQuickActionsCard, setHoveredQuickActionsCard] = useState('');
   const [activeLibraryDrag, setActiveLibraryDrag] = useState<{ assetId: string; label: string } | null>(null);
   const [pendingLibraryDrop, setPendingLibraryDrop] = useState<PendingLibraryDrop | null>(null);
@@ -284,6 +285,13 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [loadingDeckCards, setLoadingDeckCards] = useState(false);
   const [postingToDeck, setPostingToDeck] = useState(false);
   const [deckPostError, setDeckPostError] = useState('');
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)');
+    const update = () => setMobileViewport(media.matches);
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     if (publicLinksOpenInNewTab) return;
@@ -1566,7 +1574,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         </div>;
         return <div className={`mux-library-flow-cell mux-library-collection-cell${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={`collection-${item.collection.id}`} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard className="mux-collection-card" draggableAssets={item.assets} dragLabel={item.collection.name} dropTarget={{ kind: 'collection', id: item.collection.id }}>
+          <MuxLibraryDndCard className="mux-collection-card" draggableAssets={item.assets} dragLabel={item.collection.name} dragEnabled={!mobileViewport || openMobileActions === actionKey} dropTarget={{ kind: 'collection', id: item.collection.id }}>
             <div className={`mux-library-thumb mux-library-thumb-with-actions mux-collection-stack${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}>
               <a className="mux-library-thumb-primary mux-collection-stack-primary" href={publicHref} target={publicLinksOpenInNewTab ? '_blank' : undefined} rel={publicLinksOpenInNewTab ? 'noreferrer' : undefined} aria-label={`Open ${item.collection.name}`}>
                 {previews.map((preview, previewIndex) => <span className={`mux-collection-stack-frame ${previewIndex === 0 ? 'front' : previewIndex === 1 ? 'middle' : 'back'}`} key={preview.id}>{preview.thumbnailUrl ? <img src={preview.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}</span>)}
@@ -1588,7 +1596,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         const actionKey = `project-${item.project.id}`;
         return <div className={`mux-library-flow-cell${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={`project-${item.project.id}`} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : item.assets} dragLabel={item.project.title} dropTarget={{ kind: 'project', id: item.project.id }}>
+          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : item.assets} dragLabel={item.project.title} dragEnabled={!mobileViewport || openMobileActions === actionKey} dropTarget={{ kind: 'project', id: item.project.id }}>
             <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}>
               {selectionMode ? <button className="mux-library-thumb-primary mux-selectable-thumb mux-project-select-thumb" type="button" onClick={() => setSelectingProjectId(item.project.id)} aria-label={`Select ratios from ${item.project.title}`}>
                 <LibraryThumbnail asset={item.representative} />
@@ -1611,7 +1619,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const actionKey = `asset-${asset.id}`;
       return <div className={`mux-library-flow-cell${selectedIds.includes(asset.id) ? ' selected' : ''}${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={asset.id} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : [asset]} dropTarget={{ kind: 'asset', id: asset.id }}>
+          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : [asset]} dragEnabled={!mobileViewport || openMobileActions === actionKey} dropTarget={{ kind: 'asset', id: asset.id }}>
           {selectionMode ? <button className="mux-library-thumb mux-selectable-thumb" type="button" onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)} aria-label={`${selectedIds.includes(asset.id) ? 'Deselect' : 'Select'} ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <LibraryThumbnail asset={asset} /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b><i>{selectedIds.includes(asset.id) ? '✓' : '+'}</i></button> : <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}><a className="mux-library-thumb-primary" href={`/admin/mux/${asset.id}`} aria-label={`Manage ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <LibraryThumbnail asset={asset} /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b></a><MobileActionsToggle title={asset.title} expanded={openMobileActions === actionKey} onClick={() => setOpenMobileActions((current) => current === actionKey ? '' : actionKey)} /><div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${asset.title}`}><button type="button" disabled={!canPreviewAsset(asset)} title={canPreviewAsset(asset) ? undefined : 'Mux is still preparing this video.'} onClick={() => setPreviewAssetId(asset.id)}><QuickActionLabel icon="view">View</QuickActionLabel></button><a href={`/admin/mux/${asset.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicPath(asset)} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => void openDeckCardPicker(asset)}><QuickActionLabel icon="manage">Add to Deck</QuickActionLabel></button><button type="button" onClick={() => selectAssetForBulk(asset)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingAssetId === asset.id} onClick={() => { setReplaceTargetId(asset.id); replaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingAssetId === asset.id ? 'Replacing…' : 'Replace video'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(asset)}><QuickActionLabel icon="copy">{copiedAssetId === asset.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment([asset])}><QuickActionLabel icon="client">{clientName(asset) === 'Unassigned' ? 'Add client' : 'Change client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsAssetId(asset.id); setTagsDraft(asset.localTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'published' ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{asset.libraryStatus === 'published' ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'hidden' ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{asset.libraryStatus === 'hidden' ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingAssetId === asset.id} onClick={() => setDeleteAssetId(asset.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></div>}
           <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{!asset.hasCustomThumbnail && <p className="mux-thumbnail-needed">Needs thumbnail</p>}{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
           </MuxLibraryDndCard>
