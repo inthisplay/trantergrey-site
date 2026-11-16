@@ -376,6 +376,9 @@
 @media(hover:hover) and (min-width:761px) and (max-width:1500px){.mux-library-flow-cell article:has(.mux-library-hover-actions):hover .mux-library-thumb-with-actions,.mux-library-flow-cell article:has(.mux-library-hover-actions):focus-within .mux-library-thumb-with-actions{aspect-ratio:16/9}}
 @media(max-width:760px){.mux-library-thumb-with-actions{display:block;aspect-ratio:16/9}.mux-mobile-actions-toggle{top:auto;right:auto;bottom:9px;left:9px;width:31px;height:31px;aspect-ratio:auto}.mux-library-thumb-with-actions>.mux-library-hover-actions a,.mux-library-thumb-with-actions>.mux-library-hover-actions button{min-height:40px;padding:9px 12px;font-size:8px}}
 
+/* Mobile menu: three plain bars; visibility follows the toggle state, never sticky touch hover. */
+@media(max-width:760px){.mux-mobile-actions-toggle>span{border:0!important;transform:none!important}.mux-library-thumb-with-actions:has(.mux-library-hover-actions:hover)>.mux-library-hover-actions,.mux-library-thumb-with-actions:has(.mux-library-hover-actions :focus-visible)>.mux-library-hover-actions{opacity:0!important;visibility:hidden!important;pointer-events:none!important;transform:translateY(-4px)!important}.mux-library-thumb-with-actions.mobile-actions-open>.mux-library-hover-actions{opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:translateY(0)!important}}
+
 .mux-drive-search {
   display: flex;
   justify-content: center;
