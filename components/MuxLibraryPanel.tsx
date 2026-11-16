@@ -223,7 +223,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [mobileViewport, setMobileViewport] = useState(false);
   const [hoveredQuickActionsCard, setHoveredQuickActionsCard] = useState('');
   const [activeLibraryDrag, setActiveLibraryDrag] = useState<{ assetId: string; label: string } | null>(null);
+  const libraryDragX = useRef<number | null>(null);
   const libraryDragY = useRef<number | null>(null);
+  const libraryDragStartX = useRef<number | null>(null);
   const libraryDragStartY = useRef<number | null>(null);
   const [pendingLibraryDrop, setPendingLibraryDrop] = useState<PendingLibraryDrop | null>(null);
   const [droppedGroupTitle, setDroppedGroupTitle] = useState('');
@@ -379,11 +381,14 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     let frame = 0;
     let secondaryPointerId: number | null = null;
     let lastSecondaryY = 0;
-    const edge = 140;
+    const zoneWidth = Math.min(84, window.innerWidth * 0.2);
     const scrollAtEdge = () => {
+      const x = libraryDragX.current;
       const y = libraryDragY.current;
-      if (y == null) { frame = requestAnimationFrame(scrollAtEdge); return; }
-      const amount = y < edge ? -Math.min(72, 28 + Math.round((edge - y) * 0.28)) : y > window.innerHeight - edge ? Math.min(72, 28 + Math.round((y - (window.innerHeight - edge)) * 0.28)) : 0;
+      if (x == null || y == null) { frame = requestAnimationFrame(scrollAtEdge); return; }
+      const inGutter = x <= zoneWidth;
+      const direction = inGutter ? (y < window.innerHeight / 2 ? -1 : 1) : y < 80 ? -1 : y > window.innerHeight - 110 ? 1 : 0;
+      const amount = direction * Math.min(72, inGutter ? 46 : 22);
       if (amount) window.scrollBy(0, amount);
       frame = requestAnimationFrame(scrollAtEdge);
     };
@@ -411,7 +416,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       removeEventListener('pointermove', moveSecondFingerScroll, true);
       removeEventListener('pointerup', endSecondFingerScroll, true);
       removeEventListener('pointercancel', endSecondFingerScroll, true);
+      libraryDragX.current = null;
       libraryDragY.current = null;
+      libraryDragStartX.current = null;
       libraryDragStartY.current = null;
       if (frame) cancelAnimationFrame(frame);
     };
@@ -419,11 +426,14 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
 
   function beginLibraryDragPosition(event: DragStartEvent) {
     const pointer = event.activatorEvent as PointerEvent;
+    libraryDragStartX.current = pointer.clientX;
     libraryDragStartY.current = pointer.clientY;
+    libraryDragX.current = pointer.clientX;
     libraryDragY.current = pointer.clientY;
   }
 
   function updateLibraryDragPosition(event: DragMoveEvent) {
+    if (libraryDragStartX.current != null) libraryDragX.current = libraryDragStartX.current + event.delta.x;
     if (libraryDragStartY.current != null) libraryDragY.current = libraryDragStartY.current + event.delta.y;
   }
 
@@ -1679,7 +1689,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
           <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{!asset.hasCustomThumbnail && <p className="mux-thumbnail-needed">Needs thumbnail</p>}{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
           </MuxLibraryDndCard>
         </div>;
-    }))}</div><DragOverlay dropAnimation={null}>{activeLibraryDragAsset && <div className="mux-library-drag-overlay"><span>{activeLibraryDragAsset.thumbnailUrl ? <img src={activeLibraryDragAsset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}</span><strong>{activeLibraryDrag?.label || activeLibraryDragAsset.title}</strong></div>}</DragOverlay></DndContext>{hasMoreItems && <div ref={loadMoreSentinel} className="mux-library-scroll-sentinel" aria-live="polite">Loading more videos…</div>}</>}
+    }))}</div><DragOverlay dropAnimation={null}>{activeLibraryDragAsset && <div className="mux-library-drag-overlay"><span>{activeLibraryDragAsset.thumbnailUrl ? <img src={activeLibraryDragAsset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}</span><strong>{activeLibraryDrag?.label || activeLibraryDragAsset.title}</strong></div>}</DragOverlay>{activeLibraryDrag && <div className="mux-drag-scroll-zones" aria-hidden="true"><div className="mux-drag-scroll-zone mux-drag-scroll-zone-up"><b>↑</b><span>Scroll up</span></div><div className="mux-drag-scroll-zone mux-drag-scroll-zone-down"><b>↓</b><span>Scroll down</span></div></div>}</DndContext>{hasMoreItems && <div ref={loadMoreSentinel} className="mux-library-scroll-sentinel" aria-live="polite">Loading more videos…</div>}</>}
     {hasFilters && <div className="mux-drive-search">
       <a href={driveSearchUrl} target="_blank" rel="noreferrer">
         Search Google Drive <ExternalLink aria-hidden="true" />

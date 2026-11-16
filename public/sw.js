@@ -1,4 +1,4 @@
-const CACHE = 'tg-team-shell-v4';
+const CACHE = 'tg-team-shell-v5';
 const SHELL = ['/app', '/app/mux', '/app/deck', '/manifest.webmanifest', '/tg-team-icon.png', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {
