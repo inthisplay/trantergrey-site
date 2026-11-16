@@ -3,7 +3,7 @@
 import { PlaybackIcon } from './PlaybackIcon';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
-import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Check, ChevronDown, Copy, ExternalLink, EyeOff, Label, Refresh, Server, SettingsCog, Trash, Upload, UserPlus } from 'pixelarticons/react';
 import { MuxDateFilter, type MuxDateRange } from './MuxDateFilter';
@@ -43,7 +43,7 @@ function QuickActionLabel({ icon, children }: { icon: QuickActionIcon; children:
 }
 
 function MobileActionsToggle({ title, expanded, onClick }: { title: string; expanded: boolean; onClick: () => void }) {
-  return <><button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={(event) => { event.stopPropagation(); onClick(); }}><span aria-hidden="true"><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /></span></button>{expanded && <span className="mux-mobile-drag-hint" aria-hidden="true"><b><i /><i /><i /><i /><i /><i /></b><small>Tap to drag</small></span>}</>;
+  return <><button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={(event) => { event.stopPropagation(); onClick(); }}><span aria-hidden="true"><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /></span></button>{expanded && <span className="mux-mobile-drag-hint" aria-hidden="true" style={{ display: 'grid', gridTemplateColumns: '12px max-content', alignItems: 'center', columnGap: 8 }}><b style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 3px)', gridTemplateRows: 'repeat(3, 3px)', gap: '3px 4px', width: 10, height: 15, flex: 'none' }}><i /><i /><i /><i /><i /><i /></b><small style={{ display: 'block', whiteSpace: 'nowrap' }}>Tap to drag</small></span>}</>;
 }
 
 function MuxLibraryDndCard({ children, className, draggableAssets, dragLabel, dragEnabled = true, dropTarget }: { children: ReactNode; className?: string; draggableAssets?: MatchedMuxLibraryAsset[]; dragLabel?: string; dragEnabled?: boolean; dropTarget: LibraryDropTarget }) {
@@ -224,6 +224,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [hoveredQuickActionsCard, setHoveredQuickActionsCard] = useState('');
   const [activeLibraryDrag, setActiveLibraryDrag] = useState<{ assetId: string; label: string } | null>(null);
   const libraryDragY = useRef<number | null>(null);
+  const libraryDragStartY = useRef<number | null>(null);
   const [pendingLibraryDrop, setPendingLibraryDrop] = useState<PendingLibraryDrop | null>(null);
   const [droppedGroupTitle, setDroppedGroupTitle] = useState('');
   const [libraryDropSaving, setLibraryDropSaving] = useState<'collection' | 'ratio' | 'add' | ''>('');
@@ -376,21 +377,26 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   useEffect(() => {
     if (!activeLibraryDrag) return;
     let frame = 0;
-    const edge = 96;
+    const edge = 140;
     const scrollAtEdge = () => {
       const y = libraryDragY.current;
       if (y == null) { frame = requestAnimationFrame(scrollAtEdge); return; }
-      const amount = y < edge ? -Math.max(5, Math.round((edge - y) * 0.22)) : y > window.innerHeight - edge ? Math.max(5, Math.round((y - (window.innerHeight - edge)) * 0.22)) : 0;
+      const amount = y < edge ? -Math.min(30, 12 + Math.round((edge - y) * 0.12)) : y > window.innerHeight - edge ? Math.min(30, 12 + Math.round((y - (window.innerHeight - edge)) * 0.12)) : 0;
       if (amount) window.scrollBy(0, amount);
       frame = requestAnimationFrame(scrollAtEdge);
     };
     frame = requestAnimationFrame(scrollAtEdge);
-    return () => { libraryDragY.current = null; if (frame) cancelAnimationFrame(frame); };
+    return () => { libraryDragY.current = null; libraryDragStartY.current = null; if (frame) cancelAnimationFrame(frame); };
   }, [activeLibraryDrag]);
 
-  function updateLibraryDragPosition(event: { active: { rect: { current: { translated: { top: number; height: number } | null } } } }) {
-    const rect = event.active.rect.current.translated;
-    if (rect) libraryDragY.current = rect.top + rect.height / 2;
+  function beginLibraryDragPosition(event: DragStartEvent) {
+    const pointer = event.activatorEvent as PointerEvent;
+    libraryDragStartY.current = pointer.clientY;
+    libraryDragY.current = pointer.clientY;
+  }
+
+  function updateLibraryDragPosition(event: DragMoveEvent) {
+    if (libraryDragStartY.current != null) libraryDragY.current = libraryDragStartY.current + event.delta.y;
   }
 
   async function waitForMuxAsset(uploadId: string) {
@@ -1575,7 +1581,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{resultTotal.toLocaleString()}</strong> of {statusCounts.all.toLocaleString()} assets</p>
-    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} autoScroll={false} onDragStart={(event) => { const data = event.active.data.current; const assetId = String(data?.previewAssetId || ''); if (assetId) { updateLibraryDragPosition(event); setActiveLibraryDrag({ assetId, label: String(data?.dragLabel || '') }); } }} onDragMove={updateLibraryDragPosition} onDragCancel={() => setActiveLibraryDrag(null)} onDragEnd={handleLibraryDragEnd}><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
+    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} autoScroll={false} onDragStart={(event) => { const data = event.active.data.current; const assetId = String(data?.previewAssetId || ''); if (assetId) { beginLibraryDragPosition(event); setActiveLibraryDrag({ assetId, label: String(data?.dragLabel || '') }); } }} onDragMove={updateLibraryDragPosition} onDragCancel={() => setActiveLibraryDrag(null)} onDragEnd={handleLibraryDragEnd}><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
       const asset = item.kind === 'asset' ? item.asset : item.representative;
       const marker = index === 0 && <div className="mux-library-time-marker"><span>{groupMode === 'date' ? <><strong>{group.title}</strong><small>{group.eyebrow}</small></> : <strong>{group.title}</strong>}</span><i aria-hidden="true" /></div>;
 
