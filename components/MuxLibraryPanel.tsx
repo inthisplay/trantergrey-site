@@ -43,7 +43,7 @@ function QuickActionLabel({ icon, children }: { icon: QuickActionIcon; children:
 }
 
 function MobileActionsToggle({ title, expanded, onClick }: { title: string; expanded: boolean; onClick: () => void }) {
-  return <button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={onClick}><span aria-hidden="true"><i /><i /><i /></span></button>;
+  return <button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={(event) => { event.stopPropagation(); onClick(); }}><span aria-hidden="true"><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /></span></button>;
 }
 
 function MuxLibraryDndCard({ children, className, draggableAssets, dragLabel, dragEnabled = true, dropTarget }: { children: ReactNode; className?: string; draggableAssets?: MatchedMuxLibraryAsset[]; dragLabel?: string; dragEnabled?: boolean; dropTarget: LibraryDropTarget }) {
