@@ -372,6 +372,21 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     return () => window.clearTimeout(timeout);
   }, [workspaceMessage]);
 
+  useEffect(() => {
+    if (!activeLibraryDrag) return;
+    let frame = 0;
+    const scrollAtEdge = (event: PointerEvent | TouchEvent) => {
+      const point = event instanceof TouchEvent ? event.touches[0] : event;
+      if (!point || frame) return;
+      const edge = 110;
+      const amount = point.clientY < edge ? -18 : point.clientY > window.innerHeight - edge ? 18 : 0;
+      if (!amount) return;
+      frame = requestAnimationFrame(() => { window.scrollBy({ top: amount, behavior: 'auto' }); frame = 0; });
+    };
+    addEventListener('pointermove', scrollAtEdge, { passive: true }); addEventListener('touchmove', scrollAtEdge, { passive: true });
+    return () => { removeEventListener('pointermove', scrollAtEdge); removeEventListener('touchmove', scrollAtEdge); if (frame) cancelAnimationFrame(frame); };
+  }, [activeLibraryDrag]);
+
   async function waitForMuxAsset(uploadId: string) {
     for (let attempt = 0; attempt < 30; attempt += 1) {
       const response = await fetch(`/api/admin/mux-uploads?uploadId=${encodeURIComponent(uploadId)}`, { cache: 'no-store' });
