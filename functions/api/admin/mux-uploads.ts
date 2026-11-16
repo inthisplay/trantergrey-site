@@ -1,5 +1,5 @@
 import { adminResponse, adminSession, origin, type AdminEnvironment } from '../../_lib/admin';
-import { createMuxDirectUpload, getMuxDirectUploadAssetId, invalidateMuxLibraryCache } from '../../_lib/mux';
+import { createMuxDirectUpload, getMuxDirectUploadAssetId, getMuxLibraryAsset, invalidateMuxLibraryCache } from '../../_lib/mux';
 import { invalidateMuxBrowseIndex } from '../../_lib/mux-library';
 
 type Context = { request: Request; env: AdminEnvironment };
@@ -25,7 +25,13 @@ export async function onRequestGet({ request, env }: Context) {
     const assetId = await getMuxDirectUploadAssetId(env, uploadId);
     await env.TG_DATA.prepare('UPDATE mux_asset_ingests SET asset_id = ? WHERE upload_id = ?').bind(assetId, uploadId).run();
     if (assetId) await Promise.all([invalidateMuxLibraryCache(env), invalidateMuxBrowseIndex(env)]);
-    return Response.json({ assetId });
+    // An upload gets an asset ID before Mux has made it usable.  Returning that
+    // ID as "done" let the admin create a project while the asset was absent
+    // from the library (or did not have public playback yet).
+    if (!assetId) return Response.json({ assetId: null, ready: false });
+    const asset = await getMuxLibraryAsset(env, assetId);
+    const ready = asset.status === 'ready' && asset.playbackPolicy === 'public' && Boolean(asset.playbackId);
+    return Response.json({ assetId, ready, status: asset.status });
   }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not check that upload.' }, { status: 400 }); }
 }

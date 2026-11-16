@@ -177,11 +177,11 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     setBusy('replace');
     setMessage(null);
     try {
-      const uploadResponse = await postJson('/api/admin/mux-uploads', { filename: file.name, contentType: file.type || 'video/mp4' }) as { uploadUrl?: string; uploadId?: string };
-      if (!uploadResponse.uploadUrl || !uploadResponse.uploadId) throw new Error('Mux did not create an upload destination.');
+      const uploadResponse = await postJson('/api/admin/mux-uploads', { title: file.name.replace(/\.[^.]+$/, '') }) as { url?: string; id?: string };
+      if (!uploadResponse.url || !uploadResponse.id) throw new Error('Mux did not create an upload destination.');
       await new Promise<void>((resolve, reject) => {
         const request = new XMLHttpRequest();
-        request.open('PUT', uploadResponse.uploadUrl!);
+        request.open('PUT', uploadResponse.url!);
         request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error('The replacement file could not be uploaded.'));
         request.onerror = () => reject(new Error('The replacement file could not be uploaded.'));
         request.send(file);
@@ -189,10 +189,10 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
       let replacementAssetId: string | null = null;
       for (let attempt = 0; attempt < 45 && !replacementAssetId; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
-        const response = await fetch(`/api/admin/mux-uploads?uploadId=${encodeURIComponent(uploadResponse.uploadId)}`, { cache: 'no-store' });
-        const payload = await response.json().catch(() => null) as { assetId?: string; error?: string } | null;
+        const response = await fetch(`/api/admin/mux-uploads?uploadId=${encodeURIComponent(uploadResponse.id)}`, { cache: 'no-store' });
+        const payload = await response.json().catch(() => null) as { assetId?: string; ready?: boolean; error?: string } | null;
         if (!response.ok) throw new Error(payload?.error || 'Mux could not process the replacement file.');
-        replacementAssetId = payload?.assetId ?? null;
+        replacementAssetId = payload?.ready ? payload.assetId ?? null : null;
       }
       if (!replacementAssetId) throw new Error('Mux is still preparing the replacement. Please try again in a moment.');
       for (let attempt = 0; attempt < 45; attempt += 1) {
