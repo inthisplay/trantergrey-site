@@ -947,13 +947,24 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     if (!deckVideo || !selectedDeckCardId) return;
     setPostingToDeck(true); setDeckPostError('');
     try {
-      const response = await fetch(`/api/internal/v1/cards/${encodeURIComponent(selectedDeckCardId)}/videos`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: deckVideo.id }) });
-      const payload = await jsonResponse<{ data?: { created?: boolean }; error?: { message?: string } }>(response);
-      if (!response.ok) throw new Error(payload.error?.message || 'Unable to post this video to the Deck card.');
+      const project = projectByAssetId.get(deckVideo.id);
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(selectedDeckCardId)}/comments`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ body: [{
+          type: 'mux-asset', assetId: deckVideo.id, itemKind: 'video', title: project?.title || deckVideo.title,
+          client: project?.client || deckVideo.client, duration: deckVideo.duration, thumbnailUrl: deckVideo.thumbnailUrl,
+          href: `/watch/${encodeURIComponent(project?.slug || deckVideo.id)}`,
+          media: [{ id: deckVideo.id, title: project?.title || deckVideo.title, client: project?.client || deckVideo.client, thumbnailUrl: deckVideo.thumbnailUrl, playerUrl: deckVideo.playerUrl }],
+          children: [{ text: '' }],
+        }, { type: 'paragraph', children: [{ text: '' }] }] }),
+      });
+      const payload = await jsonResponse<{ error?: string }>(response);
+      if (!response.ok) throw new Error(payload.error || 'Unable to add this video as a Deck comment.');
       const card = deckCards.find((item) => item.id === selectedDeckCardId);
-      setDeckVideo(null); setWorkspaceMessage(payload.data?.created === false ? `“${deckVideo.title}” is already posted to “${card?.title || 'that card'}”.` : `Posted “${deckVideo.title}” to “${card?.title || 'the Deck card'}”.`);
+      setDeckVideo(null); setWorkspaceMessage(`Added “${deckVideo.title}” as a comment on “${card?.title || 'the Deck card'}”.`);
     } catch (reason) {
-      setDeckPostError(reason instanceof Error ? reason.message : 'Unable to post this video to the Deck card.');
+      setDeckPostError(reason instanceof Error ? reason.message : 'Unable to add this video as a Deck comment.');
     } finally {
       setPostingToDeck(false);
     }
@@ -1719,7 +1730,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       </a>
     </div>}
     {pendingLibraryDrop && <div className="mux-bulk-modal mux-drop-group-modal" role="dialog" aria-modal="true" aria-label="Create a video group" onMouseDown={() => !libraryDropSaving && setPendingLibraryDrop(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setPendingLibraryDrop(null)} aria-label="Close">×</button><section className="mux-drop-group-dialog"><p>New group</p><h3>Group these videos?</h3><span>Choose how the dropped videos should be grouped.</span><label><span>Group title</span><input autoFocus required maxLength={160} value={droppedGroupTitle} disabled={Boolean(libraryDropSaving)} onChange={(event) => setDroppedGroupTitle(event.target.value)} /></label><ul>{pendingDropAssets.map((asset) => <li key={asset.id}>{asset.title} · {friendlyAssetRatio(asset)}</li>)}</ul><div className="mux-drop-group-actions"><button type="button" disabled={!droppedGroupTitle.trim() || Boolean(libraryDropSaving)} onClick={() => void createDroppedGroup('collection')}>{libraryDropSaving === 'collection' ? 'Creating…' : 'Create collection'}</button><button type="button" disabled={!droppedGroupTitle.trim() || !canCreateDroppedRatioGroup || Boolean(libraryDropSaving)} title={canCreateDroppedRatioGroup ? undefined : 'Videos must be ready, public, and have different ratios.'} onClick={() => void createDroppedGroup('ratio')}>{libraryDropSaving === 'ratio' ? 'Creating…' : 'Create ratio group'}</button></div></section></div></div>}
-    {deckVideo && <div className="mux-bulk-modal" role="dialog" aria-modal="true" aria-label={`Post ${deckVideo.title} to a Deck card`} onMouseDown={() => !postingToDeck && setDeckVideo(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" disabled={postingToDeck} onClick={() => setDeckVideo(null)} aria-label="Close">×</button><form className="mux-bulk-simple-form" onSubmit={(event) => { event.preventDefault(); void postVideoToDeckCard(); }}><p>Add video to The Deck</p><h3>{deckVideo.title}</h3><small>Showing cards for {deckVideo.client}.</small>{deckPostError && <small role="alert">{deckPostError}</small>}{loadingDeckCards ? <span>Loading matching cards…</span> : deckCards.length ? <label><span>Deck card</span><select autoFocus required value={selectedDeckCardId} onChange={(event) => setSelectedDeckCardId(event.target.value)} disabled={postingToDeck}><option value="">Choose a card</option>{deckCards.map((card) => <option key={card.id} value={card.id}>{card.title}</option>)}</select></label> : !deckPostError && <span>No Deck cards match this client.</span>}{deckCards.length > 0 && <button type="submit" disabled={!selectedDeckCardId || postingToDeck}>{postingToDeck ? 'Posting…' : 'Post video to card'}</button>}</form></div></div>}
+    {deckVideo && <div className="mux-bulk-modal" role="dialog" aria-modal="true" aria-label={`Add ${deckVideo.title} as a Deck comment`} onMouseDown={() => !postingToDeck && setDeckVideo(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" disabled={postingToDeck} onClick={() => setDeckVideo(null)} aria-label="Close">×</button><form className="mux-bulk-simple-form" onSubmit={(event) => { event.preventDefault(); void postVideoToDeckCard(); }}><p>Add video to The Deck</p><h3>{deckVideo.title}</h3><small>Showing cards for {deckVideo.client}.</small>{deckPostError && <small role="alert">{deckPostError}</small>}{loadingDeckCards ? <span>Loading matching cards…</span> : deckCards.length ? <label><span>Deck card</span><select autoFocus required value={selectedDeckCardId} onChange={(event) => setSelectedDeckCardId(event.target.value)} disabled={postingToDeck}><option value="">Choose a card</option>{deckCards.map((card) => <option key={card.id} value={card.id}>{card.title}</option>)}</select></label> : !deckPostError && <span>No Deck cards match this client.</span>}{deckCards.length > 0 && <button type="submit" disabled={!selectedDeckCardId || postingToDeck}>{postingToDeck ? 'Adding comment…' : 'Add video as comment'}</button>}</form></div></div>}
 {previewAsset && previewProject && previewProjectVariants.length > 0 ? <VideoModal
       video={{ id: previewAsset.id, title: previewProject.title, client: previewProject.client || clientName(previewAsset), thumbnail: previewAsset.thumbnailUrl || '', muxPlaybackId: previewProjectVariants[0].playbackId }}
       onClose={closePreview}

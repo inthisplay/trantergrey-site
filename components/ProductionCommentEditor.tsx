@@ -113,7 +113,7 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
     if (!muxPickerOpen || muxRequested) return;
     setMuxRequested(true);
     setMuxLoading(true); setMuxError('');
-    fetch('/api/mux/library', { cache: 'no-store' }).then(async (response) => {
+    fetch('/api/mux/library?commentItems=1', { cache: 'no-store' }).then(async (response) => {
       const payload = await response.json() as { commentItems?: MuxPickerAsset[]; error?: string };
       if (!response.ok) throw new Error(payload.error || 'Unable to load the Mux library.');
       setMuxAssets(payload.commentItems || []);
