@@ -9,6 +9,7 @@ export async function onRequestGet({ request, env }: Context) {
   if (denied) return denied;
   try {
     const url = new URL(request.url);
+    const assetId = url.searchParams.get('id')?.trim() || '';
     const filters = {
       limit: Number(url.searchParams.get('limit')) || 48,
       cursor: Number(url.searchParams.get('cursor')) || 0,
@@ -19,7 +20,12 @@ export async function onRequestGet({ request, env }: Context) {
       dateStart: url.searchParams.get('dateStart') || '',
       dateEnd: url.searchParams.get('dateEnd') || '',
     };
-    const [page, store] = await Promise.all([readMuxLibraryBrowsePage(env, filters), readVideoProjectStore(env)]);
+    const [page, store] = await Promise.all([
+      assetId
+        ? readMuxBrowseAssetsById(env, [assetId]).then((assets) => ({ assets, pageAssetIds: assets.map((asset) => asset.id) }))
+        : readMuxLibraryBrowsePage(env, filters),
+      readVideoProjectStore(env),
+    ]);
     const projectByAssetId = new Map(store.projects.flatMap((project) => project.variants.map((variant) => [variant.assetId, project] as const)));
     const linkedIds = new Set(page.pageAssetIds);
     for (const assetId of page.pageAssetIds) {

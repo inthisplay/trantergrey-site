@@ -16,7 +16,7 @@ export function MuxAssetPage() {
   const [asset, setAsset] = useState<Asset | null>(null); const [assets, setAssets] = useState<Asset[]>([]); const [project, setProject] = useState<VideoProject | null>(null); const [error, setError] = useState('');
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('id') || '';
-    fetch('/api/mux/library', { cache: 'no-store' }).then(async (response) => {
+    fetch(`/api/mux/library?id=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(async (response) => {
       if (response.status === 401) { window.location.replace(`/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`); return null; }
       const payload = await response.json() as { assets?: Asset[]; projects?: VideoProject[]; error?: string };
       if (!response.ok) throw new Error(payload.error || 'Unable to open this Mux video.');
