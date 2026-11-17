@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, MouseEvent } from 'react';
 import type { Descendant } from 'slate';
 import { ProductionCommentEditor } from './ProductionCommentEditor';
 import { ProductionNotesEditor } from './ProductionNotesEditor';
@@ -43,6 +43,10 @@ const sourceCommentAuthor = (value: unknown) => {
   catch { return 'Unknown'; }
 };
 const hasCommentContent = (value: Descendant[] | null) => Boolean(value?.some((node) => 'type' in node && (node.type === 'mux-asset' || node.type === 'attachment') || ('children' in node && node.children.some((child) => 'text' in child && child.text.trim()))));
+const addMissingMuxCopyButton = (html: string) => html.replace(
+  /(<a class="production-comment-mux-asset-public-link" href="([^"]+)"[^>]*>[^<]*<\/a>)(?!<button\b)/g,
+  (_, link: string, href: string) => `<div class="production-comment-mux-actions">${link}<button type="button" data-copy-public-link="${href}">Copy public link</button></div>`,
+);
 
 type ProductionCardProps = {
   id: string;
@@ -201,6 +205,19 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete comment.'); }
     finally { setCommentChanging(false); setDeletingCommentId(null); }
   };
+  const copyEmbeddedPublicLink = (event: MouseEvent<HTMLElement>) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-copy-public-link]');
+    const href = button?.dataset.copyPublicLink;
+    if (!button || !href) return;
+    const label = button.textContent;
+    void navigator.clipboard.writeText(new URL(href, window.location.origin).toString()).then(() => {
+      button.textContent = 'Copied';
+      window.setTimeout(() => { button.textContent = label; }, 1800);
+    }).catch(() => {
+      button.textContent = 'Copy failed';
+      window.setTimeout(() => { button.textContent = label; }, 1800);
+    });
+  };
   return <article className={`production-card${drawer ? ' is-drawer-card' : ''}`}>
     <div className="production-card-heading"><div><p className="eyebrow">Local production record · Basecamp source preserved</p><input className="production-inline-title" aria-label="Card title" value={activeDraft.title} maxLength={240} onChange={(event) => setDraft({ ...activeDraft, title: event.target.value })} onBlur={() => void save()} disabled={saving} /></div></div>
     {error && <p className="production-save-error">{error}</p>}
@@ -212,7 +229,7 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
       const localComment = item.kind === 'local-comment' ? data.localComments.find((comment) => `local-${comment.id}` === item.id) : null;
       const canEdit = localComment ? editableByViewer(localComment) && !localComment.deletedAt : false;
       const isEditingComment = localComment?.id === editingCommentId;
-      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><div dangerouslySetInnerHTML={{ __html: item.html || '' }} />{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
+      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id} onClick={copyEmbeddedPublicLink}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><div dangerouslySetInnerHTML={{ __html: addMissingMuxCopyButton(item.html || '') }} />{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
     })}<div className="production-comment-form"><div><p className="production-comment-author">{data.viewer?.name || 'Signed-in team member'}</p><ProductionCommentEditor key={commentEditorKey} cardId={id} client={text(card.client) || null} onChange={setComment} /></div><button type="button" onClick={addComment} disabled={commentSaving || !hasCommentContent(comment)}>{commentSaving ? 'Posting…' : 'Post comment'}</button></div></section>
     <div className="production-card-archive"><button type="button" onClick={() => { const next = { ...activeDraft, archived: !activeDraft.archived }; setDraft(next); void save(next); }} disabled={saving}>{activeDraft.archived ? 'Unarchive card' : 'Archive card'}</button></div>
   </article>;

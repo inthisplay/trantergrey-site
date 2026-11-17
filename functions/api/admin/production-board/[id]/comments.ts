@@ -77,7 +77,7 @@ const slateHtml = (body: unknown) => {
       const preview = media.length
         ? `<div class="production-comment-mux-asset-videos">${media.map((video) => `<iframe src="${video.playerUrl}" title="${video.title}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`).join('')}</div>`
         : thumbnail ? `<div class="production-comment-mux-asset-fallback">${thumbnail}</div>` : '';
-      return `<div class="production-comment-mux-asset">${preview}<div class="production-comment-mux-asset-caption">${client}<strong>${title}</strong><em>${typeLabel}</em></div><a class="production-comment-mux-asset-public-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">Open public page ↗</a></div>`;
+      return `<div class="production-comment-mux-asset">${preview}<div class="production-comment-mux-asset-caption">${client}<strong>${title}</strong><em>${typeLabel}</em></div><div class="production-comment-mux-actions"><a class="production-comment-mux-asset-public-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">Open public page ↗</a><button type="button" data-copy-public-link="${escapeHtml(href)}">Copy public link</button></div></div>`;
     }
     if (node.type === 'attachment') {
       const attachmentId = typeof node.attachmentId === 'string' ? node.attachmentId : '';
