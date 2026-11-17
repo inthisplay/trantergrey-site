@@ -2,12 +2,13 @@ import { adminResponse, type AdminEnvironment } from '../../_lib/admin';
 import { getMuxLibraryAssets } from '../../_lib/mux';
 import { invalidateMuxBrowseIndex } from '../../_lib/mux-library';
 import { createVideoCollection, deleteVideoCollection, readVideoProjectStore, updateVideoCollection } from '../../_lib/mux-state';
+import { registerClient } from '../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment };
 export async function onRequestGet({ request, env }: Context) { const denied = await adminResponse(request, env); return denied || Response.json(await readVideoProjectStore(env)); }
 export async function onRequestPost({ request, env }: Context) {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  try { const result = await createVideoCollection(env, await request.json(), await getMuxLibraryAssets(env)); await invalidateMuxBrowseIndex(env); return Response.json(result, { status: result.reused ? 200 : 201 }); }
+  try { const body = await request.json() as { clientsByAssetId?: Record<string, unknown> }; const result = await createVideoCollection(env, body, await getMuxLibraryAssets(env)); const clients = Object.values(body.clientsByAssetId ?? {}).filter((client): client is string => typeof client === 'string' && Boolean(client.trim())); await Promise.all(clients.map((client) => registerClient(env, client))); await invalidateMuxBrowseIndex(env); return Response.json(result, { status: result.reused ? 200 : 201 }); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not create this video collection.' }, { status: 400 }); }
 }
 export async function onRequestPatch({ request, env }: Context) {

@@ -1,5 +1,5 @@
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../_lib/admin';
-import { readEnrichedMuxLibrary } from '../../../_lib/mux-library';
+import { readClientDirectory, registerClient } from '../../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment; params: { id: string } };
 
@@ -18,22 +18,6 @@ const noteText = (value: unknown) => String(value ?? '')
 
 const hasRichStructure = (value: unknown) => /<(?:p|ul|ol|li|blockquote|strong|em|a|h[1-6]|table|pre)\b/i.test(String(value ?? ''));
 const noteFingerprint = (value: unknown) => noteText(value).replace(/\s/g, '');
-const assigneeName = (value: unknown): string | null => {
-  if (typeof value === 'string') return value.trim() || null;
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  for (const key of ['name', 'full_name', 'display_name', 'person_name']) {
-    if (typeof record[key] === 'string' && record[key].trim()) return record[key].trim();
-  }
-  return null;
-};
-const archiveAssigneeNames = (value: unknown) => {
-  try {
-    const parsed = JSON.parse(String(value || '[]'));
-    return Array.isArray(parsed) ? parsed.map(assigneeName).filter((name): name is string => Boolean(name)) : [];
-  } catch { return []; }
-};
-
 const preferPreservedNotes = (card: Record<string, unknown>) => {
   const source = card.source_notes_html;
   const local = card.local_notes_html || card.legacy_notes_html;
@@ -55,7 +39,7 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ?`).bind(params.id).first();
   if (!storedCard) return Response.json({ error: 'Production card not found.' }, { status: 404 });
   const card = preferPreservedNotes(storedCard as Record<string, unknown>);
-  const [steps, comments, events, attachments, columns, editLog, localComments, muxLibrary, assigneeRows, signedInMembers] = await Promise.all([
+  const [steps, comments, events, attachments, columns, editLog, localComments, clients, teamMembers] = await Promise.all([
     env.TG_DATA.prepare('SELECT * FROM production_card_steps WHERE card_source_id = ? ORDER BY position, source_id').bind((card as { source_id: string }).source_id).all(),
     env.TG_DATA.prepare('SELECT * FROM production_comments WHERE card_source_id = ? ORDER BY created_at, source_id').bind((card as { source_id: string }).source_id).all(),
     env.TG_DATA.prepare('SELECT * FROM production_events WHERE card_source_id = ? ORDER BY occurred_at DESC, source_id DESC').bind((card as { source_id: string }).source_id).all(),
@@ -63,20 +47,50 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     env.TG_DATA.prepare('SELECT source_id AS sourceId, name, position FROM production_columns ORDER BY position, source_id').all(),
     env.TG_DATA.prepare('SELECT changed_at AS changedAt, actor, before_json AS beforeJson, after_json AS afterJson FROM production_card_edit_log WHERE card_source_id = ? ORDER BY changed_at DESC').bind((card as { source_id: string }).source_id).all(),
     env.TG_DATA.prepare('SELECT id, body_html AS bodyHtml, body_json AS bodyJson, author_name AS authorName, author_email AS authorEmail, created_at AS createdAt, deleted_at AS deletedAt, deleted_by_name AS deletedByName FROM production_local_comments WHERE card_source_id = ? ORDER BY created_at, id').bind((card as { source_id: string }).source_id).all(),
-    readEnrichedMuxLibrary(env).catch(() => null),
-    env.TG_DATA.prepare('SELECT assignees_json AS assigneesJson FROM production_cards UNION SELECT assignees_json AS assigneesJson FROM production_card_overrides').all<{ assigneesJson: string | null }>(),
-    env.TG_DATA.prepare('SELECT DISTINCT user_name AS name FROM admin_sessions WHERE user_name IS NOT NULL AND TRIM(user_name) != ?').bind('').all<{ name: string }>(),
+    readClientDirectory(env),
+    env.TG_DATA.prepare('SELECT nickname AS name FROM admin_team_directory').all<{ name: string }>(),
   ]);
-  const clients = [...new Set((muxLibrary?.assets ?? []).map((asset) => asset.client).filter((client): client is string => Boolean(client)))].sort((a, b) => a.localeCompare(b));
-  const assignees = [...new Set([...assigneeRows.results.flatMap((row) => archiveAssigneeNames(row.assigneesJson)), ...signedInMembers.results.map((member) => member.name.trim()).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
+  const assignees = [...new Set(teamMembers.results.map((member) => member.name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   return Response.json({ card, steps: steps.results, comments: comments.results, events: events.results, attachments: attachments.results, columns: columns.results, editLog: editLog.results, localComments: localComments.results, clients, assignees, viewer });
 }
 
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const sanitizeNotesHtml = (value: string) => value.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, (tag) => {
+  const parsed = tag.match(/^<(\/)?([a-z0-9-]+)\b([^>]*)>$/i);
+  if (!parsed) return '';
+  const [, closing, rawName, rawAttributes] = parsed;
+  const name = rawName.toLowerCase();
+  const allowed = new Set(['p', 'div', 'h2', 'h3', 'blockquote', 'ul', 'ol', 'li', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre', 'a', 'input', 'figure', 'figcaption', 'img', 'video', 'audio', 'source', 'iframe']);
+  if (!allowed.has(name)) return '';
+  if (closing) return `</${name}>`;
+  const attributes: string[] = [];
+  const className = rawAttributes.match(/\bclass=(['"])(.*?)\1/i)?.[2]?.split(/\s+/).filter((item) => ['production-note-checklist', 'production-imported-attachment', 'production-imported-attachment--video', 'production-imported-attachment--file'].includes(item)).join(' ');
+  if (className) attributes.push(`class="${escapeHtml(className)}"`);
+  const href = rawAttributes.match(/\bhref=(['"])(.*?)\1/i)?.[2];
+  if (name === 'a' && href && /^(?:https?:\/\/|mailto:|\/api\/admin\/production-board\/attachments\/|\/watch\/)/i.test(href)) attributes.push(`href="${escapeHtml(href)}" rel="noreferrer noopener" target="_blank"`);
+  const src = rawAttributes.match(/\bsrc=(['"])(.*?)\1/i)?.[2];
+  if (src && /^(?:https:\/\/|\/api\/admin\/production-board\/attachments\/)/i.test(src)) {
+    if (name === 'iframe' && !/^https:\/\/player\.mux\.com\/[A-Za-z0-9_-]+(?:\?[^"'<>]*)?$/i.test(src)) return '';
+    attributes.push(`src="${escapeHtml(src)}"`);
+  }
+  if (name === 'input' && /\btype=(['"])checkbox\1/i.test(rawAttributes)) {
+    attributes.push('type="checkbox"');
+    if (/\bchecked(?:\s|=|\/|$)/i.test(rawAttributes)) attributes.push('checked');
+  } else if (name === 'input') return '';
+  if (name === 'img') {
+    const alt = rawAttributes.match(/\balt=(['"])(.*?)\1/i)?.[2];
+    if (alt !== undefined) attributes.push(`alt="${escapeHtml(alt)}"`);
+  }
+  if (['video', 'audio', 'iframe'].includes(name) && /\bcontrols(?:\s|=|\/|$)/i.test(rawAttributes)) attributes.push('controls');
+  if (name === 'iframe') attributes.push('allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"', 'allowfullscreen');
+  const alignment = rawAttributes.match(/\bstyle=(['"])[^'"]*text-align\s*:\s*(left|center|right|justify)[^'"]*\1/i)?.[2];
+  if (alignment) attributes.push(`style="text-align:${alignment.toLowerCase()}"`);
+  return `<${name}${attributes.length ? ` ${attributes.join(' ')}` : ''}>`;
+});
 
 export async function onRequestPatch({ request, env, params }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  const body = await request.json().catch(() => null) as { title?: unknown; notes?: unknown; client?: unknown; assignedTo?: unknown; dueOn?: unknown; columnSourceId?: unknown; archived?: unknown } | null;
+  const body = await request.json().catch(() => null) as { title?: unknown; notes?: unknown; notesHtml?: unknown; client?: unknown; assignedTo?: unknown; dueOn?: unknown; columnSourceId?: unknown; archived?: unknown } | null;
   if (!body || typeof body.title !== 'string' || typeof body.notes !== 'string' || typeof body.client !== 'string' || typeof body.assignedTo !== 'string' || typeof body.dueOn !== 'string' || typeof body.columnSourceId !== 'string' || typeof body.archived !== 'boolean') {
     return Response.json({ error: 'Enter a title, client, assignees, due date, notes, status, and archive state.' }, { status: 400 });
   }
@@ -84,7 +98,7 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
   const client = body.client.trim();
   const assignees = [...new Set(body.assignedTo.split(',').map((person) => person.trim()).filter(Boolean))];
   const dueOn = body.dueOn.trim();
-  if (!title || title.length > 240 || client.length > 120 || assignees.some((person) => person.length > 120) || !/^\d{4}-\d{2}-\d{2}$/.test(dueOn) && dueOn !== '' || body.notes.length > 100000) return Response.json({ error: 'Check the title, client, assignees, due date, and notes.' }, { status: 400 });
+  if (!title || title.length > 240 || client.length > 120 || assignees.some((person) => person.length > 120) || !/^\d{4}-\d{2}-\d{2}$/.test(dueOn) && dueOn !== '' || body.notes.length > 100000 || body.notesHtml !== undefined && (typeof body.notesHtml !== 'string' || body.notesHtml.length > 100000)) return Response.json({ error: 'Check the title, client, assignees, due date, and notes.' }, { status: 400 });
   const card = await env.TG_DATA.prepare('SELECT source_id, title, description_html, column_source_id, archived FROM production_cards WHERE id = ?').bind(params.id).first<{ source_id: string; title: string; description_html: string | null; column_source_id: string; archived: number }>();
   if (!card) return Response.json({ error: 'Production card not found.' }, { status: 404 });
   const column = await env.TG_DATA.prepare('SELECT source_id FROM production_columns WHERE source_id = ?').bind(body.columnSourceId).first();
@@ -96,7 +110,9 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
   const after = { title, notes: body.notes, client, assignees, dueOn, columnSourceId: body.columnSourceId, archived: body.archived ? 1 : 0 };
   // Retain Basecamp's original rich HTML if the editor's plain-text value is
   // unchanged. Changing another field must not silently flatten old notes.
-  const notesHtml = noteFingerprint(card.description_html) === noteFingerprint(body.notes)
+  const notesHtml = typeof body.notesHtml === 'string'
+    ? sanitizeNotesHtml(body.notesHtml)
+    : noteFingerprint(card.description_html) === noteFingerprint(body.notes)
     ? null
     : body.notes ? escapeHtml(body.notes).replace(/\r?\n/g, '<br>') : '';
   const editedAt = new Date().toISOString();
@@ -108,5 +124,6 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
     env.TG_DATA.prepare('INSERT INTO production_card_edit_log (id, card_source_id, changed_at, actor, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), card.source_id, editedAt, 'Admin', JSON.stringify(before || {}), JSON.stringify(after)),
   ]);
+  if (client) await registerClient(env, client);
   return onRequestGet({ request, env, params });
 }

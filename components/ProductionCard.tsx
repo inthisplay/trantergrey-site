@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import type { Descendant } from 'slate';
 import { ProductionCommentEditor } from './ProductionCommentEditor';
+import { ProductionNotesEditor } from './ProductionNotesEditor';
+import { ClientPicker } from './ClientPicker';
+import { TeamMemberPicker } from './TeamMemberPicker';
 
 type Column = { sourceId: string; name: string };
 type LocalComment = { id: string; bodyHtml: string; bodyJson?: string; authorName: string; authorEmail?: string | null; createdAt: string; deletedAt?: string | null; deletedByName?: string | null };
@@ -19,7 +23,7 @@ type Detail = {
   editLog: Array<{ changedAt: string }>;
   viewer: { name: string; email: string | null } | null;
 };
-type Draft = { title: string; notes: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
+type Draft = { title: string; notes: string; notesHtml?: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
 type TimelineItem = { id: string; kind: 'comment' | 'event' | 'local-comment'; timestamp: string; author?: string; html?: string; summary?: string; order: number };
 
 const text = (value: unknown) => typeof value === 'string' ? value : '';
@@ -143,6 +147,23 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save this card.'); }
     finally { setSaving(false); }
   };
+  const editNotes = () => {
+    setDraft({ ...cardDraft(), notesHtml: text(card.notes_html) });
+    setNotesFocused(true);
+  };
+  const updateNotesHtml = (notesHtml: string) => setDraft((current) => ({ ...(current || cardDraft()), notesHtml, notes: descriptionText(notesHtml) }));
+  const toggleSavedChecklist = (event: ChangeEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox' || !target.closest('.production-note-checklist')) return;
+    if (target.checked) target.setAttribute('checked', '');
+    else target.removeAttribute('checked');
+    const notesHtml = target.closest('.production-notes-display')?.innerHTML;
+    if (typeof notesHtml === 'string') {
+      const nextDraft = { ...cardDraft(), notesHtml, notes: descriptionText(notesHtml) };
+      setDraft(nextDraft);
+      void save(nextDraft);
+    }
+  };
   const addComment = async () => {
     if (!hasCommentContent(comment)) return;
     setCommentSaving(true); setError('');
@@ -183,16 +204,15 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
   return <article className={`production-card${drawer ? ' is-drawer-card' : ''}`}>
     <div className="production-card-heading"><div><p className="eyebrow">Local production record · Basecamp source preserved</p><input className="production-inline-title" aria-label="Card title" value={activeDraft.title} maxLength={240} onChange={(event) => setDraft({ ...activeDraft, title: event.target.value })} onBlur={() => void save()} disabled={saving} /></div></div>
     {error && <p className="production-save-error">{error}</p>}
-    <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><input value={activeDraft.client} list="production-client-list" maxLength={120} placeholder="Choose or type a client" onChange={(event) => setDraft({ ...activeDraft, client: event.target.value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Assigned to</dt><dd><input value={activeDraft.assignedTo} list="production-assignee-list" placeholder="Choose team members…" onChange={(event) => setDraft({ ...activeDraft, assignedTo: event.target.value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><input type="date" value={activeDraft.dueOn} onChange={(event) => setDraft({ ...activeDraft, dueOn: event.target.value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Status</dt><dd><select value={activeDraft.columnSourceId} onChange={(event) => { const next = { ...activeDraft, columnSourceId: event.target.value }; setDraft(next); void save(next); }} disabled={saving}>{data.columns.map((column) => <option key={column.sourceId} value={column.sourceId}>{column.name}</option>)}</select></dd></div></dl>
-    <section className="production-card-notes production-inline-notes"><div className="production-inline-notes-heading"><h2>Notes</h2>{hasSavedNotes && !notesFocused && <button type="button" onClick={() => setNotesFocused(true)}>Edit notes</button>}</div>{!notesFocused && hasSavedNotes ? <div className="production-notes-display" dangerouslySetInnerHTML={{ __html: text(card.notes_html) }} /> : <><textarea autoFocus={notesFocused} value={activeDraft.notes} rows={Math.max(4, activeDraft.notes.split('\n').length + 1)} placeholder="Add notes…" onFocus={() => setNotesFocused(true)} onChange={(event) => setDraft({ ...activeDraft, notes: event.target.value })} disabled={saving} /><div className="production-inline-notes-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setDraft((current) => current ? { ...current, notes: notesText } : null); setNotesFocused(false); }} disabled={saving}>Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { void save().finally(() => setNotesFocused(false)); }} disabled={saving}>{saving ? 'Saving…' : 'Save notes'}</button></div></>}</section>
-    <datalist id="production-client-list">{data.clients.map((client) => <option key={client} value={client} />)}</datalist><datalist id="production-assignee-list">{data.assignees.map((assignee) => <option key={assignee} value={assignee} />)}</datalist>
+    <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><ClientPicker value={activeDraft.client} clients={data.clients} onChange={(value) => setDraft({ ...activeDraft, client: value })} onBlur={() => void save()} disabled={saving} onClientsChanged={() => onUpdated?.()} placeholder="Search or add a client" /></dd></div><div><dt>Assigned to</dt><dd><TeamMemberPicker value={activeDraft.assignedTo} members={data.assignees} onChange={(value) => setDraft({ ...activeDraft, assignedTo: value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><input type="date" className={activeDraft.dueOn ? undefined : "is-empty"} value={activeDraft.dueOn} onChange={(event) => setDraft({ ...activeDraft, dueOn: event.target.value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Status</dt><dd><select value={activeDraft.columnSourceId} onChange={(event) => { const next = { ...activeDraft, columnSourceId: event.target.value }; setDraft(next); void save(next); }} disabled={saving}>{data.columns.map((column) => <option key={column.sourceId} value={column.sourceId}>{column.name}</option>)}</select></dd></div></dl>
+    <section className="production-card-notes production-inline-notes"><div className="production-inline-notes-heading"><h2>Notes</h2>{!notesFocused && <button type="button" onClick={editNotes}>{hasSavedNotes ? 'Edit notes' : 'Add notes'}</button>}</div>{!notesFocused ? <div className={`production-notes-display${hasSavedNotes ? '' : ' is-empty'}`} onChange={toggleSavedChecklist} dangerouslySetInnerHTML={{ __html: text(card.notes_html) || '<p>Add notes…</p>' }} /> : <><ProductionNotesEditor key={`${id}-notes-edit`} initialHtml={text(card.notes_html)} disabled={saving} onChange={updateNotesHtml} /><div className="production-inline-notes-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setDraft(null); setNotesFocused(false); }} disabled={saving}>Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { void save().finally(() => setNotesFocused(false)); }} disabled={saving}>{saving ? 'Saving…' : 'Save notes'}</button></div></>}</section>
     {data.steps.length > 0 && <section><h2>Checklist</h2><ul>{data.steps.map((step) => <li key={text(step.source_id)}>{step.completed === 1 ? '✓ ' : '○ '}{text(step.title)}</li>)}</ul></section>}
     {data.attachments.length > 0 && <details className="production-card-files"><summary>Attachments <span>{data.attachments.length}</span></summary><ul>{data.attachments.map((file) => <li key={file.sourceId}>{file.status === 'stored' ? <a href={`/api/admin/production-board/attachments/${encodeURIComponent(file.sourceId)}`}>{file.filename}</a> : <span>{file.filename} — {file.status}</span>}</li>)}</ul></details>}
     <section className="production-local-comments"><h2>Comments</h2>{timeline.map((item) => {
       const localComment = item.kind === 'local-comment' ? data.localComments.find((comment) => `local-${comment.id}` === item.id) : null;
       const canEdit = localComment ? editableByViewer(localComment) && !localComment.deletedAt : false;
       const isEditingComment = localComment?.id === editingCommentId;
-      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small>{item.author} · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><div dangerouslySetInnerHTML={{ __html: item.html || '' }} />{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
+      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><div dangerouslySetInnerHTML={{ __html: item.html || '' }} />{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
     })}<div className="production-comment-form"><div><p className="production-comment-author">{data.viewer?.name || 'Signed-in team member'}</p><ProductionCommentEditor key={commentEditorKey} cardId={id} client={text(card.client) || null} onChange={setComment} /></div><button type="button" onClick={addComment} disabled={commentSaving || !hasCommentContent(comment)}>{commentSaving ? 'Posting…' : 'Post comment'}</button></div></section>
     <div className="production-card-archive"><button type="button" onClick={() => { const next = { ...activeDraft, archived: !activeDraft.archived }; setDraft(next); void save(next); }} disabled={saving}>{activeDraft.archived ? 'Unarchive card' : 'Archive card'}</button></div>
   </article>;

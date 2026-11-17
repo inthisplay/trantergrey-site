@@ -2,12 +2,13 @@ import { adminResponse, type AdminEnvironment } from '../../_lib/admin';
 import { getMuxLibraryAssets } from '../../_lib/mux';
 import { invalidateMuxBrowseIndex } from '../../_lib/mux-library';
 import { createVideoProject, deleteVideoProject, readVideoProjectStore, regroupVideoRatios, updateVideoProject } from '../../_lib/mux-state';
+import { registerClient } from '../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment };
 export async function onRequestGet({ request, env }: Context) { const denied = await adminResponse(request, env); return denied || Response.json(await readVideoProjectStore(env)); }
 export async function onRequestPost({ request, env }: Context) {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  try { const project = await createVideoProject(env, await request.json(), await getMuxLibraryAssets(env)); await invalidateMuxBrowseIndex(env); return Response.json({ project }, { status: 201 }); }
+  try { const body = await request.json() as { client?: unknown }; const project = await createVideoProject(env, body, await getMuxLibraryAssets(env)); if (typeof body.client === 'string' && body.client.trim()) await registerClient(env, body.client); await invalidateMuxBrowseIndex(env); return Response.json({ project }, { status: 201 }); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not create this video project.' }, { status: 400 }); }
 }
 export async function onRequestPatch({ request, env }: Context) {

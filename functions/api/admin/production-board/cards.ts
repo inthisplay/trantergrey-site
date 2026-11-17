@@ -1,4 +1,5 @@
 import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
+import { registerClient } from '../../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment };
 
@@ -29,5 +30,6 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`)
       .bind(sourceId, title, notesHtml, client, JSON.stringify(assignees), dueOn, columnSourceId, now),
   ]);
+  if (client) await registerClient(env, client);
   return Response.json({ id }, { status: 201 });
 }

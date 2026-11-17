@@ -53,6 +53,16 @@ const toggleAlignment = (editor: Editor, align: TextAlign) => {
   Transforms.setNodes<CommentElement>(editor, { align: isAlignActive(editor, align) ? undefined : align });
 };
 
+function AlignmentIcon({ align }: { align: TextAlign }) {
+  const paths: Record<TextAlign, string> = {
+    left: 'M3 5h18v2H3zm0 4h12v2H3zm0 4h16v2H3zm0 4h9v2H3z',
+    center: 'M6 5h12v2H6zm-3 4h18v2H3zm2 4h14v2H5zm3 4h8v2H8z',
+    right: 'M3 5h18v2H3zm6 4h12v2H9zm-3 4h15v2H6zm9 4h6v2h-6z',
+    justify: 'M3 5h18v2H3zm0 4h18v2H3zm0 4h18v2H3zm0 4h18v2H3z',
+  };
+  return <svg className="production-comment-alignment-icon" viewBox="0 0 24 24" aria-hidden="true"><path d={paths[align]} fill="currentColor" /></svg>;
+}
+
 function Leaf({ attributes, children, leaf }: RenderLeafProps) {
   let output = children;
   if (leaf.bold) output = <strong>{output}</strong>;
@@ -160,10 +170,10 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
       <span className="production-comment-tool-divider" />
       <ToolbarButton label={<><span className="production-comment-mux-play">▶</span><span>MUX</span></>} title="Attach Mux video" active={muxPickerOpen} onMouseDown={() => setMuxPickerOpen((open) => !open)} />
       <span className="production-comment-tool-divider" />
-      <ToolbarButton label="≡" title="Align left" active={isAlignActive(editor, 'left')} onMouseDown={() => toggleAlignment(editor, 'left')} />
-      <ToolbarButton label="≡" title="Align center" active={isAlignActive(editor, 'center')} onMouseDown={() => toggleAlignment(editor, 'center')} />
-      <ToolbarButton label="≡" title="Align right" active={isAlignActive(editor, 'right')} onMouseDown={() => toggleAlignment(editor, 'right')} />
-      <ToolbarButton label="☰" title="Justify" active={isAlignActive(editor, 'justify')} onMouseDown={() => toggleAlignment(editor, 'justify')} />
+      <ToolbarButton label={<AlignmentIcon align="left" />} title="Align left" active={isAlignActive(editor, 'left')} onMouseDown={() => toggleAlignment(editor, 'left')} />
+      <ToolbarButton label={<AlignmentIcon align="center" />} title="Align center" active={isAlignActive(editor, 'center')} onMouseDown={() => toggleAlignment(editor, 'center')} />
+      <ToolbarButton label={<AlignmentIcon align="right" />} title="Align right" active={isAlignActive(editor, 'right')} onMouseDown={() => toggleAlignment(editor, 'right')} />
+      <ToolbarButton label={<AlignmentIcon align="justify" />} title="Justify" active={isAlignActive(editor, 'justify')} onMouseDown={() => toggleAlignment(editor, 'justify')} />
     </div></div>{muxPickerOpen && <div className="production-mux-picker"><input autoFocus value={muxSearch} onChange={(event) => setMuxSearch(event.target.value)} placeholder="Search Mux title, client, or ID…" aria-label="Search Mux library" />{muxLoading && <p>Loading Mux library…</p>}{muxError && <p>{muxError}</p>}{!muxLoading && !muxError && <div>{visibleMuxAssets.map((asset) => <div className="production-mux-picker-item" key={asset.id}><div><button type="button" className="production-mux-picker-select" onMouseDown={(event) => { event.preventDefault(); insertMuxAsset(asset); }}><>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span className="production-mux-picker-placeholder" />}</><span>{asset.client && <small>{asset.client}</small>}<b>{asset.title}</b><em>{muxItemLabel(asset)}</em></span></button>{asset.children && asset.children.length > 0 && <button type="button" className="production-mux-picker-twirl" aria-label={`Show videos in ${asset.title}`} aria-expanded={expandedMuxItems.includes(asset.id)} onMouseDown={(event) => { event.preventDefault(); toggleMuxItem(asset.id); }}>{expandedMuxItems.includes(asset.id) ? '⌄' : '›'}</button>}</div>{expandedMuxItems.includes(asset.id) && asset.children && <div className="production-mux-picker-children">{asset.children.map((child) => <button type="button" key={child.id} onMouseDown={(event) => { event.preventDefault(); insertMuxAsset(child); }}>{child.thumbnailUrl ? <img src={child.thumbnailUrl} alt="" /> : <span className="production-mux-picker-placeholder" />}<span>{child.client && <small>{child.client}</small>}<b>{child.title}</b><em>{muxItemLabel(child)}</em></span></button>)}</div>}</div>)}{muxAssets.length > 0 && visibleMuxAssets.length === 0 && <p>No Mux videos match that search.</p>}</div>}</div>}
     <Slate editor={editor} initialValue={initialValue} onValueChange={update}><div className="production-comment-editor-wrap"><Editable className="production-comment-editor" renderElement={renderElement} renderLeaf={renderLeaf} onKeyDown={onKeyDown} aria-label="Add an update, question, or useful context" />{isEmpty && <span className="production-comment-placeholder" aria-hidden="true">Add an update, question, or useful context…</span>}</div></Slate>{dragDepth > 0 && <div className="production-comment-drop-message">Drop files to attach them</div>}{uploading.length > 0 && <p className="production-comment-upload-status">Uploading {uploading.join(', ')}…</p>}{uploadError && <p className="production-comment-upload-error">{uploadError}</p>}
   </section>;

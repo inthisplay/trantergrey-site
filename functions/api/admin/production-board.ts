@@ -1,23 +1,8 @@
 import { adminResponse, type AdminEnvironment } from '../../_lib/admin';
+import { readClientDirectory } from '../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment };
 type Row = { sourceId: string; name: string; position: number | null; cardsCount: number };
-
-const assigneeName = (value: unknown): string | null => {
-  if (typeof value === 'string') return value.trim() || null;
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  for (const key of ['name', 'full_name', 'display_name', 'person_name']) {
-    if (typeof record[key] === 'string' && record[key].trim()) return record[key].trim();
-  }
-  return null;
-};
-const archiveAssigneeNames = (value: unknown) => {
-  try {
-    const parsed = JSON.parse(String(value || '[]'));
-    return Array.isArray(parsed) ? parsed.map(assigneeName).filter((name): name is string => Boolean(name)) : [];
-  } catch { return []; }
-};
 
 export async function onRequestGet({ request, env }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
@@ -25,7 +10,7 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
     FROM production_columns c LEFT JOIN production_column_overrides co ON co.column_source_id = c.source_id
     LEFT JOIN production_cards p ON COALESCE((SELECT o.column_source_id FROM production_card_overrides o WHERE o.card_source_id = p.source_id), p.column_source_id) = c.source_id
     WHERE COALESCE(co.archived, 0) = 0 GROUP BY c.source_id ORDER BY CASE WHEN c.position IS NULL THEN 0 ELSE 1 END, c.position, c.source_id`).all<Row>();
-  const [cards, clientRows, assigneeRows, signedInMembers] = await Promise.all([
+  const [cards, clients, teamMembers] = await Promise.all([
     env.TG_DATA.prepare(`SELECT p.id, p.source_id AS sourceId, COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId, COALESCE(o.position, p.position) AS position,
     COALESCE(o.title, p.title) AS title, COALESCE(o.client, '') AS client, COALESCE(o.archived, p.archived) AS archived, p.created_at AS createdAt, COALESCE(o.edited_at, p.updated_at, p.created_at) AS updatedAt, p.due_on AS dueOn, p.completed_at AS completedAt, o.edited_at AS editedAt
     , COALESCE(base_comments.count, 0) + COALESCE(local_comments.count, 0) AS commentsCount
@@ -33,11 +18,9 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
     LEFT JOIN (SELECT card_source_id, COUNT(*) AS count FROM production_comments GROUP BY card_source_id) base_comments ON base_comments.card_source_id = p.source_id
     LEFT JOIN (SELECT card_source_id, COUNT(*) AS count FROM production_local_comments GROUP BY card_source_id) local_comments ON local_comments.card_source_id = p.source_id
     ORDER BY COALESCE(o.column_source_id, p.column_source_id), CASE WHEN COALESCE(o.position, p.position) IS NULL THEN 1 ELSE 0 END, COALESCE(o.position, p.position), p.created_at`).all(),
-    env.TG_DATA.prepare("SELECT DISTINCT TRIM(client) AS client FROM mux_asset_metadata WHERE client IS NOT NULL AND TRIM(client) != '' ORDER BY client COLLATE NOCASE").all<{ client: string }>(),
-    env.TG_DATA.prepare('SELECT assignees_json AS assigneesJson FROM production_cards UNION SELECT assignees_json AS assigneesJson FROM production_card_overrides').all<{ assigneesJson: string | null }>(),
-    env.TG_DATA.prepare('SELECT DISTINCT user_name AS name FROM admin_sessions WHERE user_name IS NOT NULL AND TRIM(user_name) != ?').bind('').all<{ name: string }>(),
+    readClientDirectory(env),
+    env.TG_DATA.prepare('SELECT nickname AS name FROM admin_team_directory').all<{ name: string }>(),
   ]);
-  const clients = clientRows.results.map((row) => row.client);
-  const assignees = [...new Set([...assigneeRows.results.flatMap((row) => archiveAssigneeNames(row.assigneesJson)), ...signedInMembers.results.map((member) => member.name.trim()).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
+  const assignees = [...new Set(teamMembers.results.map((member) => member.name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   return Response.json({ columns: columns.results, cards: cards.results, clients, assignees });
 }

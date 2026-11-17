@@ -3,8 +3,10 @@
 import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ProductionCard } from './ProductionCard';
+import { ClientPicker } from './ClientPicker';
+import { TeamMemberPicker } from './TeamMemberPicker';
 
 type Card = { id: string; title: string; client?: string; columnSourceId: string; position: number | null; archived: number; createdAt?: string; updatedAt?: string; dueOn?: string; completedAt?: string; commentsCount?: number };
 type Column = { sourceId: string; name: string; cardsCount: number };
@@ -15,26 +17,54 @@ const cardFromLocation = () => new URLSearchParams(window.location.search).get('
 const newCardColumnFromLocation = () => new URLSearchParams(window.location.search).get('newCard') || '';
 const byPosition = (first: Card, second: Card) => (first.position ?? Number.MAX_SAFE_INTEGER) - (second.position ?? Number.MAX_SAFE_INTEGER);
 const shortDate = (value?: string) => value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value)) : '';
-const cardAgeClass = (updatedAt?: string) => {
-  const updated = updatedAt ? new Date(updatedAt).getTime() : NaN;
-  const ageInDays = Number.isNaN(updated) ? 0 : (Date.now() - updated) / 86_400_000;
-  return ageInDays >= 43 ? ' is-stale-six-weeks' : ageInDays >= 28 ? ' is-stale-four-weeks' : '';
+const completionMonth = (card: Card) => {
+  const date = card.completedAt || card.updatedAt || card.createdAt;
+  if (!date || Number.isNaN(Date.parse(date))) return '';
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(date));
 };
-
-function SortableProductionCard({ card, onOpen }: { card: Card; onOpen: (id: string) => void }) {
+const updatedDateTone = (card: Card) => {
+  const updated = card.updatedAt ? new Date(card.updatedAt).getTime() : NaN;
+  const ageInDays = Number.isNaN(updated) ? 0 : (Date.now() - updated) / 86_400_000;
+  if (card.dueOn) {
+    const due = Date.parse(`${card.dueOn.slice(0, 10)}T00:00:00Z`);
+    const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    const daysUntilDue = (due - today) / 86_400_000;
+    if (!Number.isNaN(due) && daysUntilDue < 0) return ' is-overdue';
+    if (!Number.isNaN(due) && daysUntilDue <= 14) return ' is-due-soon';
+  }
+  if (ageInDays > 42) return ' is-overdue';
+  if (ageInDays >= 28) return ' is-due-soon';
+  return ' is-recent';
+};
+function SortableProductionCard({ card, onOpen, isOpen }: { card: Card; onOpen: (id: string) => void; isOpen: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, data: { type: 'card', columnSourceId: card.columnSourceId } });
   const commentsCount = Number(card.commentsCount) || 0;
   const commentBadge = commentsCount > 0 && <span className="production-card-comment-count" aria-label={`${commentsCount} comment${commentsCount === 1 ? '' : 's'}`}>{commentsCount}</span>;
-  return <a ref={setNodeRef} {...attributes} {...listeners} aria-grabbed={isDragging} className={`${isDragging ? 'is-dragging' : ''}${cardAgeClass(card.createdAt)}`} style={{ transform: CSS.Transform.toString(transform), transition }} href={`/admin/production?card=${encodeURIComponent(card.id)}`} onClick={(event) => { event.preventDefault(); if (!isDragging) onOpen(card.id); }}>{card.client ? <><small className="production-card-client">{card.client}</small><b>{card.title}</b></> : <b>{card.title}</b>}{(commentsCount > 0 || card.createdAt || card.updatedAt) && <div className="production-card-meta">{commentBadge}{(card.createdAt || card.updatedAt) && <small className="production-card-dates">{card.createdAt && `Created ${shortDate(card.createdAt)}`}{card.createdAt && card.updatedAt && ' · '}{card.updatedAt && `Updated ${shortDate(card.updatedAt)}`}</small>}</div>}{card.archived === 1 && <small>Archived</small>}{card.dueOn && <small>Due {card.dueOn}</small>}</a>;
+  return <a ref={setNodeRef} {...attributes} {...listeners} aria-grabbed={isDragging} className={`${isDragging ? 'is-dragging' : ''}${isOpen ? ' is-open-card' : ''}`} aria-current={isOpen ? 'true' : undefined} style={{ transform: CSS.Transform.toString(transform), transition }} href={`/admin/production?card=${encodeURIComponent(card.id)}`} onClick={(event) => { event.preventDefault(); if (!isDragging) onOpen(card.id); }}>{card.client ? <><small className="production-card-client">{card.client}</small><b>{card.title}</b></> : <b>{card.title}</b>}{(commentsCount > 0 || card.createdAt || card.updatedAt) && <div className="production-card-meta">{commentBadge}{(card.createdAt || card.updatedAt) && <small className="production-card-dates">{card.createdAt && <>Created {shortDate(card.createdAt)}</>}{card.createdAt && card.updatedAt && ' · '}{card.updatedAt && <>Updated <span className={`production-card-updated${updatedDateTone(card)}`}>{shortDate(card.updatedAt)}</span></>}</small>}</div>}{card.archived === 1 && <small>Archived</small>}{card.dueOn && <small>Due {card.dueOn}</small>}</a>;
 }
 
-function ProductionColumn({ column, cards, collapsedForDrawer, collapsedForCompact, expanded, isCollapsible, isDropTarget, menuOpen, onSelect, onOpenCard, onMenu, onAction }: { column: Column; cards: Card[]; collapsedForDrawer: boolean; collapsedForCompact: boolean; expanded: boolean; isCollapsible: boolean; isDropTarget: boolean; menuOpen: boolean; onSelect: () => void; onOpenCard: (id: string) => void; onMenu: () => void; onAction: (action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive') => void }) {
+function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, collapsedForCompact, expanded, isCollapsible, isDropTarget, menuOpen, onSelect, onOpenCard, onMenu, onAction }: { column: Column; cards: Card[]; selectedCardId: string; collapsedForDrawer: boolean; collapsedForCompact: boolean; expanded: boolean; isCollapsible: boolean; isDropTarget: boolean; menuOpen: boolean; onSelect: () => void; onOpenCard: (id: string) => void; onMenu: () => void; onAction: (action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive') => void }) {
   const { setNodeRef } = useDroppable({ id: column.sourceId, data: { type: 'column', columnSourceId: column.sourceId } });
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
   const collapsed = collapsedForDrawer || collapsedForCompact || (isCollapsible && !expanded);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const update = () => setScrollEdges({ top: element.scrollTop > 1, bottom: element.scrollTop + element.clientHeight < element.scrollHeight - 1 });
+    update();
+    element.addEventListener('scroll', update, { passive: true });
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(element);
+    if (element.firstElementChild) resizeObserver.observe(element.firstElementChild);
+    const mutationObserver = new MutationObserver(update);
+    mutationObserver.observe(element, { childList: true, subtree: true });
+    return () => { element.removeEventListener('scroll', update); resizeObserver.disconnect(); mutationObserver.disconnect(); };
+  }, [cards.length, collapsed]);
   return <section ref={setNodeRef} className={`production-column${isCollapsible ? ' is-collapsible' : ''}${expanded ? ' is-expanded' : ''}${collapsedForDrawer ? ' is-drawer-collapsed' : ''}${collapsedForCompact ? ' is-compact-collapsed' : ''}${isDropTarget ? ' is-drop-target' : ''}`}>
     <header><button type="button" aria-expanded={!collapsedForDrawer && !collapsedForCompact && (!isCollapsible || expanded)} onClick={onSelect}><h2>{column.name}</h2></button><div className="production-column-menu"><button type="button" className="production-column-add-card" aria-label={`Add card to ${column.name}`} onClick={(event) => { event.stopPropagation(); onAction('add'); }}>+</button><span>{column.cardsCount}</span><button type="button" className="production-column-menu-trigger" aria-label={`Column options for ${column.name}`} aria-expanded={menuOpen} onClick={(event) => { event.stopPropagation(); onMenu(); }}>•••</button>{menuOpen && <div className="production-column-menu-popover" role="menu"><button type="button" role="menuitem" onClick={() => onAction('oldest')}>Sort by oldest first</button><button type="button" role="menuitem" onClick={() => onAction('newest')}>Sort by newest first</button><button type="button" role="menuitem" onClick={() => onAction('add')}>Add card</button><button type="button" role="menuitem" onClick={() => onAction('rename')}>Rename column</button><button type="button" role="menuitem" onClick={() => onAction('archive')}>Archive column</button></div>}</div></header>
     {collapsed && <span className="production-collapsed-count">{column.cardsCount}</span>}
-    <SortableContext items={cards.map((card) => card.id)} strategy={verticalListSortingStrategy}><div>{cards.map((card) => <SortableProductionCard card={card} key={card.id} onOpen={onOpenCard} />)}</div></SortableContext>
+    <div className={`production-column-content${scrollEdges.top ? ' has-scroll-above' : ''}${scrollEdges.bottom ? ' has-scroll-below' : ''}`}><div ref={scrollRef} className="production-column-scroll"><SortableContext items={cards.map((card) => card.id)} strategy={verticalListSortingStrategy}><div>{(() => { let previousMonth = ''; const showMonthDividers = column.name.toLowerCase() === 'done'; return cards.map((card) => { const month = showMonthDividers ? completionMonth(card) : ''; const showDivider = Boolean(month && month !== previousMonth); if (month) previousMonth = month; return <Fragment key={card.id}>{showDivider && <div className="production-month-divider"><span>{month}</span></div>}<SortableProductionCard card={card} onOpen={onOpenCard} isOpen={card.id === selectedCardId} /></Fragment>; }); })()}</div></SortableContext></div><div className="production-column-scroll-shadow production-column-scroll-shadow-top" aria-hidden="true" /><div className="production-column-scroll-shadow production-column-scroll-shadow-bottom" aria-hidden="true" /></div>
   </section>;
 }
 
@@ -62,9 +92,8 @@ function ProductionNewCard({ column, columns, clients, assignees, onCreated }: {
   return <form className="production-card is-drawer-card production-new-card" onSubmit={submit}>
     <div className="production-card-heading"><div><p className="eyebrow">New production card</p><input className="production-inline-title" aria-label="Card title" value={title} maxLength={240} placeholder="Untitled card" onChange={(event) => setTitle(event.target.value)} autoFocus disabled={saving} /></div></div>
     {error && <p className="production-save-error">{error}</p>}
-    <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><input value={client} list="production-new-client-list" maxLength={120} placeholder="Choose or type a client" onChange={(event) => setClient(event.target.value)} disabled={saving} /></dd></div><div><dt>Assigned to</dt><dd><input value={assignedTo} list="production-new-assignee-list" placeholder="Choose team members…" onChange={(event) => setAssignedTo(event.target.value)} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><input type="date" value={dueOn} onChange={(event) => setDueOn(event.target.value)} disabled={saving} /></dd></div><div><dt>Status</dt><dd><select value={columnSourceId} onChange={(event) => setColumnSourceId(event.target.value)} disabled={saving}>{columns.map((item) => <option key={item.sourceId} value={item.sourceId}>{item.name}</option>)}</select></dd></div></dl>
+    <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><ClientPicker value={client} clients={clients} onChange={setClient} disabled={saving} placeholder="Search or add a client" /></dd></div><div><dt>Assigned to</dt><dd><TeamMemberPicker value={assignedTo} members={assignees} onChange={setAssignedTo} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><input type="date" className={dueOn ? undefined : "is-empty"} value={dueOn} onChange={(event) => setDueOn(event.target.value)} disabled={saving} /></dd></div><div><dt>Status</dt><dd><select value={columnSourceId} onChange={(event) => setColumnSourceId(event.target.value)} disabled={saving}>{columns.map((item) => <option key={item.sourceId} value={item.sourceId}>{item.name}</option>)}</select></dd></div></dl>
     <section className="production-card-notes production-inline-notes"><div className="production-inline-notes-heading"><h2>Notes</h2></div><textarea value={notes} rows={6} placeholder="Add notes…" onChange={(event) => setNotes(event.target.value)} disabled={saving} /></section>
-    <datalist id="production-new-client-list">{clients.map((item) => <option key={item} value={item} />)}</datalist><datalist id="production-new-assignee-list">{assignees.map((item) => <option key={item} value={item} />)}</datalist>
     <div className="production-new-card-actions"><button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create card'}</button></div>
   </form>;
 }
@@ -216,7 +245,7 @@ export function ProductionBoard() {
         const collapsedForCompact = !drawerOpen && compactBoard && column.sourceId !== activeCompactColumnId;
         const expanded = drawerOpen ? column.sourceId === activeDrawerColumnId : compactBoard ? column.sourceId === activeCompactColumnId : column.sourceId === expandedColumnId;
         const cards = data.cards.filter((card) => card.columnSourceId === column.sourceId).sort(byPosition);
-        return <ProductionColumn column={column} cards={cards} collapsedForDrawer={collapsedForDrawer} collapsedForCompact={collapsedForCompact} expanded={expanded} isCollapsible={isCollapsible(column)} isDropTarget={dropColumnId === column.sourceId} menuOpen={menuColumnId === column.sourceId} onSelect={() => selectColumn(column)} onOpenCard={setCardInUrl} onMenu={() => setMenuColumnId((current) => current === column.sourceId ? '' : column.sourceId)} onAction={(action) => { void runColumnAction(column, action); }} key={column.sourceId} />;
+        return <ProductionColumn column={column} cards={cards} selectedCardId={cardId} collapsedForDrawer={collapsedForDrawer} collapsedForCompact={collapsedForCompact} expanded={expanded} isCollapsible={isCollapsible(column)} isDropTarget={dropColumnId === column.sourceId} menuOpen={menuColumnId === column.sourceId} onSelect={() => selectColumn(column)} onOpenCard={setCardInUrl} onMenu={() => setMenuColumnId((current) => current === column.sourceId ? '' : column.sourceId)} onAction={(action) => { void runColumnAction(column, action); }} key={column.sourceId} />;
       })}</div>
       <DragOverlay dropAnimation={null}>{activeDragCard && <div className="production-card-drag-overlay"><b>{activeDragCard.title}</b></div>}</DragOverlay>
     </DndContext>

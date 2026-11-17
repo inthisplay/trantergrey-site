@@ -115,15 +115,17 @@ export async function readMuxLibraryBrowsePage(env: AdminEnvironment, filters: M
     totalCount = matches.length;
     assets = matches.slice(cursor, cursor + limit);
   }
-  const [clients, statuses, thumbnails, years] = await Promise.all([
+  const [clients, directory, statuses, thumbnails, years] = await Promise.all([
     env.TG_DATA.prepare('SELECT client, COUNT(*) AS count FROM mux_library_browse_assets WHERE refresh_id = ? GROUP BY client ORDER BY client COLLATE NOCASE').bind(state.refresh_id).all<BrowseFacetRow>(),
+    env.TG_DATA.prepare('SELECT name FROM client_directory ORDER BY name COLLATE NOCASE').all<{ name: string }>(),
     env.TG_DATA.prepare('SELECT library_status, COUNT(*) AS count FROM mux_library_browse_assets WHERE refresh_id = ? GROUP BY library_status').bind(state.refresh_id).all<BrowseStatusRow>(),
     env.TG_DATA.prepare('SELECT SUM(CASE WHEN has_custom_thumbnail = 0 THEN 1 ELSE 0 END) AS needsThumbnail, SUM(CASE WHEN has_custom_thumbnail = 1 THEN 1 ELSE 0 END) AS customThumbnail FROM mux_library_browse_assets WHERE refresh_id = ?').bind(state.refresh_id).first<{ needsThumbnail: number; customThumbnail: number }>(),
     env.TG_DATA.prepare("SELECT DISTINCT CAST(substr(created_at, 1, 4) AS INTEGER) AS year FROM mux_library_browse_assets WHERE refresh_id = ? AND created_at IS NOT NULL ORDER BY year DESC").bind(state.refresh_id).all<{ year: number }>(),
   ]);
   const statusCounts = { all: state.asset_count, published: 0, unreviewed: 0, hidden: 0 };
   statuses.results.forEach((row) => { statusCounts[row.library_status] = row.count; });
-  return { assets, pageAssetIds: assets.map((asset) => asset.id), total: totalCount, nextCursor: cursor + assets.length < totalCount ? cursor + assets.length : null, facets: { clients: ['All', ...clients.results.map((row) => row.client)], years: years.results.map((row) => row.year), statusCounts, thumbnailCounts: { needsThumbnail: thumbnails?.needsThumbnail || 0, customThumbnail: thumbnails?.customThumbnail || 0 } } };
+  const clientNames = [...new Set([...clients.results.map((row) => row.client), ...directory.results.map((row) => row.name)])].sort((first, second) => first.localeCompare(second));
+  return { assets, pageAssetIds: assets.map((asset) => asset.id), total: totalCount, nextCursor: cursor + assets.length < totalCount ? cursor + assets.length : null, facets: { clients: ['All', ...clientNames], years: years.results.map((row) => row.year), statusCounts, thumbnailCounts: { needsThumbnail: thumbnails?.needsThumbnail || 0, customThumbnail: thumbnails?.customThumbnail || 0 } } };
 }
 
 export async function readMuxBrowseAssetsById(env: AdminEnvironment, ids: Iterable<string>) {

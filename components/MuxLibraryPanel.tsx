@@ -10,6 +10,7 @@ import { MuxDateFilter, type MuxDateRange } from './MuxDateFilter';
 import type { MatchedMuxLibraryAsset } from '@/lib/mux-matching';
 import { hasDistinctRatios, ratioLabel, videoProjectSlug, type VideoProject, type VideoProjectCollection } from '@/lib/video-projects-shared';
 import { CollectionRatioManager } from './CollectionRatioManager';
+import { ClientPicker } from './ClientPicker';
 import { MuxThemeToggle } from './MuxThemeToggle';
 import { MuxVideoPlayer, SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
 import { VideoModal } from './VideoModal';
@@ -275,7 +276,6 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [duplicateRatioWarning, setDuplicateRatioWarning] = useState<DuplicateRatioWarning>(null);
   const [startingUploads, setStartingUploads] = useState(false);
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
-  const [clientPickerUploadId, setClientPickerUploadId] = useState('');
   const [tagPickerUploadId, setTagPickerUploadId] = useState('');
   const [savingUploadDetails, setSavingUploadDetails] = useState(false);
   const [replaceTargetId, setReplaceTargetId] = useState('');
@@ -583,7 +583,6 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     setDuplicateRatioWarning(null);
     setUploadClient('');
     setUploadTags('');
-    setClientPickerUploadId('');
     setTagPickerUploadId('');
     setUploadDrawerOpen(true);
     const plan: UploadPlan = { client: '', tags: [], grouping: 'none', name: '', collectionId: '' };
@@ -1576,7 +1575,6 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   if (error && !assets) return <div className="admin-empty" role="alert"><p>{error}</p><button type="button" disabled={refreshingLibrary} onClick={() => void refreshLibrary()}>{refreshingLibrary ? 'Retrying…' : 'Try again'}</button>{errorLogLink}</div>;
   if (!assets) return <p className="admin-empty">Reading the Mux library…</p>;
 
-  const sharedMatchingClients = clients.filter((name) => name !== 'All' && name !== 'Unassigned' && name.toLowerCase().includes(uploadClient.trim().toLowerCase())).slice(0, 8);
   const sharedMatchingCollections = collections.filter((collection) => collection.name.toLowerCase().includes(uploadCollectionName.trim().toLowerCase())).slice(0, 8);
   const sharedSuggestedTags = tagSuggestions(uploadTags);
   const ratioGroupByUploadId = new Map(uploadRatioGroups.flatMap((group) => group.uploadIds.map((uploadId) => [uploadId, group])));
@@ -1602,7 +1600,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         <section className="mux-upload-shared-details">
           {uploadDestination === 'collection' && <label className="mux-upload-client-picker"><span>Add to collection</span><input value={uploadCollectionName} onFocus={() => setCollectionPickerOpen(true)} onBlur={() => window.setTimeout(() => setCollectionPickerOpen(false), 150)} onChange={(event) => { setUploadCollectionName(event.target.value); setUploadCollectionId(''); setCollectionPickerOpen(true); }} placeholder="Search or add a collection" />{collectionPickerOpen && <div role="listbox">{sharedMatchingCollections.map((collection) => <button type="button" role="option" key={collection.id} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadCollectionName(collection.name); setUploadCollectionId(collection.id); setCollectionPickerOpen(false); }}>{collection.name}</button>)}{uploadCollectionName.trim() && !sharedMatchingCollections.some((collection) => collection.name.toLowerCase() === uploadCollectionName.trim().toLowerCase()) && <button type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadCollectionId(''); setCollectionPickerOpen(false); }}>Create “{uploadCollectionName.trim()}”</button>}</div>}</label>}
           <fieldset className="mux-upload-ratio-option"><legend>Multiple ratios included?</legend><label className="mux-upload-ratio-toggle"><input type="checkbox" checked={uploadRatiosIncluded} onChange={(event) => { setUploadRatiosIncluded(event.target.checked); setSelectedUploadIds([]); }} /><span>Group selected uploads as ratio variations</span></label></fieldset>
-          <label className="mux-upload-client-picker"><span>Client (applied when you save upload details)</span><input value={uploadClient} onFocus={() => setClientPickerUploadId('shared')} onBlur={() => window.setTimeout(() => setClientPickerUploadId((current) => current === 'shared' ? '' : current), 150)} onChange={(event) => { setUploadClient(event.target.value); setClientPickerUploadId('shared'); }} placeholder="Search or add a client" />{clientPickerUploadId === 'shared' && <div role="listbox">{sharedMatchingClients.map((name) => <button type="button" role="option" key={name} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadClient(name); setClientPickerUploadId(''); }}>{name}</button>)}{uploadClient.trim() && !sharedMatchingClients.some((name) => name.toLowerCase() === uploadClient.trim().toLowerCase()) && <button type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => setClientPickerUploadId('')}>Use “{uploadClient.trim()}” as a new client</button>}</div>}</label>
+          <div className="mux-upload-client-picker"><span>Client (applied when you save upload details)</span><ClientPicker value={uploadClient} clients={clients.filter((name) => name !== 'All' && name !== 'Unassigned')} onChange={setUploadClient} onClientsChanged={() => void refreshLibrary()} /></div>
           <label><span>Tags</span><input value={uploadTags} onFocus={() => setTagPickerUploadId('shared')} onBlur={() => window.setTimeout(() => setTagPickerUploadId((current) => current === 'shared' ? '' : current), 150)} onChange={(event) => { setUploadTags(event.target.value); setTagPickerUploadId('shared'); }} placeholder="Campaign, social" /></label>
           {tagPickerUploadId === 'shared' && <div className="mux-upload-tag-suggestions"><button className="mux-upload-tag-dismiss" type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setTagPickerUploadId('')}>Done with tags ×</button>{sharedSuggestedTags.map((tag) => <button type="button" key={tag} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadTags((current) => acceptTag(current, tag)); setTagPickerUploadId('shared'); }}>{tag}</button>)}</div>}
         </section>

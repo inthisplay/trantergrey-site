@@ -1,5 +1,6 @@
 import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
 import { patchMuxMetadataBatch } from '../../../_lib/mux-state';
+import { registerClient } from '../../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment };
 export async function onRequestPost({ request, env }: Context) {
@@ -10,6 +11,7 @@ export async function onRequestPost({ request, env }: Context) {
     if (!ids.length) throw new Error('Select at least one video.');
     const client = typeof body.client === 'string' ? body.client.trim() : ''; if (!client) throw new Error('Enter a client name.');
     await patchMuxMetadataBatch(env, ids, { client });
+    await registerClient(env, client);
     return Response.json({ assetIds: ids, client });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not assign that client.' }, { status: 400 }); }
 }
