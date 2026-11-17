@@ -12,9 +12,12 @@ async function postJson(url: string, body: object) {
   return payload as unknown;
 }
 
-function triggerDownload(url: string) {
+function triggerDownload(url: string, title: string) {
+  const target = new URL(url);
+  const filename = title.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'trantergrey-video';
+  target.searchParams.set('download', `${filename}.mp4`);
   const anchor = document.createElement('a');
-  anchor.href = url;
+  anchor.href = target.toString();
   anchor.download = '';
   document.body.appendChild(anchor);
   anchor.click();
@@ -25,8 +28,9 @@ function muxThumbnailUrl(playbackId: string, time: number) {
   return `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${time}&width=960`;
 }
 
-export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRenditions, projectId, projectSlug, unbrandedPublicPage, duration, thumbnailTime, thumbnailUrl, downloadsEnabled }: {
+export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, staticRenditions, projectId, projectSlug, unbrandedPublicPage, duration, thumbnailTime, thumbnailUrl, downloadsEnabled }: {
   assetId: string;
+  title: string;
   playbackId: string | null;
   playbackPolicy: string | null;
   staticRenditions: Rendition[];
@@ -80,7 +84,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
         if (ready?.url) {
           setDownloadRequested(false);
           setMessage('Download ready.');
-          triggerDownload(ready.url);
+          triggerDownload(ready.url, title);
           window.location.reload();
           return;
         }
@@ -112,7 +116,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
 
   const download = async () => {
     if (readyDownload?.url) {
-      triggerDownload(readyDownload.url);
+      triggerDownload(readyDownload.url, title);
       return;
     }
     if (!pendingDownload) {

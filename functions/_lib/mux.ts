@@ -207,6 +207,9 @@ export async function deleteMuxPlaybackId(env: AdminEnvironment, assetId: string
 
 export async function createMuxStaticRendition(env: AdminEnvironment, assetId: string, resolution: 'highest' | '1080p' | '720p' | '540p' = 'highest') {
   validId(assetId);
+  const asset = await getMuxLibraryAsset(env, assetId);
+  const hasLegacyMp4Support = asset.staticRenditions.some((rendition) => !rendition.id && /^(?:high|medium|low|capped-1080p)\.mp4$/i.test(rendition.name || ''));
+  if (hasLegacyMp4Support) throw new Error('This older Mux asset uses legacy MP4 downloads. Its existing MP4s remain available, but Mux cannot generate a new rendition for this asset.');
   return muxFetch(env, `assets/${assetId}/static-renditions`, { method: 'POST', body: JSON.stringify({ resolution }) });
 }
 

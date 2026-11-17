@@ -512,7 +512,7 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
   const compactPortraitStyle = compact && isPortrait ? { aspectRatio: ratio, height: 'min(32dvh, 280px)', maxHeight: 'calc(100dvh - 300px)', width: 'auto' } : { aspectRatio: ratio };
 
   return <div className={`solo-video-player${!showingAll ? ' has-actions' : ''}${unbranded ? ' unbranded-player' : ''}${compact ? ' compact-player' : ''}`}>
-    {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite">{notice}</div>}
+    {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite"><span>{notice}</span>{downloadState === 'preparing' && noticeKind === 'info' && <span className="solo-download-preparing" aria-hidden="true"><span /></span>}</div>}
     {!unbranded && variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
       <span>View ratio</span>
       <button type="button" className={showingAll ? 'active' : ''} onClick={() => selectRatio('all')}>All</button>
