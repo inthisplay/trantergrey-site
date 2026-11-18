@@ -168,7 +168,7 @@ if (!adminEnvironment.includes('MUX_TOKEN_ID?: string') || !adminEnvironment.inc
 if (/hasAdminSession[\s\S]{0,200}!env\.ADMIN_PASSWORD/.test(adminEnvironment) || /adminCookie[\s\S]{0,200}!env\.ADMIN_PASSWORD/.test(adminEnvironment)) throw new Error('Google-created admin sessions must not depend on ADMIN_PASSWORD.');
 
 const adminLogin = readFileSync('components/AdminLogin.tsx', 'utf8');
-if (!adminLogin.includes("fetch('/api/auth/config'") || !adminLogin.includes('passwordEnabled &&')) throw new Error('The password fallback must only appear when it is configured.');
+if (!adminLogin.includes('/api/auth/google?next=') || /type="password"|action="\/api\/admin\/login"/.test(adminLogin)) throw new Error('The login page must offer Google sign-in without an owner-password form.');
 
 const muxMigration = readFileSync('migrations/0005_mux_library.sql', 'utf8');
 for (const table of ['mux_asset_metadata', 'mux_video_projects', 'mux_video_collections']) {
