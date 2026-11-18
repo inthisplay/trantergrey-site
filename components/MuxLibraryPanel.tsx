@@ -19,7 +19,7 @@ type LibraryStatus = MatchedMuxLibraryAsset['libraryStatus'];
 type StatusFilter = LibraryStatus | 'all';
 type ThumbnailFilter = 'all' | 'needs-thumbnail' | 'custom-thumbnail';
 type GroupMode = 'date' | 'client';
-type BulkAction = 'ratio' | 'project' | 'collection' | 'add-to-collection' | 'client' | 'detach' | 'delete' | null;
+type BulkAction = 'ratio' | 'project' | 'collection' | 'add-to-collection' | 'client' | 'detach' | 'delete' | 'remove-collection' | null;
 type LibraryDisplayItem =
   | { kind: 'asset'; asset: MatchedMuxLibraryAsset }
   | { kind: 'collection'; collection: VideoProjectCollection; assets: MatchedMuxLibraryAsset[]; representative: MatchedMuxLibraryAsset }
@@ -44,7 +44,7 @@ function QuickActionLabel({ icon, children }: { icon: QuickActionIcon; children:
 }
 
 function MobileActionsToggle({ title, expanded, onClick }: { title: string; expanded: boolean; onClick: () => void }) {
-  return <><button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={(event) => { event.stopPropagation(); onClick(); }}><span aria-hidden="true"><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /></span></button>{expanded && <span className="mux-mobile-drag-hint" aria-hidden="true" style={{ display: 'grid', gridTemplateColumns: '12px max-content', alignItems: 'center', columnGap: 8 }}><b style={{ position: 'static', inset: 'auto', display: 'grid', gridTemplateColumns: 'repeat(2, 3px)', gridTemplateRows: 'repeat(3, 3px)', gap: '3px 4px', width: 10, height: 15, padding: 0, background: 'transparent', color: 'inherit', font: 'inherit', flex: 'none' }}><i /><i /><i /><i /><i /><i /></b><small style={{ position: 'static', display: 'block', minWidth: 'max-content', padding: 0, background: 'transparent', color: 'inherit', font: 'inherit', whiteSpace: 'nowrap' }}>Tap to drag</small></span>}</>;
+  return <><button className="mux-mobile-actions-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Close' : 'Open'} quick actions for ${title}`} onClick={(event) => { event.stopPropagation(); onClick(); }}><span aria-hidden="true"><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /><span className="mux-mobile-menu-bar" /></span></button></>;
 }
 
 function MuxLibraryDndCard({ children, className, draggableAssets, dragLabel, dragEnabled = true, dropTarget }: { children: ReactNode; className?: string; draggableAssets?: MatchedMuxLibraryAsset[]; dragLabel?: string; dragEnabled?: boolean; dropTarget: LibraryDropTarget }) {
@@ -203,8 +203,14 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [thumbnailFilter, setThumbnailFilter] = useState<ThumbnailFilter>('all');
   const [groupMode, setGroupMode] = useState<GroupMode>('date');
+  const [selectionMove, setSelectionMove] = useState<{ ids: string[]; destination: string; sourceCollectionId?: string } | null>(null);
+  const [moveName, setMoveName] = useState('');
+  const [moveError, setMoveError] = useState('');
+  const [movingSelection, setMovingSelection] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedIdsRef = useRef<string[]>([]);
+  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   const [bulkAction, setBulkAction] = useState<BulkAction>(null);
   const [variantLabels, setVariantLabels] = useState<Record<string, string>>({});
   const [projectTitle, setProjectTitle] = useState('');
@@ -221,13 +227,15 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [previewAssetId, setPreviewAssetId] = useState('');
   const [previewProjectId, setPreviewProjectId] = useState('');
   const [openMobileActions, setOpenMobileActions] = useState('');
-  const [mobileViewport, setMobileViewport] = useState(false);
+  // Keep card dragging off until the device capability check has run.
+  const [mobileViewport, setMobileViewport] = useState(true);
   const [hoveredQuickActionsCard, setHoveredQuickActionsCard] = useState('');
   const [activeLibraryDrag, setActiveLibraryDrag] = useState<{ assetId: string; label: string } | null>(null);
   const libraryDragX = useRef<number | null>(null);
   const libraryDragY = useRef<number | null>(null);
   const libraryDragStartX = useRef<number | null>(null);
   const libraryDragStartY = useRef<number | null>(null);
+  const libraryDragOriginBounds = useRef<DOMRect | null>(null);
   const [pendingLibraryDrop, setPendingLibraryDrop] = useState<PendingLibraryDrop | null>(null);
   const [droppedGroupTitle, setDroppedGroupTitle] = useState('');
   const [libraryDropSaving, setLibraryDropSaving] = useState<'collection' | 'ratio' | 'add' | ''>('');
@@ -291,7 +299,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [deckPostError, setDeckPostError] = useState('');
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 760px)');
+    const media = window.matchMedia('(max-width: 760px), (pointer: coarse)');
     const update = () => setMobileViewport(media.matches);
     update(); media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
@@ -336,7 +344,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       if (!response.ok) throw new Error(payload.error || 'Unable to open the Mux library.');
       if (requestSequence !== libraryRequestSequence.current) return;
       if (cursor === null) {
-        setAssets(payload.assets ?? []); setMatchedAssetIds(payload.pageAssetIds ?? []);
+        setAssets((current) => [...new Map([...(current ?? []).filter((asset) => selectedIdsRef.current.includes(asset.id)), ...(payload.assets ?? [])].map((asset) => [asset.id, asset])).values()]); setMatchedAssetIds(payload.pageAssetIds ?? []);
         setProjects(payload.projects ?? []); setCollections(payload.collections ?? []); setFacets(payload.facets ?? null);
       } else {
         setAssets((current) => [...new Map([...(current ?? []), ...(payload.assets ?? [])].map((asset) => [asset.id, asset])).values()]);
@@ -386,6 +394,12 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const x = libraryDragX.current;
       const y = libraryDragY.current;
       if (x == null || y == null) { frame = requestAnimationFrame(scrollAtEdge); return; }
+      const origin = libraryDragOriginBounds.current;
+      if (origin && x >= origin.left && x <= origin.right && y >= origin.top && y <= origin.bottom) {
+        frame = requestAnimationFrame(scrollAtEdge);
+        return;
+      }
+      libraryDragOriginBounds.current = null;
       const inGutter = x <= zoneWidth;
       const halfHeight = window.innerHeight / 2;
       const direction = inGutter ? (y < halfHeight ? -1 : 1) : y < 80 ? -1 : y > window.innerHeight - 110 ? 1 : 0;
@@ -427,6 +441,10 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   }, [activeLibraryDrag]);
 
   function beginLibraryDragPosition(event: DragStartEvent) {
+    // The drawer lives at the top edge. Do not scroll until the drag leaves it.
+    libraryDragOriginBounds.current = event.active.data.current?.selection
+      ? document.querySelector('.mux-selection-drawer')?.getBoundingClientRect() ?? null
+      : null;
     const pointer = event.activatorEvent as PointerEvent;
     libraryDragStartX.current = pointer.clientX;
     libraryDragStartY.current = pointer.clientY;
@@ -813,6 +831,8 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     return () => observer.disconnect();
   }, [hasMoreItems, nextCursor]);
   const selectedAssets = selectedIds.map((id) => assetsById.get(id)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset));
+  const selectionSources = selectedIds.map((id) => projectByAssetId.get(id)?.collectionIds ?? []);
+  const singleSourceCollection = selectedIds.length && selectionSources.every((ids) => ids.length === 1 && ids[0] === selectionSources[0][0]) ? collections.find((c) => c.id === selectionSources[0][0]) : undefined;
   const canCreateRatioGroup = selectedAssets.length === selectedIds.length
     && hasDistinctRatios(selectedAssets)
     && selectedAssets.every((asset) => asset.status === 'ready' && asset.playbackPolicy === 'public' && asset.playbackId);
@@ -1493,6 +1513,12 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     const sourceTarget = event.active.data.current?.sourceTarget as LibraryDropTarget | undefined;
     const sources = (sourceIds ?? []).map((id) => assetsById.get(id)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset));
     if (!sources.length || !target) return;
+    if (event.active.data.current?.selection) {
+      const targetIds = target.kind === 'project' ? projects.find((p) => p.id === target.id)?.variants.map((v) => v.assetId) ?? [] : [target.id];
+      const ids = target.kind === 'collection' ? sourceIds!.filter((id) => !projectByAssetId.get(id)?.collectionIds.includes(target.id)) : [...new Set([...sourceIds!, ...targetIds])];
+      if (!ids.length || (target.kind !== 'collection' && targetIds.every((id) => sourceIds!.includes(id)))) return;
+      openSelectionMove(target.kind === 'collection' ? target.id : 'new', ids); return;
+    }
     if (sourceTarget?.kind === target.kind && sourceTarget.id === target.id) return;
     if (target.kind === 'collection') {
       const collection = collections.find((item) => item.id === target.id);
@@ -1581,6 +1607,27 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     setSelectionMode(false); setSelectedIds([]); setVariantLabels({}); setBulkAction(null); setSelectingProjectId(''); setSelectingCollectionId('');
   }
 
+  function openSelectionMove(destination: string, ids = selectedIds) {
+    const sourceCollectionId = bulkAction === 'remove-collection' ? singleSourceCollection?.id : undefined;
+    setMoveName(''); setMoveError(''); setBulkAction(null); setSelectionMove({ ids, destination, sourceCollectionId });
+  }
+  async function moveSelection(event: FormEvent) {
+    event.preventDefault(); if (!selectionMove || movingSelection) return;
+    setMovingSelection(true); setMoveError('');
+    try {
+      const response = await fetch('/api/admin/video-collections/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetIds: selectionMove.ids, destination: selectionMove.destination, sourceCollectionId: selectionMove.sourceCollectionId, name: moveName }) });
+      const payload = await jsonResponse<{ projects: VideoProject[]; collections: VideoProjectCollection[]; error?: string }>(response);
+      if (!response.ok) throw new Error(payload.error || 'Unable to move videos.');
+      setProjects(payload.projects); setCollections(payload.collections); setSelectionMove(null); exitSelectionMode(); setWorkspaceMessage('Videos moved successfully.');
+    } catch (error) { setMoveError(error instanceof Error ? error.message : 'Unable to move videos.'); }
+    finally { setMovingSelection(false); }
+  }
+  const selectionActions = <><button disabled={!selectedIds.length} onClick={() => void copyShowcaseUrl()}>{showcaseCopied ? 'Temp showcase copied' : 'Create temp showcase'}</button><button disabled={!selectedIds.length} onClick={() => openSelectionMove('new')}>Create collection</button><button disabled={!selectedIds.length || !collections.length} onClick={() => openSelectionMove('')}>Add to collection</button><button disabled={!canCreateRatioGroup} title={canCreateRatioGroup ? undefined : 'Select at least two ready videos with different aspect ratios'} onClick={() => { setProjectTitle(selectedAssets[0].title); setBulkAction('ratio'); }}>Create ratio group</button><button disabled={!selectedIds.length} onClick={() => { setClientAssignment(selectedAssets.map(clientName).find((name) => name !== 'Unassigned') || ''); setBulkAction('client'); }}>Add to client</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('detach')}>Remove from pages</button><button className="danger" disabled={!selectedIds.length} onClick={() => setBulkAction('delete')}>Delete</button>{singleSourceCollection && <button onClick={() => setBulkAction('remove-collection')}>Remove from collection</button>}</>;
+  const moveSources = selectionMove ? collections.filter((c) => c.id !== selectionMove.destination && projects.some((p) => p.collectionIds.includes(c.id) && p.variants.some((v) => selectionMove.ids.includes(v.assetId)))) : [];
+  const emptiedSources = moveSources.filter((c) => projects.filter((p) => p.collectionIds.includes(c.id)).every((p) => p.variants.every((v) => selectionMove!.ids.includes(v.assetId))));
+  const splittingRatioGroups = selectionMove && projects.some((p) => p.variants.length > 1
+    && p.variants.some((v) => selectionMove.ids.includes(v.assetId))
+    && (selectionMove.destination === 'solo' || p.variants.some((v) => !selectionMove.ids.includes(v.assetId))));
   const errorLogLink = <p><a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">Open Cloudflare to view error logs ↗</a><br /><small>Select trantergrey-site-git → current deployment → View details → Functions. Start live logs, then click Try again here to capture the error.</small></p>;
 
   if (error && !assets) return <div className="admin-empty" role="alert"><p>{error}</p><button type="button" disabled={refreshingLibrary} onClick={() => void refreshLibrary()}>{refreshingLibrary ? 'Retrying…' : 'Try again'}</button>{errorLogLink}</div>;
@@ -1642,7 +1689,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{resultTotal.toLocaleString()}</strong> of {statusCounts.all.toLocaleString()} assets</p>
-    {!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <><DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} autoScroll={false} onDragStart={(event) => { const data = event.active.data.current; const assetId = String(data?.previewAssetId || ''); if (assetId) { beginLibraryDragPosition(event); setActiveLibraryDrag({ assetId, label: String(data?.dragLabel || '') }); } }} onDragMove={updateLibraryDragPosition} onDragCancel={() => setActiveLibraryDrag(null)} onDragEnd={handleLibraryDragEnd}><div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
+    <DndContext sensors={libraryDndSensors} collisionDetection={pointerWithin} autoScroll={false} onDragStart={(event) => { const data = event.active.data.current; const assetId = String(data?.previewAssetId || ''); if (assetId) { beginLibraryDragPosition(event); setActiveLibraryDrag({ assetId, label: String(data?.dragLabel || '') }); } }} onDragMove={updateLibraryDragPosition} onDragCancel={() => setActiveLibraryDrag(null)} onDragEnd={handleLibraryDragEnd}>{selectionMode && <SelectionDrawer assets={selectedAssets} remove={(id) => setSelectedIds((ids) => ids.filter((item) => item !== id))} close={exitSelectionMode} actions={selectionActions} />}{!statusCounts.all ? <p className="admin-empty">No Mux assets were found in this environment.</p> : !matches.length ? <p className="admin-empty">No videos match those filters.</p> : <div className="mux-library-grid mux-library-flow">{groups.map((group) => group.items.map((item, index) => {
       const asset = item.kind === 'asset' ? item.asset : item.representative;
       const marker = index === 0 && <div className="mux-library-time-marker"><span>{groupMode === 'date' ? <><strong>{group.title}</strong><small>{group.eyebrow}</small></> : <strong>{group.title}</strong>}</span><i aria-hidden="true" /></div>;
 
@@ -1662,7 +1709,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         </div>;
         return <div className={`mux-library-flow-cell mux-library-collection-cell${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={`collection-${item.collection.id}`} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard className="mux-collection-card" draggableAssets={item.assets} dragLabel={item.collection.name} dragEnabled={!mobileViewport || openMobileActions === actionKey} dropTarget={{ kind: 'collection', id: item.collection.id }}>
+          <MuxLibraryDndCard className="mux-collection-card" draggableAssets={selectionMode ? undefined : item.assets} dragLabel={item.collection.name} dragEnabled={!mobileViewport} dropTarget={{ kind: 'collection', id: item.collection.id }}>
             <div className={`mux-library-thumb mux-library-thumb-with-actions mux-collection-stack${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}>
               <a className="mux-library-thumb-primary mux-collection-stack-primary" href={`/admin/mux/${item.representative.id}?collection=${encodeURIComponent(item.collection.id)}`} aria-label={`Manage ${item.collection.name}`}>
                 {previews.map((preview, previewIndex) => <span className={`mux-collection-stack-frame ${previewIndex === 0 ? 'front' : previewIndex === 1 ? 'middle' : 'back'}`} key={preview.id}>{preview.thumbnailUrl ? <img src={preview.thumbnailUrl} alt="" /> : <span>Preview unavailable</span>}</span>)}
@@ -1695,7 +1742,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         const actionKey = `project-${item.project.id}`;
         return <div className={`mux-library-flow-cell${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={`project-${item.project.id}`} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : item.assets} dragLabel={item.project.title} dragEnabled={!mobileViewport || openMobileActions === actionKey} dropTarget={{ kind: 'project', id: item.project.id }}>
+          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : item.assets} dragLabel={item.project.title} dragEnabled={!mobileViewport} dropTarget={{ kind: 'project', id: item.project.id }}>
             <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}>
               {selectionMode ? <button className="mux-library-thumb-primary mux-selectable-thumb mux-project-select-thumb" type="button" onClick={() => setSelectingProjectId(item.project.id)} aria-label={`Select ratios from ${item.project.title}`}>
                 <LibraryThumbnail asset={item.representative} />
@@ -1718,12 +1765,12 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const actionKey = `asset-${asset.id}`;
       return <div className={`mux-library-flow-cell${selectedIds.includes(asset.id) ? ' selected' : ''}${hoveredQuickActionsCard === actionKey ? ' quick-actions-hovered' : ''}${openMobileActions === actionKey ? ' quick-actions-open' : ''}`} key={asset.id} onMouseEnter={() => setHoveredQuickActionsCard(actionKey)} onMouseLeave={() => setHoveredQuickActionsCard((current) => current === actionKey ? '' : current)}>
           {marker}
-          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : [asset]} dragEnabled={!mobileViewport || openMobileActions === actionKey} dropTarget={{ kind: 'asset', id: asset.id }}>
+          <MuxLibraryDndCard draggableAssets={selectionMode ? undefined : [asset]} dragEnabled={!mobileViewport} dropTarget={{ kind: 'asset', id: asset.id }}>
           {selectionMode ? <button className="mux-library-thumb mux-selectable-thumb" type="button" onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)} aria-label={`${selectedIds.includes(asset.id) ? 'Deselect' : 'Select'} ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <LibraryThumbnail asset={asset} /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b><i>{selectedIds.includes(asset.id) ? '✓' : '+'}</i></button> : <div className={`mux-library-thumb mux-library-thumb-with-actions${openMobileActions === actionKey ? ' mobile-actions-open' : ''}`}><a className="mux-library-thumb-primary" href={`/admin/mux/${asset.id}`} aria-label={`Manage ${asset.title}`}>{asset.thumbnailUrl && !isProcessingAsset(asset) ? <LibraryThumbnail asset={asset} /> : <ThumbnailFallback />}<ProcessingOverlay asset={asset} /><b>{duration(asset.duration)}</b></a><MobileActionsToggle title={asset.title} expanded={openMobileActions === actionKey} onClick={() => setOpenMobileActions((current) => current === actionKey ? '' : actionKey)} /><div className="mux-library-hover-actions" role="group" aria-label={`Actions for ${asset.title}`}><button type="button" disabled={!canPreviewAsset(asset)} title={canPreviewAsset(asset) ? undefined : 'Mux is still preparing this video.'} onClick={() => setPreviewAssetId(asset.id)}><QuickActionLabel icon="view">View</QuickActionLabel></button><a href={`/admin/mux/${asset.id}`}><QuickActionLabel icon="manage">Manage</QuickActionLabel></a><a href={publicPath(asset)} target="_blank" rel="noreferrer"><QuickActionLabel icon="public">Public page</QuickActionLabel></a><button type="button" onClick={() => void openDeckCardPicker(asset)}><QuickActionLabel icon="manage">Add to Deck</QuickActionLabel></button><button type="button" onClick={() => selectAssetForBulk(asset)}><QuickActionLabel icon="select">Select</QuickActionLabel></button><button type="button" disabled={replacingAssetId === asset.id} onClick={() => { setReplaceTargetId(asset.id); replaceInput.current?.click(); }}><QuickActionLabel icon="replace">{replacingAssetId === asset.id ? 'Replacing…' : 'Replace video'}</QuickActionLabel></button><button type="button" onClick={() => void copyPublicUrl(asset)}><QuickActionLabel icon="copy">{copiedAssetId === asset.id ? 'Copied' : 'Copy URL'}</QuickActionLabel></button><button type="button" onClick={() => openClientAssignment([asset])}><QuickActionLabel icon="client">{clientName(asset) === 'Unassigned' ? 'Add client' : 'Change client'}</QuickActionLabel></button><button type="button" onClick={() => { setTagsAssetId(asset.id); setTagsDraft(asset.localTags.join(', ')); }}><QuickActionLabel icon="tags">Tags</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'published' ? 'unreviewed' : 'published')}><QuickActionLabel icon="publish">{asset.libraryStatus === 'published' ? 'Unpublish' : 'Publish'}</QuickActionLabel></button><button type="button" disabled={savingAssetId === asset.id} onClick={() => void changeStatus(asset, asset.libraryStatus === 'hidden' ? 'unreviewed' : 'hidden')}><QuickActionLabel icon="hide">{asset.libraryStatus === 'hidden' ? 'Unhide' : 'Hide'}</QuickActionLabel></button><button type="button" className="danger" disabled={savingAssetId === asset.id} onClick={() => setDeleteAssetId(asset.id)}><QuickActionLabel icon="delete">Delete</QuickActionLabel></button></div></div>}
           <div className="mux-library-card-copy"><p className="mux-library-card-meta"><span>{clientName(asset)}{hasMuxError(asset) && <em> · Error</em>}</span><b>{publicationLabel(asset.libraryStatus)}</b></p>{!asset.hasCustomThumbnail && <p className="mux-thumbnail-needed">Needs thumbnail</p>}{editingTitleId === asset.id ? <form className="mux-title-edit" onSubmit={(event) => void saveTitle(event, asset)}><input autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /><button type="submit" disabled={savingAssetId === asset.id}>{savingAssetId === asset.id ? 'Saving…' : 'Save'}</button><button type="button" onClick={() => setEditingTitleId('')}>Cancel</button></form> : <div className="mux-library-title-line"><h2><a href={`/admin/mux/${asset.id}`}>{asset.title}</a></h2><button type="button" className="mux-title-pencil" title="Edit title" aria-label={`Edit title for ${asset.title}`} onClick={() => { setEditingTitleId(asset.id); setTitleDraft(asset.title); }}>✎</button></div>}</div>
           </MuxLibraryDndCard>
         </div>;
-    }))}</div><DragOverlay dropAnimation={null}>{activeLibraryDragAsset && <div className="mux-library-drag-overlay"><span>{activeLibraryDragAsset.thumbnailUrl ? <img src={activeLibraryDragAsset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}</span><strong>{activeLibraryDrag?.label || activeLibraryDragAsset.title}</strong></div>}</DragOverlay>{activeLibraryDrag && <div className="mux-drag-scroll-zones" aria-hidden="true"><div className="mux-drag-scroll-zone mux-drag-scroll-zone-up"><b>↑</b><span>Scroll up</span></div><div className="mux-drag-scroll-zone mux-drag-scroll-zone-down"><b>↓</b><span>Scroll down</span></div></div>}</DndContext>{hasMoreItems && <div ref={loadMoreSentinel} className="mux-library-scroll-sentinel" aria-live="polite">Loading more videos…</div>}</>}
+    }))}</div>}<DragOverlay dropAnimation={null}>{activeLibraryDragAsset && <div className="mux-library-drag-overlay"><span>{activeLibraryDragAsset.thumbnailUrl ? <img src={activeLibraryDragAsset.thumbnailUrl} alt="" /> : <ThumbnailFallback />}</span><strong>{activeLibraryDrag?.label || activeLibraryDragAsset.title}</strong></div>}</DragOverlay>{activeLibraryDrag && <div className="mux-drag-scroll-zones" aria-hidden="true"><div className="mux-drag-scroll-zone mux-drag-scroll-zone-up"><b>↑</b><span>Scroll up</span></div><div className="mux-drag-scroll-zone mux-drag-scroll-zone-down"><b>↓</b><span>Scroll down</span></div></div>}</DndContext>{hasMoreItems && <div ref={loadMoreSentinel} className="mux-library-scroll-sentinel" aria-live="polite">Loading more videos…</div>}
     {hasFilters && <div className="mux-drive-search">
       <a href={driveSearchUrl} target="_blank" rel="noreferrer">
         Search Google Drive <ExternalLink aria-hidden="true" />
@@ -1740,9 +1787,29 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       </div>
     </VideoModal> : previewAsset && <div className="mux-player-modal" role="dialog" aria-modal="true" aria-label={`Preview ${previewAsset.title}`} onMouseDown={closePreview}><div className="mux-player-modal-panel" onMouseDown={(event) => event.stopPropagation()}><button className="mux-player-modal-close" type="button" aria-label="Close preview" onClick={closePreview}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg></button>{previewAsset.playbackId && previewAsset.playbackPolicy === 'public' ? <MuxVideoPlayer key={previewAsset.id} assetId={previewAsset.id} playbackId={previewAsset.playbackId} poster={previewAsset.thumbnailUrl} title={previewProject?.title || previewAsset.title} autoPlay /> : <p>Preview unavailable while Mux finishes processing this asset.</p>}</div></div>}
       {selectingGroupTitle && <div className="mux-bulk-modal mux-group-selection-modal" role="dialog" aria-modal="true" aria-label={`Select videos from ${selectingGroupTitle}`} onMouseDown={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }} aria-label="Close">×</button><header><p>Select from group</p><h3>{selectingGroupTitle}</h3><span>{selectingGroupAssets.filter((asset) => selectedIds.includes(asset.id)).length} of {selectingGroupAssets.length} selected</span></header><div className="mux-group-selection-grid">{selectingGroupAssets.map((asset) => <button className={selectedIds.includes(asset.id) ? 'selected' : ''} type="button" key={asset.id} onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)}><span>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <i>Preview unavailable</i>}<b>{duration(asset.duration)}</b><em>{selectedIds.includes(asset.id) ? '✓' : '+'}</em></span><strong>{asset.title}</strong><small>{friendlyAssetRatio(asset)}</small></button>)}</div><footer><button type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}>Done</button></footer></div></div>}
-      {selectionMode && <div className="mux-bulk-bar"><div><strong>{selectedIds.length}</strong><span>{selectedIds.length === 1 ? 'video selected' : 'videos selected'}</span></div><nav><button disabled={!selectedIds.length} onClick={() => void copyShowcaseUrl()}>{showcaseCopied ? 'Temp showcase copied' : 'Create temp showcase'}</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('collection')}>Create collection</button><button disabled={!selectedIds.length || !collections.length} onClick={() => { setExistingCollectionId(''); setBulkAction('add-to-collection'); }}>Add to collection</button><button disabled={!canCreateRatioGroup} title={canCreateRatioGroup ? undefined : 'Select at least two ready videos with different aspect ratios'} onClick={() => { setProjectTitle(selectedAssets[0].title); setBulkAction('ratio'); }}>Create ratio group</button><button disabled={!selectedIds.length} onClick={() => { setClientAssignment(selectedAssets.map(clientName).find((name) => name !== 'Unassigned') || ''); setBulkAction('client'); }}>Add to client</button><button disabled={!selectedIds.length} onClick={() => setBulkAction('detach')}>Remove from pages</button><button className="danger" disabled={!selectedIds.length} onClick={() => setBulkAction('delete')}>Delete</button></nav><button className="mux-bulk-close" onClick={exitSelectionMode} aria-label="Exit selection mode">×</button></div>}
+      {selectionMode && <div className="mux-bulk-bar"><div><strong>{selectedIds.length}</strong><span>{selectedIds.length === 1 ? 'video selected' : 'videos selected'}</span></div><nav>{selectionActions}</nav><button className="mux-bulk-close" onClick={exitSelectionMode} aria-label="Exit selection mode">×</button></div>}
+    {selectionMove && <div className="mux-bulk-modal" role="dialog" aria-modal="true" aria-label="Move selected videos"><div>
+      <button type="button" className="mux-bulk-modal-close" disabled={movingSelection} onClick={() => setSelectionMove(null)} aria-label="Close">×</button>
+      <form className="mux-bulk-simple-form" onSubmit={moveSelection}>
+        <p>Move {selectionMove.ids.length} {selectionMove.ids.length === 1 ? 'video' : 'videos'}</p>
+        <h3>{selectionMove.destination === 'solo' ? 'Separate as solo videos' : 'Choose their collection'}</h3>
+        {selectionMove.destination !== 'solo' && <label><span>Destination</span>
+          <select disabled={movingSelection} value={selectionMove.destination} required onChange={(e) => setSelectionMove({ ...selectionMove, destination: e.target.value })}>
+            <option value="">Choose a collection</option><option value="new">Create new collection</option>
+            {collections.filter((c) => c.id !== selectionMove.sourceCollectionId).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>}
+        {selectionMove.destination === 'new' && <label><span>Collection name</span><input autoFocus required maxLength={120} disabled={movingSelection} value={moveName} onChange={(e) => setMoveName(e.target.value)} /></label>}
+        {moveSources.length > 0 && <small>These videos will leave: {moveSources.map((c) => c.name).join(', ')}.</small>}
+        {emptiedSources.length > 0 && <small role="alert">{emptiedSources.map((c) => c.name).join(', ')} will be empty. {emptiedSources.length === 1 ? 'Its shared page will have no videos; the URL will be retained.' : 'Their shared pages will have no videos; the URLs will be retained.'}</small>}
+        {splittingRatioGroups && <small>Moving part of a ratio group separates selected versions into individual pages. Remaining versions keep the group link. Separating a full group as solo videos keeps its link on the first version.</small>}
+        {moveError && <p role="alert">{moveError}</p>}
+        <button disabled={movingSelection || !selectionMove.destination}>{movingSelection ? 'Moving…' : 'Confirm move'}</button>
+      </form>
+    </div></div>}
     {bulkAction && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => !saving && setBulkAction(null)}><div onMouseDown={(event) => event.stopPropagation()}>
       <button className="mux-bulk-modal-close" type="button" onClick={() => setBulkAction(null)} aria-label="Close">×</button>
+      {bulkAction === 'remove-collection' && singleSourceCollection && <div className="mux-bulk-simple-form"><p>Remove from {singleSourceCollection.name}</p><h3>Where should these videos go?</h3>{[['new', 'Create new collection'], ['', 'Add to existing collection'], ['solo', 'Separate as solo videos']].map(([destination, label]) => <button key={label} type="button" onClick={() => openSelectionMove(destination)}>{label}</button>)}</div>}
       {bulkAction === 'project' && <form className="mux-project-builder" onSubmit={createProject}><div className="mux-builder-head"><div><p>New solo page</p><h3>{selectedAssets.length} {selectedAssets.length === 1 ? 'asset' : 'ratio variants'}</h3></div></div><div className="mux-builder-fields"><label><span>Title</span><input required value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} /></label><label><span>Client</span><input value={projectClient} onChange={(event) => setProjectClient(event.target.value)} /></label><label className="wide"><span>Short description (optional)</span><textarea value={projectDescription} onChange={(event) => setProjectDescription(event.target.value)} rows={2} /></label></div><div className="mux-builder-variants">{selectedAssets.map((asset) => <div key={asset.id}><img src={asset.thumbnailUrl || ''} alt="" /><span><strong>{asset.title}</strong><small>{asset.aspectRatio || 'Ratio unavailable'}</small></span><input value={variantLabels[asset.id] || ratioLabel(asset.aspectRatio)} onChange={(event) => setVariantLabels((current) => ({ ...current, [asset.id]: event.target.value }))} aria-label={`Label for ${asset.title}`} /></div>)}</div>{collections.length > 0 && <fieldset className="mux-builder-collections"><legend>Add to collections</legend>{collections.map((item) => <label key={item.id}><input type="checkbox" checked={projectCollectionIds.includes(item.id)} onChange={() => setProjectCollectionIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} />{item.name}</label>)}</fieldset>}<div className="mux-builder-submit"><span>URL: /watch/{videoProjectSlug(projectTitle) || 'your-video'}</span><button type="submit" disabled={saving === 'project'}>{saving === 'project' ? 'Building page…' : 'Create video page'}</button></div></form>}
       {bulkAction === 'ratio' && <form className="mux-bulk-simple-form" onSubmit={createSelectedRatioGroup}>
         <p>New ratio group</p>
@@ -1771,4 +1838,20 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     {deleteAsset && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => !savingAssetId && setDeleteAssetId('')}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDeleteAssetId('')} aria-label="Close">×</button><div className="mux-bulk-delete"><p>Permanent deletion</p><h3>Delete “{deleteAsset.title}”?</h3><span>Any shareable page using this video will be cleaned up first, then its Mux file will be permanently deleted.</span><button type="button" disabled={savingAssetId === deleteAsset.id} onClick={() => void deleteOne(deleteAsset)}>{savingAssetId === deleteAsset.id ? 'Deleting…' : 'Delete video and clean up pages'}</button></div></div></div>}
     {deleteProject && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => !savingProjectId && setDeleteProjectId('')}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDeleteProjectId('')} aria-label="Close">×</button><div className="mux-bulk-delete"><p>Permanent deletion</p><h3>Delete “{deleteProject.title}”?</h3><span>This removes the single video page and all {deleteProjectAssets.length} ratio versions from Mux. This cannot be undone.</span><button type="button" disabled={savingProjectId === deleteProject.id} onClick={() => void deleteProjectAndAssets()}>{savingProjectId === deleteProject.id ? 'Deleting…' : 'Yes, delete permanently'}</button></div></div></div>}
   </>;
+}
+function SelectionDrawer({ assets, remove, close, actions }: { assets: MatchedMuxLibraryAsset[]; remove: (id: string) => void; close: () => void; actions: ReactNode }) {
+  const drag = useDraggable({ id: 'selection-drawer', data: { selection: true, assetIds: assets.map((a) => a.id), previewAssetId: assets[0]?.id, dragLabel: assets.length + ' selected videos' }, disabled: !assets.length });
+  return <aside className="mux-selection-drawer" ref={drag.setNodeRef} aria-label="Selected videos">
+    <header>
+      <button type="button" className="mux-selection-handle" disabled={!assets.length} ref={drag.setActivatorNodeRef} {...drag.attributes} {...drag.listeners}>⠿ {assets.length} selected · Drag to group</button>
+      <button type="button" onClick={close} aria-label="Clear selection">×</button>
+    </header>
+    <div className="mux-selection-thumbnails">
+      {assets.map((asset) => <button type="button" key={asset.id} onClick={() => remove(asset.id)} aria-label={'Deselect ' + asset.title} title={asset.title}>
+        {asset.thumbnailUrl && <img src={asset.thumbnailUrl} alt="" />}<span>{asset.title}</span><b aria-hidden="true">×</b>
+      </button>)}
+    </div>
+    {!assets.length && <p>Select videos below to collect them here.</p>}
+    <details><summary>Selection actions</summary><nav>{actions}</nav></details>
+  </aside>;
 }
