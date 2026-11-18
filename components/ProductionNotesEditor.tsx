@@ -1,7 +1,9 @@
 'use client';
 
+import { UiIcon } from '@/components/UiIcon';
+
 import { useRef } from 'react';
-import type { ChangeEvent, KeyboardEvent } from 'react';
+import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 
 type ProductionNotesEditorProps = {
   initialHtml: string;
@@ -88,19 +90,19 @@ export function ProductionNotesEditor({ initialHtml, disabled = false, onChange 
     }
   };
 
-  const ToolbarButton = ({ label, title, command, value }: { label: string; title: string; command: string; value?: string }) => <button type="button" title={title} aria-label={title} disabled={disabled} onMouseDown={(event) => { event.preventDefault(); editor.current?.focus(); format(command, value); emitChange(); }}>{label}</button>;
+  const ToolbarButton = ({ label, title, command, value }: { label: ReactNode; title: string; command: string; value?: string }) => <button type="button" title={title} aria-label={title} disabled={disabled} onMouseDown={(event) => { event.preventDefault(); editor.current?.focus(); format(command, value); emitChange(); }}>{label}</button>;
 
   return <div className="production-notes-editor">
     <div className="production-notes-toolbar" aria-label="Notes formatting">
-      <ToolbarButton label="B" title="Bold" command="bold" />
-      <ToolbarButton label="I" title="Italic" command="italic" />
-      <ToolbarButton label="U" title="Underline" command="underline" />
+      <ToolbarButton label={<UiIcon name="bold" />} title="Bold" command="bold" />
+      <ToolbarButton label={<UiIcon name="italic" />} title="Italic" command="italic" />
+      <ToolbarButton label={<UiIcon name="underline" />} title="Underline" command="underline" />
       <span aria-hidden="true" />
-      <ToolbarButton label="H1" title="Large heading" command="formatBlock" value="h2" />
-      <ToolbarButton label="H2" title="Small heading" command="formatBlock" value="h3" />
-      <ToolbarButton label="1." title="Numbered list" command="insertOrderedList" />
-      <ToolbarButton label="•" title="Bulleted list" command="insertUnorderedList" />
-      <button type="button" title="Insert checklist" aria-label="Insert checklist" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={insertChecklist}>☑</button>
+      <ToolbarButton label={<UiIcon name="heading1" />} title="Large heading" command="formatBlock" value="h2" />
+      <ToolbarButton label={<UiIcon name="heading2" />} title="Small heading" command="formatBlock" value="h3" />
+      <ToolbarButton label={<UiIcon name="numberedList" />} title="Numbered list" command="insertOrderedList" />
+      <ToolbarButton label={<UiIcon name="bulletList" />} title="Bulleted list" command="insertUnorderedList" />
+      <button type="button" title="Insert checklist" aria-label="Insert checklist" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={insertChecklist}><UiIcon name="checklist" /></button>
     </div>
     <div ref={editor} className="production-notes-editable" contentEditable={!disabled} suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: initialHtml }} onInput={emitChange} onChange={handleChecklistChange} onKeyDown={handleKeyDown} aria-label="Card notes" data-placeholder="Add notes…" />
   </div>;

@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown } from 'pixelarticons/react';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'pixelarticons/react';
 import { useId, useRef, useState } from 'react';
 
 export type MuxDateRange = { start: string; end: string };
@@ -57,9 +57,9 @@ export function MuxDateFilter({ range, years, onChange }: {
         <button type="button" onClick={() => apply(null)}>Clear dates</button>
       </div>
       <div className="mux-date-navigation">
-        <button type="button" aria-label="Previous month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
+        <button type="button" aria-label="Previous month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft aria-hidden="true" /></button>
         <span role="status">{start ? 'Choose an end date' : 'Choose a start date'}</span>
-        <button type="button" aria-label="Next month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
+        <button type="button" aria-label="Next month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight aria-hidden="true" /></button>
       </div>
       <div className="mux-date-months">
         {[0, 1].map((offset) => {

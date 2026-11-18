@@ -1,5 +1,7 @@
 'use client';
 
+import { UiIcon } from '@/components/UiIcon';
+
 import { useMemo, useState } from 'react';
 
 export function TeamMemberPicker({ value, members, onChange, onBlur, disabled = false }: { value: string; members: string[]; onChange: (value: string) => void; onBlur?: () => void; disabled?: boolean }) {
@@ -22,7 +24,7 @@ export function TeamMemberPicker({ value, members, onChange, onBlur, disabled = 
 
   return <div className="team-member-picker">
     <div className="team-member-picker-control">
-      {selected.map((name) => <span className="team-member-picker-chip" key={name}>{name}<button type="button" aria-label={`Remove ${name}`} onMouseDown={(event) => event.preventDefault()} onClick={() => removeMember(name)} disabled={disabled}>×</button></span>)}
+      {selected.map((name) => <span className="team-member-picker-chip" key={name}>{name}<button type="button" aria-label={`Remove ${name}`} onMouseDown={(event) => event.preventDefault()} onClick={() => removeMember(name)} disabled={disabled}><UiIcon name="close" /></button></span>)}
       <input value={query} placeholder={selected.length ? 'Search team members…' : 'Choose team members…'} disabled={disabled} onFocus={() => setOpen(true)} onBlur={() => { window.setTimeout(() => setOpen(false), 150); onBlur?.(); }} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={(event) => { if (event.key === 'Enter' && matches[0]) { event.preventDefault(); selectMember(matches[0]); } if (event.key === 'Escape') setOpen(false); }} />
     </div>
     {open && !disabled && <div className="client-picker-options team-member-picker-options" role="listbox" aria-label="Available team members">{matches.length ? matches.map((name) => <button type="button" role="option" aria-selected="false" key={name} onMouseDown={(event) => event.preventDefault()} onClick={() => selectMember(name)}>{name}</button>) : <span className="team-member-picker-empty">No matching team members.</span>}</div>}
