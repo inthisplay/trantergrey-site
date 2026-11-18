@@ -17,6 +17,7 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
     FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id
     LEFT JOIN (SELECT card_source_id, COUNT(*) AS count FROM production_comments GROUP BY card_source_id) base_comments ON base_comments.card_source_id = p.source_id
     LEFT JOIN (SELECT card_source_id, COUNT(*) AS count FROM production_local_comments GROUP BY card_source_id) local_comments ON local_comments.card_source_id = p.source_id
+    WHERE o.deleted_at IS NULL
     ORDER BY COALESCE(o.column_source_id, p.column_source_id), CASE WHEN COALESCE(o.position, p.position) IS NULL THEN 1 ELSE 0 END, COALESCE(o.position, p.position), p.created_at`).all(),
     readClientDirectory(env),
     env.TG_DATA.prepare('SELECT nickname AS name FROM admin_team_directory').all<{ name: string }>(),

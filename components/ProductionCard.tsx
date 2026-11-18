@@ -55,9 +55,10 @@ type ProductionCardProps = {
   id: string;
   drawer?: boolean;
   onUpdated?: () => void;
+  onDeleted?: () => void;
 };
 
-export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCardProps) {
+export function ProductionCard({ id, drawer = false, onUpdated, onDeleted }: ProductionCardProps) {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -70,6 +71,7 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
   const [commentEdit, setCommentEdit] = useState<Descendant[] | null>(null);
   const [commentChanging, setCommentChanging] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [deletingCard, setDeletingCard] = useState(false);
 
   const load = () => fetch(`/api/admin/production-board/${encodeURIComponent(id)}`, { cache: 'no-store' }).then(async (response) => {
     const payload = await response.json();
@@ -221,6 +223,17 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
       window.setTimeout(() => { button.textContent = label; }, 1800);
     });
   };
+  const deleteCard = async () => {
+    if (!window.confirm(`Delete “${activeDraft.title}” from The Deck? This cannot be undone.`)) return;
+    setDeletingCard(true); setError('');
+    try {
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to delete this card.');
+      onDeleted?.();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete this card.'); }
+    finally { setDeletingCard(false); }
+  };
   return <article className={`production-card${drawer ? ' is-drawer-card' : ''}`}>
     <div className="production-card-heading"><div><p className="eyebrow">Local production record · Basecamp source preserved</p><input className="production-inline-title" aria-label="Card title" value={activeDraft.title} maxLength={240} onChange={(event) => setDraft({ ...activeDraft, title: event.target.value })} onBlur={() => void save()} disabled={saving} /></div></div>
     {error && <p className="production-save-error">{error}</p>}
@@ -234,6 +247,6 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
       const isEditingComment = localComment?.id === editingCommentId;
       return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id} onClick={copyEmbeddedPublicLink}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><div dangerouslySetInnerHTML={{ __html: addMissingMuxCopyButton(item.html || '').replace(/(class="production-comment-mux-asset-public-link"[^>]*>Open public page) ↗(?=<\/a>)/g, (_, label: string) => label + ' ' + uiIconMarkup('external')) }} />{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
     })}<div className="production-comment-form"><div><p className="production-comment-author">{data.viewer?.name || 'Signed-in team member'}</p><ProductionCommentEditor key={commentEditorKey} cardId={id} client={text(card.client) || null} onChange={setComment} /></div><button type="button" onClick={addComment} disabled={commentSaving || !hasCommentContent(comment)}>{commentSaving ? 'Posting…' : 'Post comment'}</button></div></section>
-    <div className="production-card-archive"><button type="button" onClick={() => { const next = { ...activeDraft, archived: !activeDraft.archived }; setDraft(next); void save(next); }} disabled={saving}>{activeDraft.archived ? 'Unarchive card' : 'Archive card'}</button></div>
+    <div className="production-card-archive"><button type="button" onClick={() => { const next = { ...activeDraft, archived: !activeDraft.archived }; setDraft(next); void save(next); }} disabled={saving || deletingCard}>{activeDraft.archived ? 'Unarchive card' : 'Archive card'}</button><button type="button" className="production-card-delete" onClick={() => void deleteCard()} disabled={saving || deletingCard}>{deletingCard ? 'Deleting…' : 'Delete card'}</button></div>
   </article>;
 }

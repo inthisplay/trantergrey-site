@@ -36,7 +36,7 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
   const storedCard = await env.TG_DATA.prepare(`SELECT p.*, p.description_html AS source_notes_html, o.notes_html AS local_notes_html, o.description_html AS legacy_notes_html, COALESCE(o.title, p.title) AS title, COALESCE(o.notes_html, o.description_html, p.description_html) AS notes_html,
     COALESCE(o.column_source_id, p.column_source_id) AS column_source_id, COALESCE(o.archived, p.archived) AS archived,
     COALESCE(o.client, '') AS client, COALESCE(o.assignees_json, p.assignees_json, '[]') AS assignees_json, COALESCE(o.due_on, p.due_on) AS due_on, o.edited_at
-    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ?`).bind(params.id).first();
+    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ? AND o.deleted_at IS NULL`).bind(params.id).first();
   if (!storedCard) return Response.json({ error: 'Production card not found.' }, { status: 404 });
   const card = preferPreservedNotes(storedCard as Record<string, unknown>);
   const [steps, comments, events, attachments, columns, editLog, localComments, clients, teamMembers] = await Promise.all([
@@ -138,4 +138,19 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
   ]);
   if (client) await registerClient(env, client);
   return onRequestGet({ request, env, params });
+}
+
+export async function onRequestDelete({ request, env, params }: Context): Promise<Response> {
+  const denied = await adminResponse(request, env); if (denied) return denied;
+  const card = await env.TG_DATA.prepare('SELECT source_id FROM production_cards WHERE id = ?').bind(params.id).first<{ source_id: string }>();
+  if (!card) return Response.json({ error: 'Production card not found.' }, { status: 404 });
+  const actor = (await adminSession(request, env))?.name || 'Admin';
+  const now = new Date().toISOString();
+  await env.TG_DATA.batch([
+    env.TG_DATA.prepare(`INSERT INTO production_card_overrides (card_source_id, edited_at, deleted_at)
+      VALUES (?, ?, ?) ON CONFLICT(card_source_id) DO UPDATE SET deleted_at = excluded.deleted_at, edited_at = excluded.edited_at`).bind(card.source_id, now, now),
+    env.TG_DATA.prepare('INSERT INTO production_card_edit_log (id, card_source_id, changed_at, actor, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), card.source_id, now, actor, '{}', JSON.stringify({ deleted: true })),
+  ]);
+  return Response.json({ ok: true });
 }
