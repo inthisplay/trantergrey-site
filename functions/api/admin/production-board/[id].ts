@@ -115,6 +115,18 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
     : noteFingerprint(card.description_html) === noteFingerprint(body.notes)
     ? null
     : body.notes ? escapeHtml(body.notes).replace(/\r?\n/g, '<br>') : '';
+  after.notes = notesHtml ?? card.description_html ?? '';
+  const previous = (before || {}) as Record<string, unknown>;
+  const previousAssignees = (() => {
+    try {
+      const values = typeof previous.assignees === 'string' ? JSON.parse(previous.assignees) : previous.assignees;
+      return Array.isArray(values) ? values.map((value: unknown) => typeof value === 'string' ? value : value && typeof value === 'object' && 'name' in value ? String(value.name) : '').filter(Boolean).sort() : [];
+    } catch { return []; }
+  })();
+  const unchanged = ['title', 'notes', 'client', 'dueOn', 'columnSourceId'].every((key) => String(previous[key] ?? '') === String(after[key as keyof typeof after] ?? ''))
+    && Number(previous.archived || 0) === after.archived && JSON.stringify(previousAssignees) === JSON.stringify([...assignees].sort());
+  if (unchanged) return onRequestGet({ request, env, params });
+  const actor = (await adminSession(request, env))?.name || 'Admin';
   const editedAt = new Date().toISOString();
   await env.TG_DATA.batch([
     env.TG_DATA.prepare(`INSERT INTO production_card_overrides (card_source_id, title, notes_html, client, assignees_json, due_on, column_source_id, archived, edited_at)
@@ -122,7 +134,7 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
       client = excluded.client, assignees_json = excluded.assignees_json, due_on = excluded.due_on, column_source_id = excluded.column_source_id, archived = excluded.archived, edited_at = excluded.edited_at`)
       .bind(card.source_id, title, notesHtml, client, JSON.stringify(assignees), dueOn, body.columnSourceId, after.archived, editedAt),
     env.TG_DATA.prepare('INSERT INTO production_card_edit_log (id, card_source_id, changed_at, actor, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), card.source_id, editedAt, 'Admin', JSON.stringify(before || {}), JSON.stringify(after)),
+      .bind(crypto.randomUUID(), card.source_id, editedAt, actor, JSON.stringify(before || {}), JSON.stringify(after)),
   ]);
   if (client) await registerClient(env, client);
   return onRequestGet({ request, env, params });

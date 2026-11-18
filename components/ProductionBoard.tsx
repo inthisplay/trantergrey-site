@@ -1,5 +1,10 @@
 'use client';
 
+import { ColumnColorDialog } from './ColumnColorDialog';
+import { DeckActivity } from './DeckActivity';
+import activityStyles from './DeckActivityPreview.module.css';
+import { columnColorStyle } from '@/lib/deck-colors';
+import type { CSSProperties } from 'react';
 import { UiIcon } from '@/components/UiIcon';
 
 import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
@@ -11,7 +16,7 @@ import { ClientPicker } from './ClientPicker';
 import { TeamMemberPicker } from './TeamMemberPicker';
 
 type Card = { id: string; title: string; client?: string; columnSourceId: string; position: number | null; archived: number; createdAt?: string; updatedAt?: string; dueOn?: string; completedAt?: string; commentsCount?: number };
-type Column = { sourceId: string; name: string; cardsCount: number };
+type Column = { sourceId: string; name: string; cardsCount: number; color?: string | null };
 type BoardData = { columns: Column[]; cards: Card[]; clients: string[]; assignees: string[] };
 type DropTargetData = { type?: string; columnSourceId?: string };
 
@@ -45,7 +50,7 @@ function SortableProductionCard({ card, onOpen, isOpen }: { card: Card; onOpen: 
   return <a ref={setNodeRef} {...attributes} {...listeners} aria-grabbed={isDragging} className={`${isDragging ? 'is-dragging' : ''}${isOpen ? ' is-open-card' : ''}`} aria-current={isOpen ? 'true' : undefined} style={{ transform: CSS.Transform.toString(transform), transition }} href={`/admin/production?card=${encodeURIComponent(card.id)}`} onClick={(event) => { event.preventDefault(); if (!isDragging) onOpen(card.id); }}>{card.client ? <><small className="production-card-client">{card.client}</small><b>{card.title}</b></> : <b>{card.title}</b>}{(commentsCount > 0 || card.createdAt || card.updatedAt) && <div className="production-card-meta">{commentBadge}{(card.createdAt || card.updatedAt) && <small className="production-card-dates">{card.createdAt && <>Created {shortDate(card.createdAt)}</>}{card.createdAt && card.updatedAt && ' · '}{card.updatedAt && <>Updated <span className={`production-card-updated${updatedDateTone(card)}`}>{shortDate(card.updatedAt)}</span></>}</small>}</div>}{card.archived === 1 && <small>Archived</small>}{card.dueOn && <small>Due {card.dueOn}</small>}</a>;
 }
 
-function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, collapsedForCompact, expanded, isCollapsible, isDropTarget, menuOpen, onSelect, onOpenCard, onMenu, onAction }: { column: Column; cards: Card[]; selectedCardId: string; collapsedForDrawer: boolean; collapsedForCompact: boolean; expanded: boolean; isCollapsible: boolean; isDropTarget: boolean; menuOpen: boolean; onSelect: () => void; onOpenCard: (id: string) => void; onMenu: () => void; onAction: (action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive') => void }) {
+function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, collapsedForCompact, expanded, isCollapsible, isDropTarget, menuOpen, onSelect, onOpenCard, onMenu, onAction }: { column: Column; cards: Card[]; selectedCardId: string; collapsedForDrawer: boolean; collapsedForCompact: boolean; expanded: boolean; isCollapsible: boolean; isDropTarget: boolean; menuOpen: boolean; onSelect: () => void; onOpenCard: (id: string) => void; onMenu: () => void; onAction: (action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive' | 'color') => void }) {
   const { setNodeRef } = useDroppable({ id: column.sourceId, data: { type: 'column', columnSourceId: column.sourceId } });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
@@ -63,8 +68,8 @@ function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, c
     mutationObserver.observe(element, { childList: true, subtree: true });
     return () => { element.removeEventListener('scroll', update); resizeObserver.disconnect(); mutationObserver.disconnect(); };
   }, [cards.length, collapsed]);
-  return <section ref={setNodeRef} className={`production-column${isCollapsible ? ' is-collapsible' : ''}${expanded ? ' is-expanded' : ''}${collapsedForDrawer ? ' is-drawer-collapsed' : ''}${collapsedForCompact ? ' is-compact-collapsed' : ''}${isDropTarget ? ' is-drop-target' : ''}`}>
-    <header><button type="button" aria-expanded={!collapsedForDrawer && !collapsedForCompact && (!isCollapsible || expanded)} onClick={onSelect}><h2>{column.name}</h2></button><div className="production-column-menu"><button type="button" className="production-column-add-card" aria-label={`Add card to ${column.name}`} onClick={(event) => { event.stopPropagation(); onAction('add'); }}><UiIcon name="plus" /></button><span>{column.cardsCount}</span><button type="button" className="production-column-menu-trigger" aria-label={`Column options for ${column.name}`} aria-expanded={menuOpen} onClick={(event) => { event.stopPropagation(); onMenu(); }}><UiIcon name="more" /></button>{menuOpen && <div className="production-column-menu-popover" role="menu"><button type="button" role="menuitem" onClick={() => onAction('oldest')}>Sort by oldest first</button><button type="button" role="menuitem" onClick={() => onAction('newest')}>Sort by newest first</button><button type="button" role="menuitem" onClick={() => onAction('add')}>Add card</button><button type="button" role="menuitem" onClick={() => onAction('rename')}>Rename column</button><button type="button" role="menuitem" onClick={() => onAction('archive')}>Archive column</button></div>}</div></header>
+  return <section ref={setNodeRef} data-column-color={column.color || undefined} style={columnColorStyle(column.color) as CSSProperties} className={`production-column${isCollapsible ? ' is-collapsible' : ''}${expanded ? ' is-expanded' : ''}${collapsedForDrawer ? ' is-drawer-collapsed' : ''}${collapsedForCompact ? ' is-compact-collapsed' : ''}${isDropTarget ? ' is-drop-target' : ''}`}>
+    <header><button type="button" aria-expanded={!collapsedForDrawer && !collapsedForCompact && (!isCollapsible || expanded)} onClick={onSelect}><h2>{column.name}</h2></button><div className="production-column-menu"><button type="button" className="production-column-add-card" aria-label={`Add card to ${column.name}`} onClick={(event) => { event.stopPropagation(); onAction('add'); }}><UiIcon name="plus" /></button><span>{column.cardsCount}</span><button type="button" className="production-column-menu-trigger" aria-label={`Column options for ${column.name}`} aria-expanded={menuOpen} onClick={(event) => { event.stopPropagation(); onMenu(); }}><UiIcon name="more" /></button>{menuOpen && <div className="production-column-menu-popover" role="menu"><button type="button" role="menuitem" onClick={() => onAction('oldest')}>Sort by oldest first</button><button type="button" role="menuitem" onClick={() => onAction('newest')}>Sort by newest first</button><button type="button" role="menuitem" onClick={() => onAction('add')}>Add card</button><button type="button" role="menuitem" onClick={() => onAction('rename')}>Rename column</button><button type="button" role="menuitem" onClick={() => onAction('color')}>Change color</button><button type="button" role="menuitem" onClick={() => onAction('archive')}>Archive column</button></div>}</div></header>
     {collapsed && <span className="production-collapsed-count">{column.cardsCount}</span>}
     <div className={`production-column-content${scrollEdges.top ? ' has-scroll-above' : ''}${scrollEdges.bottom ? ' has-scroll-below' : ''}`}><div ref={scrollRef} className="production-column-scroll"><SortableContext items={cards.map((card) => card.id)} strategy={verticalListSortingStrategy}><div>{(() => { let previousMonth = ''; const showMonthDividers = column.name.toLowerCase() === 'done'; return cards.map((card) => { const month = showMonthDividers ? completionMonth(card) : ''; const showDivider = Boolean(month && month !== previousMonth); if (month) previousMonth = month; return <Fragment key={card.id}>{showDivider && <div className="production-month-divider"><span>{month}</span></div>}<SortableProductionCard card={card} onOpen={onOpenCard} isOpen={card.id === selectedCardId} /></Fragment>; }); })()}</div></SortableContext></div><div className="production-column-scroll-shadow production-column-scroll-shadow-top" aria-hidden="true" /><div className="production-column-scroll-shadow production-column-scroll-shadow-bottom" aria-hidden="true" /></div>
   </section>;
@@ -111,7 +116,10 @@ export function ProductionBoard() {
   const [activeDragCardId, setActiveDragCardId] = useState('');
   const [dropColumnId, setDropColumnId] = useState('');
   const [menuColumnId, setMenuColumnId] = useState('');
+  const [colorColumn, setColorColumn] = useState<Column | null>(null);
   const [movingCardId, setMovingCardId] = useState('');
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [returnToActivity, setReturnToActivity] = useState(false);
   const dragOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const loadBoard = useCallback(() => fetch('/api/admin/production-board', { cache: 'no-store' }).then(async (response) => {
@@ -143,6 +151,7 @@ export function ProductionBoard() {
   useEffect(() => { if (drawerColumnId) setExpandedColumnId(drawerColumnId); }, [cardId, newCardColumnId, drawerColumnId]);
   const clearDragOpenTimer = () => { if (dragOpenTimer.current) clearTimeout(dragOpenTimer.current); dragOpenTimer.current = null; };
   const setCardInUrl = (id = '') => {
+    if (id) setActivityOpen(false);
     const url = new URL(location.href); if (id) url.searchParams.set('card', id); else url.searchParams.delete('card'); url.searchParams.delete('newCard');
     history.pushState({}, '', url);
     const nextCard = data?.cards.find((card) => card.id === id); if (nextCard) setExpandedColumnId(nextCard.columnSourceId);
@@ -160,8 +169,9 @@ export function ProductionBoard() {
     if (cardId || compactBoard) { setExpandedColumnId(column.sourceId); return; }
     if (['triage', 'not now', 'done'].includes(column.name.toLowerCase())) setExpandedColumnId((current) => current === column.sourceId ? '' : column.sourceId);
   };
-  const runColumnAction = async (column: Column, action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive') => {
+  const runColumnAction = async (column: Column, action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive' | 'color') => {
     setMenuColumnId(''); setError('');
+    if (action === 'color') { setColorColumn(column); return; }
     try {
       if (action === 'add') {
         setNewCardInUrl(column.sourceId); return;
@@ -240,7 +250,7 @@ export function ProductionBoard() {
   const compactRailWidth = phoneBoard ? '32px' : '52px'; const compactLaneWidth = phoneBoard ? 'minmax(160px, 1fr)' : 'minmax(240px, 1fr)';
   const gridTemplateColumns = data.columns.map((column) => drawerOpen ? column.sourceId === activeDrawerColumnId ? compactLaneWidth : compactRailWidth : compactBoard ? column.sourceId === activeCompactColumnId ? compactLaneWidth : compactRailWidth : isCollapsible(column) && column.sourceId !== expandedColumnId ? '58px' : 'minmax(0, 1fr)').join(' ');
 
-  return <div className={`production-board-layout${drawerOpen ? ' is-drawer-open' : ''}`}>
+  return <div className={`production-board-layout${drawerOpen ? ' is-drawer-open' : ''}${!drawerOpen ? ` ${activityStyles.layout}` : ''}`}>
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
       <div className="production-board" style={{ gridTemplateColumns }} aria-label="The Deck">{data.columns.map((column) => {
         const collapsedForDrawer = drawerOpen && column.sourceId !== activeDrawerColumnId;
@@ -251,6 +261,8 @@ export function ProductionBoard() {
       })}</div>
       <DragOverlay dropAnimation={null}>{activeDragCard && <div className="production-card-drag-overlay"><b>{activeDragCard.title}</b></div>}</DragOverlay>
     </DndContext>
-    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar"><span>{selectedCard ? 'Production record' : 'New production card'}</span><button type="button" onClick={() => setCardInUrl()} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard id={selectedCard.id} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} /> : (() => { const column = data.columns.find((item) => item.sourceId === newCardColumnId); return column ? <ProductionNewCard column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(id) => { void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(id); }); }} /> : null; })()}</aside>}
+    <DeckActivity open={activityOpen} hidden={drawerOpen} onOpen={() => { setCardInUrl(); setActivityOpen(true); }} onClose={() => setActivityOpen(false)} onCard={(id) => { setActivityOpen(false); setReturnToActivity(true); setCardInUrl(id); }} />
+    {colorColumn && <ColumnColorDialog columnId={colorColumn.sourceId} name={colorColumn.name} color={colorColumn.color} onClose={() => setColorColumn(null)} onSaved={(color) => setData((current) => current && ({ ...current, columns: current.columns.map((column) => column.sourceId === colorColumn.sourceId ? { ...column, color } : column) }))} />}
+    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar">{returnToActivity ? <button type="button" onClick={() => { setCardInUrl(); setReturnToActivity(false); setActivityOpen(true); }}><UiIcon name="back" /> Back to activity</button> : <span>{selectedCard ? 'Production record' : 'New production card'}</span>}<button type="button" onClick={() => setCardInUrl()} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard id={selectedCard.id} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} /> : (() => { const column = data.columns.find((item) => item.sourceId === newCardColumnId); return column ? <ProductionNewCard column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(id) => { void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(id); }); }} /> : null; })()}</aside>}
   </div>;
 }

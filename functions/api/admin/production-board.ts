@@ -2,11 +2,11 @@ import { adminResponse, type AdminEnvironment } from '../../_lib/admin';
 import { readClientDirectory } from '../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment };
-type Row = { sourceId: string; name: string; position: number | null; cardsCount: number };
+type Row = { sourceId: string; name: string; color: string | null; position: number | null; cardsCount: number };
 
 export async function onRequestGet({ request, env }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  const columns = await env.TG_DATA.prepare(`SELECT c.source_id AS sourceId, COALESCE(co.name, c.name) AS name, c.position, COUNT(p.source_id) AS cardsCount
+  const columns = await env.TG_DATA.prepare(`SELECT c.source_id AS sourceId, COALESCE(co.name, c.name) AS name, co.color, c.position, COUNT(p.source_id) AS cardsCount
     FROM production_columns c LEFT JOIN production_column_overrides co ON co.column_source_id = c.source_id
     LEFT JOIN production_cards p ON COALESCE((SELECT o.column_source_id FROM production_card_overrides o WHERE o.card_source_id = p.source_id), p.column_source_id) = c.source_id
     WHERE COALESCE(co.archived, 0) = 0 GROUP BY c.source_id ORDER BY CASE WHEN c.position IS NULL THEN 0 ELSE 1 END, c.position, c.source_id`).all<Row>();
