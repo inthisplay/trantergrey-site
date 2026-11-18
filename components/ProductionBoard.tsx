@@ -75,9 +75,9 @@ function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, c
   </section>;
 }
 
-function ProductionNewCard({ column, columns, clients, assignees, onCreated }: { column: Column; columns: Column[]; clients: string[]; assignees: string[]; onCreated: (id: string) => void }) {
+function ProductionNewCard({ column, columns, clients, assignees, initialClient = '', onCreated }: { initialClient?: string; column: Column; columns: Column[]; clients: string[]; assignees: string[]; onCreated: (id: string) => void }) {
   const [title, setTitle] = useState('');
-  const [client, setClient] = useState('');
+  const [client, setClient] = useState(initialClient);
   const [assignedTo, setAssignedTo] = useState('');
   const [dueOn, setDueOn] = useState('');
   const [notes, setNotes] = useState('');
@@ -110,6 +110,7 @@ export function ProductionBoard() {
   const [error, setError] = useState('');
   const [cardId, setCardId] = useState('');
   const [newCardColumnId, setNewCardColumnId] = useState('');
+  const [newCardClient, setNewCardClient] = useState('');
   const [expandedColumnId, setExpandedColumnId] = useState('');
   const [compactBoard, setCompactBoard] = useState(false);
   const [phoneBoard, setPhoneBoard] = useState(false);
@@ -131,8 +132,8 @@ export function ProductionBoard() {
 
   useEffect(() => {
     setCardId(cardFromLocation());
-    setNewCardColumnId(newCardColumnFromLocation());
-    const onPopState = () => { setCardId(cardFromLocation()); setNewCardColumnId(newCardColumnFromLocation()); };
+    setNewCardColumnId(newCardColumnFromLocation()); setNewCardClient(new URLSearchParams(window.location.search).get('client') || '');
+    const onPopState = () => { setCardId(cardFromLocation()); setNewCardColumnId(newCardColumnFromLocation()); setNewCardClient(new URLSearchParams(window.location.search).get('client') || ''); };
     addEventListener('popstate', onPopState);
     return () => removeEventListener('popstate', onPopState);
   }, []);
@@ -147,19 +148,20 @@ export function ProductionBoard() {
 
   const selectedCard = useMemo(() => data?.cards.find((card) => card.id === cardId) || null, [cardId, data]);
   const activeDragCard = useMemo(() => data?.cards.find((card) => card.id === activeDragCardId) || null, [activeDragCardId, data]);
-  const drawerColumnId = selectedCard?.columnSourceId || newCardColumnId;
+  const resolvedNewColumnId = newCardColumnId === '1' ? (data?.columns.find(column => column.name.toLowerCase() === 'triage') || data?.columns[0])?.sourceId || '' : newCardColumnId;
+  const drawerColumnId = selectedCard?.columnSourceId || resolvedNewColumnId;
   useEffect(() => { if (drawerColumnId) setExpandedColumnId(drawerColumnId); }, [cardId, newCardColumnId, drawerColumnId]);
   const clearDragOpenTimer = () => { if (dragOpenTimer.current) clearTimeout(dragOpenTimer.current); dragOpenTimer.current = null; };
   const setCardInUrl = (id = '') => {
     if (id) setActivityOpen(false);
-    const url = new URL(location.href); if (id) url.searchParams.set('card', id); else url.searchParams.delete('card'); url.searchParams.delete('newCard');
+    const url = new URL(location.href); if (id) url.searchParams.set('card', id); else url.searchParams.delete('card'); url.searchParams.delete('newCard'); url.searchParams.delete('client'); setNewCardClient('');
     history.pushState({}, '', url);
     const nextCard = data?.cards.find((card) => card.id === id); if (nextCard) setExpandedColumnId(nextCard.columnSourceId);
     setCardId(id);
     setNewCardColumnId('');
   };
   const setNewCardInUrl = (columnSourceId = '') => {
-    const url = new URL(location.href); url.searchParams.delete('card');
+    const url = new URL(location.href); url.searchParams.delete('card'); url.searchParams.delete('client'); setNewCardClient('');
     if (columnSourceId) url.searchParams.set('newCard', columnSourceId); else url.searchParams.delete('newCard');
     history.pushState({}, '', url);
     if (columnSourceId) setExpandedColumnId(columnSourceId);
@@ -263,6 +265,6 @@ export function ProductionBoard() {
     </DndContext>
     <DeckActivity open={activityOpen} hidden={drawerOpen} onOpen={() => { setCardInUrl(); setActivityOpen(true); }} onClose={() => setActivityOpen(false)} onCard={(id) => { setActivityOpen(false); setReturnToActivity(true); setCardInUrl(id); }} />
     {colorColumn && <ColumnColorDialog columnId={colorColumn.sourceId} name={colorColumn.name} color={colorColumn.color} onClose={() => setColorColumn(null)} onSaved={(color) => setData((current) => current && ({ ...current, columns: current.columns.map((column) => column.sourceId === colorColumn.sourceId ? { ...column, color } : column) }))} />}
-    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar">{returnToActivity ? <button type="button" onClick={() => { setCardInUrl(); setReturnToActivity(false); setActivityOpen(true); }}><UiIcon name="back" /> Back to activity</button> : <span>{selectedCard ? 'Production record' : 'New production card'}</span>}<button type="button" onClick={() => setCardInUrl()} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard id={selectedCard.id} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} /> : (() => { const column = data.columns.find((item) => item.sourceId === newCardColumnId); return column ? <ProductionNewCard column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(id) => { void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(id); }); }} /> : null; })()}</aside>}
+    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar">{returnToActivity ? <button type="button" onClick={() => { setCardInUrl(); setReturnToActivity(false); setActivityOpen(true); }}><UiIcon name="back" /> Back to activity</button> : <span>{selectedCard ? 'Production record' : 'New production card'}</span>}<button type="button" onClick={() => setCardInUrl()} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard id={selectedCard.id} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} /> : (() => { const column = data.columns.find((item) => item.sourceId === resolvedNewColumnId); return column ? <ProductionNewCard key={column.sourceId + newCardClient} initialClient={(data.clients || []).find(name => name === newCardClient) || ''} column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(id) => { void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(id); }); }} /> : null; })()}</aside>}
   </div>;
 }

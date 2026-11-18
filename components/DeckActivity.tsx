@@ -7,6 +7,7 @@ import type { DeckHistoryEvent, DeckHistoryMedia, DeckHistoryPage } from '@/lib/
 import styles from './DeckActivityPreview.module.css';
 
 const actions: Record<string, string> = {
+  todo_created:'added a to-do',todo_updated:'updated a to-do',todo_completed:'completed a to-do',todo_reopened:'reopened a to-do',todo_deleted:'deleted a to-do',note_created:'added a note',note_updated:'updated a note',note_deleted:'deleted a note',drive_uploaded:'uploaded a file',drive_folders:'updated linked Drive folders',drive_pins:'updated pinned folders',
   card_created: 'created a card', card_updated: 'updated a card', card_moved: 'moved a card', card_reordered: 'reordered a card',
   card_archived: 'archived a card', card_restored: 'restored a card', notes_updated: 'updated the notes', assignment_updated: 'updated the assignees',
   comment_added: 'added a comment', comment_edited: 'edited a comment', comment_deleted: 'deleted a comment', attachment_added: 'uploaded an attachment',
@@ -51,7 +52,8 @@ const groupLabel = (event: DeckHistoryEvent) => {
 };
 type CachedPage = DeckHistoryPage & { scrollTop: number };
 
-export function DeckActivity({ open, hidden, onOpen, onClose, onCard }: {
+export function DeckActivity({ open, hidden, onOpen, onClose, onCard, client }: {
+  client?: {id:string;name:string};
   open: boolean; hidden: boolean; onOpen: () => void; onClose: () => void; onCard: (id: string) => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
@@ -71,6 +73,8 @@ export function DeckActivity({ open, hidden, onOpen, onClose, onCard }: {
   const [expanded, setExpanded] = useState<string[]>([]);
   useEffect(() => {
     const button = trigger.current;
+    // Client workspaces scroll vertically; keep their grabber anchored to the viewport.
+    if(client) return;
     const panel = button?.closest('.production-board-layout')?.querySelector('.production-column');
     if (!button || !panel) return;
     let frame = 0;
@@ -93,7 +97,7 @@ export function DeckActivity({ open, hidden, onOpen, onClose, onCard }: {
       window.removeEventListener('resize', schedule);
       window.removeEventListener('scroll', schedule, true);
     };
-  }, [hidden]);
+  }, [hidden, client?.id]);
 
   const load = useCallback(async (refresh = false) => {
     if (!open || busy.current) return;
@@ -103,6 +107,7 @@ export function DeckActivity({ open, hidden, onOpen, onClose, onCard }: {
     const sequence = ++generation.current;
     const abort = new AbortController(); controller.current = abort;
     const query = new URLSearchParams({ filter, limit: '25' });
+    if(client) query.set('client',client.id);
     if (!refresh && previous?.nextCursor) query.set('cursor', previous.nextCursor);
     try {
       const response = await fetch(`/api/admin/production-board/history?${query}`, { cache: 'no-store', signal: abort.signal });
@@ -119,7 +124,7 @@ export function DeckActivity({ open, hidden, onOpen, onClose, onCard }: {
     } finally {
       if (generation.current === sequence) { busy.current = false; setLoading(false); }
     }
-  }, [filter, open]);
+  }, [filter, open, client?.id]);
   useEffect(() => {
     if (!open) { dialog.current?.close(); return; }
     dialog.current?.showModal(); closeButton.current?.focus({ preventScroll: true });
@@ -148,14 +153,14 @@ export function DeckActivity({ open, hidden, onOpen, onClose, onCard }: {
   const events = page?.events || [];
 
   return <>
-    {!hidden && <button ref={trigger} type="button" className={styles.tab} onClick={onOpen} aria-label="Activity" title="Open Deck activity" aria-controls="deck-activity-panel" aria-haspopup="dialog" aria-expanded={open}>
+    {!hidden && <button ref={trigger} type="button" className={`${styles.tab} ${client ? styles.clientTab : ''}`} onClick={onOpen} aria-label="Activity" title={client ? `Open ${client.name} activity` : "Open Deck activity"} aria-controls="deck-activity-panel" aria-haspopup="dialog" aria-expanded={open}>
       <span className={`${styles.tabLine} ${styles.tabLineTop}`} aria-hidden="true" /><ActivityGrip /><span className={styles.tabLabel}>Activity</span><ActivityGrip /><span className={`${styles.tabLine} ${styles.tabLineBottom}`} aria-hidden="true" />
     </button>}
     <dialog ref={dialog} id="deck-activity-panel" className={styles.drawer} aria-labelledby="deck-activity-title" onCancel={event => { event.preventDefault(); close(); }} onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className={styles.shell}>
-        <header className={styles.header}><div><span className={styles.eyebrow}>The Deck / History</span><h2 id="deck-activity-title">Activity.</h2></div><button ref={closeButton} type="button" onClick={close} aria-label="Close activity"><UiIcon name="close" /></button></header>
-        <div className={styles.historyIntro}>Updates from across the Deck.<button type="button" onClick={() => void load(true)} disabled={loading}>Refresh</button></div>
-        <nav className={styles.filters} aria-label="Activity filters">{[['all', 'All'], ['updates', 'Updates'], ['moves', 'Moves'], ['management', 'Columns']].map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => { remember(); setFilter(value); }}>{label}</button>)}</nav>
+        <header className={styles.header}><div><span className={styles.eyebrow}>{client ? `${client.name} / History` : 'The Deck / History'}</span><h2 id="deck-activity-title">Activity.</h2></div><button ref={closeButton} type="button" onClick={close} aria-label="Close activity"><UiIcon name="close" /></button></header>
+        <div className={styles.historyIntro}>{client ? `Updates for ${client.name}.` : 'Updates from across the Deck.'}<button type="button" onClick={() => void load(true)} disabled={loading}>Refresh</button></div>
+        <nav className={styles.filters} aria-label="Activity filters">{[['all', 'All'], ['updates', 'Updates'], ['moves', 'Moves'], ['management', client ? 'Folders' : 'Columns']].map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => { remember(); setFilter(value); }}>{label}</button>)}</nav>
         <div ref={scroll} className={styles.feed} aria-busy={loading}>
           {open && events.map((event, index) => <div key={event.id}>
             {(index === 0 || dayKey(events[index - 1]) !== dayKey(event)) && <h3 className={styles.day}>{groupLabel(event)}<span>{['Today', 'Yesterday'].includes(groupLabel(event)) ? dateLabel(event) : ''}</span></h3>}
@@ -163,7 +168,7 @@ export function DeckActivity({ open, hidden, onOpen, onClose, onCard }: {
               <span className={styles.marker}><UiIcon name={eventIcon(event)} /></span>
               <div className={styles.eventTop}><strong>{event.actor}</strong><time dateTime={event.occurredAt || undefined} title={event.occurredAt || 'The source did not record a timestamp'}>{event.occurredAt ? new Date(event.occurredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'Undated'}</time></div>
               <p className={styles.action}>{actions[event.action] || 'recorded an update'}</p>
-              {event.cardId ? <button type="button" className={styles.cardLink} onClick={() => openCard(event.cardId!)}>{event.cardTitle || 'Production card'}<UiIcon name="chevronRight" /></button> : <strong className={styles.columnTitle}>{event.columnName || 'The Deck'}</strong>}
+              {event.cardId ? <button type="button" className={styles.cardLink} onClick={() => openCard(event.cardId!)}>{event.cardTitle || 'Production card'}<UiIcon name="chevronRight" /></button> : <strong className={styles.columnTitle}>{event.columnName || client?.name || 'The Deck'}</strong>}
               {event.summary && <p className={styles.assignment}>{event.summary}</p>}
               {event.changes.map((change, i) => <div className={styles.change} key={i}><span>{change.label}</span><p><del>{change.before}</del><UiIcon name="forward" /><strong>{change.after}</strong></p></div>)}
               {event.redacted ? <p className={styles.assignment}>This comment was deleted. Its content is no longer shown.</p> : <>

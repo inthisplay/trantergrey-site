@@ -1,4 +1,5 @@
 import { adminCookie, isTranterGreyEmail, origin, safeDestination, sameValue, type AdminEnvironment } from '../../../_lib/admin';
+import { driveOAuthCallback } from '../../../_lib/client-drive-oauth';
 
 type Context = { request: Request; env: AdminEnvironment };
 const stateCookie = 'tg_google_oauth_state';
@@ -29,6 +30,7 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
+  if(state?.startsWith('drive_'))return driveOAuthCallback(request,env);
   const expectedState = cookie(request, stateCookie);
   if (!code || !state || !expectedState || !sameValue(state, expectedState)) return loginError(request, 'google');
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return loginError(request, 'google-config');

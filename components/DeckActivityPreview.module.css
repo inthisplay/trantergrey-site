@@ -69,3 +69,5 @@
 }
 @media(max-width:620px) { .drawer { width:100%; }.header { padding-top:calc(22px + env(safe-area-inset-top)); }.feed { padding:0 22px; }.eventTop { font-size:9px; }.footer { padding-bottom:calc(20px + env(safe-area-inset-bottom)); } }
 @media(prefers-reduced-motion:reduce) { .drawer[open] { animation:none; } }
+
+.clientTab,.clientTab:hover,.clientTab:focus,.clientTab:focus-visible { border:0 !important; outline:none !important; box-shadow:none !important; }

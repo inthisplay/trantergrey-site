@@ -10,8 +10,9 @@ type Summary = { contacts: number | null; videos: number | null; warning?: strin
 const links = [
   { href: '/admin/mux', number: '01', title: 'Mux library', description: 'Build solo pages, ratio sets, and campaign collections.' },
   { href: '/admin/production', number: '02', title: 'The Deck', description: 'Basecamp production archive and working board.' },
-  { href: '/admin/contacts', number: '03', title: 'Contact notes', description: 'Review new-project submissions.' },
-  { href: '/admin/access', number: '04', title: 'Admin access', description: 'Name the team and manage website sessions.' },
+  { href: '/admin/clients', number: '03', title: 'Client HQ', description: 'Client workspaces for to-dos, notes, and files.' },
+  { href: '/admin/contacts', number: '04', title: 'Contact notes', description: 'Review new-project submissions.' },
+  { href: '/admin/access', number: '05', title: 'Admin access', description: 'Name the team and manage website sessions.' },
 ];
 
 export function AdminHub() {

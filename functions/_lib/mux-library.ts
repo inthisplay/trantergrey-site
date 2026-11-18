@@ -77,8 +77,8 @@ async function ensureBrowseIndex(env: AdminEnvironment) {
 }
 
 export async function invalidateMuxBrowseIndex(env: AdminEnvironment) {
-  await env.TG_DATA.prepare("UPDATE mux_library_browse_state SET refreshed_at = ? WHERE id = ?")
-    .bind('1970-01-01T00:00:00.000Z', 'library').run();
+  await env.TG_DATA.prepare("UPDATE mux_library_browse_state SET refreshed_at = NULL WHERE id = ?")
+    .bind('library').run();
 }
 
 export async function readMuxLibraryBrowsePage(env: AdminEnvironment, filters: MuxBrowseFilters) {
@@ -124,8 +124,8 @@ export async function readMuxLibraryBrowsePage(env: AdminEnvironment, filters: M
   ]);
   const statusCounts = { all: state.asset_count, published: 0, unreviewed: 0, hidden: 0 };
   statuses.results.forEach((row) => { statusCounts[row.library_status] = row.count; });
-  const clientNames = [...new Set([...clients.results.map((row) => row.client), ...directory.results.map((row) => row.name)])].sort((first, second) => first.localeCompare(second));
-  return { assets, pageAssetIds: assets.map((asset) => asset.id), total: totalCount, nextCursor: cursor + assets.length < totalCount ? cursor + assets.length : null, facets: { clients: ['All', ...clientNames], years: years.results.map((row) => row.year), statusCounts, thumbnailCounts: { needsThumbnail: thumbnails?.needsThumbnail || 0, customThumbnail: thumbnails?.customThumbnail || 0 } } };
+  const clientNames = [...new Set(clients.results.map((row) => row.client))].sort((first, second) => first.localeCompare(second));
+  return { assets, pageAssetIds: assets.map((asset) => asset.id), total: totalCount, nextCursor: cursor + assets.length < totalCount ? cursor + assets.length : null, facets: { clients: ['All', ...clientNames], directoryClients: directory.results.map(row=>row.name), years: years.results.map((row) => row.year), statusCounts, thumbnailCounts: { needsThumbnail: thumbnails?.needsThumbnail || 0, customThumbnail: thumbnails?.customThumbnail || 0 } } };
 }
 
 export async function readMuxBrowseAssetsById(env: AdminEnvironment, ids: Iterable<string>) {

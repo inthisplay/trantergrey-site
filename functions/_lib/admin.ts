@@ -21,6 +21,8 @@ export type AdminEnvironment = {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REDIRECT_URI?: string;
+  GOOGLE_DRIVE_ENCRYPTION_KEY?: string;
+  GOOGLE_DRIVE_ID?: string;
   MUX_TOKEN_ID?: string;
   MUX_TOKEN_SECRET?: string;
   // This is intentionally separate from the Mux API token.

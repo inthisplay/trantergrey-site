@@ -7,13 +7,14 @@ import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 
 type ProductionNotesEditorProps = {
   initialHtml: string;
+  label?: string;
   disabled?: boolean;
   onChange: (html: string) => void;
 };
 
 const format = (command: string, value?: string) => document.execCommand(command, false, value);
 
-export function ProductionNotesEditor({ initialHtml, disabled = false, onChange }: ProductionNotesEditorProps) {
+export function ProductionNotesEditor({ initialHtml, disabled = false, onChange, label = 'Card notes' }: ProductionNotesEditorProps) {
   const editor = useRef<HTMLDivElement>(null);
 
   const emitChange = () => {
@@ -104,6 +105,6 @@ export function ProductionNotesEditor({ initialHtml, disabled = false, onChange 
       <ToolbarButton label={<UiIcon name="bulletList" />} title="Bulleted list" command="insertUnorderedList" />
       <button type="button" title="Insert checklist" aria-label="Insert checklist" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={insertChecklist}><UiIcon name="checklist" /></button>
     </div>
-    <div ref={editor} className="production-notes-editable" contentEditable={!disabled} suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: initialHtml }} onInput={emitChange} onChange={handleChecklistChange} onKeyDown={handleKeyDown} aria-label="Card notes" data-placeholder="Add notes…" />
+    <div ref={editor} className="production-notes-editable" contentEditable={!disabled} suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: initialHtml }} onInput={emitChange} onChange={handleChecklistChange} onKeyDown={handleKeyDown} aria-label={label} data-placeholder="Add notes…" />
   </div>;
 }

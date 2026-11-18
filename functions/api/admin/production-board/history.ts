@@ -7,7 +7,17 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ad
   const filter = url.searchParams.get('filter') || 'all';
   const limit = Number(url.searchParams.get('limit') || 25);
   if (!['all', 'updates', 'moves', 'management'].includes(filter) || !Number.isInteger(limit) || limit < 1 || limit > 50) return Response.json({ error: 'Choose a valid history filter and page size.' }, { status: 400 });
+  const clientId=url.searchParams.get('client');
+  const client=clientId ? await env.TG_DATA.prepare('SELECT id,name FROM client_directory WHERE id=?').bind(clientId).first<{id:string;name:string}>() : null;
+  if(clientId && !client)return Response.json({error:'Client not found.'},{status:404});
   const conditions: string[] = [], args: unknown[] = [];
+  let source='production_deck_history';
+  if(client){
+    source=`(SELECT h.id,h.source_kind,h.source_id,h.card_source_id,h.column_source_id,h.occurred_at,h.actor,h.action,h.category,h.summary,h.body_html,h.details_json,h.redacted
+      FROM production_deck_history h JOIN production_card_overrides o ON o.card_source_id=h.card_source_id WHERE o.client=? COLLATE NOCASE
+      UNION ALL SELECT id,'client',id,NULL,NULL,occurred_at,actor,action,category,summary,'','{}',0 FROM client_activity WHERE client_id=?)`;
+    args.push(client.name,client.id);
+  }
   if (filter !== 'all') { conditions.push('h.category = ?'); args.push(filter); }
   const cursor = url.searchParams.get('cursor');
   if (cursor) {
@@ -21,7 +31,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ad
   const rows = await env.TG_DATA.prepare(`SELECT h.*, p.id AS cardId, COALESCE(o.title,p.title) AS cardTitle,
     COALESCE(co.name,c.name) AS columnName, co.color AS columnColor,
     COALESCE(fc.name,f.name) AS fromColumn, COALESCE(tc.name,t.name) AS toColumn
-    FROM production_deck_history h
+    FROM ${source} h
     LEFT JOIN production_cards p ON p.source_id=h.card_source_id
     LEFT JOIN production_card_overrides o ON o.card_source_id=p.source_id
     LEFT JOIN production_columns c ON c.source_id=COALESCE(h.column_source_id,o.column_source_id,p.column_source_id)
