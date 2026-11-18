@@ -18,6 +18,7 @@ import { TeamMemberPicker } from './TeamMemberPicker';
 type Card = { id: string; title: string; client?: string; columnSourceId: string; position: number | null; archived: number; createdAt?: string; updatedAt?: string; dueOn?: string; completedAt?: string; commentsCount?: number };
 type Column = { sourceId: string; name: string; cardsCount: number; color?: string | null };
 type BoardData = { columns: Column[]; cards: Card[]; clients: string[]; assignees: string[] };
+type NewCardDraft = { id: string; title: string; notes: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
 type DropTargetData = { type?: string; columnSourceId?: string };
 
 const cardFromLocation = () => new URLSearchParams(window.location.search).get('card') || '';
@@ -75,7 +76,7 @@ function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, c
   </section>;
 }
 
-function ProductionNewCard({ column, columns, clients, assignees, initialClient = '', onCreated }: { initialClient?: string; column: Column; columns: Column[]; clients: string[]; assignees: string[]; onCreated: (id: string) => void }) {
+function ProductionNewCard({ column, columns, clients, assignees, initialClient = '', onCreated }: { initialClient?: string; column: Column; columns: Column[]; clients: string[]; assignees: string[]; onCreated: (draft: NewCardDraft) => void }) {
   const [title, setTitle] = useState('');
   const [client, setClient] = useState(initialClient);
   const [assignedTo, setAssignedTo] = useState('');
@@ -92,7 +93,7 @@ function ProductionNewCard({ column, columns, clients, assignees, initialClient 
       const response = await fetch('/api/admin/production-board/cards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ columnSourceId, title, client, assignedTo, dueOn, notes }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to create this card.');
-      onCreated(payload.id);
+      onCreated({ id: payload.id, title, notes, client, assignedTo, dueOn, columnSourceId, archived: false });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to create this card.'); }
     finally { setSaving(false); }
   };
@@ -121,6 +122,10 @@ export function ProductionBoard() {
   const [movingCardId, setMovingCardId] = useState('');
   const [activityOpen, setActivityOpen] = useState(false);
   const [returnToActivity, setReturnToActivity] = useState(false);
+  const [newlyCreatedCard, setNewlyCreatedCard] = useState<NewCardDraft | null>(null);
+  const [clientReminderOpen, setClientReminderOpen] = useState(false);
+  const [reminderClient, setReminderClient] = useState('');
+  const [savingReminderClient, setSavingReminderClient] = useState(false);
   const dragOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const loadBoard = useCallback(() => fetch('/api/admin/production-board', { cache: 'no-store' }).then(async (response) => {
@@ -166,6 +171,22 @@ export function ProductionBoard() {
     history.pushState({}, '', url);
     if (columnSourceId) setExpandedColumnId(columnSourceId);
     setCardId(''); setNewCardColumnId(columnSourceId);
+  };
+  const closeCardDrawer = () => {
+    if (newlyCreatedCard && newlyCreatedCard.id === cardId && !newlyCreatedCard.client.trim()) { setReminderClient(''); setClientReminderOpen(true); return; }
+    setCardInUrl();
+  };
+  const saveReminderClient = async () => {
+    if (!newlyCreatedCard || !reminderClient.trim()) return;
+    setSavingReminderClient(true);
+    try {
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(newlyCreatedCard.id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...newlyCreatedCard, client: reminderClient }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to save this client.');
+      setClientReminderOpen(false); setNewlyCreatedCard(null); setCardInUrl();
+      const refreshed = await loadBoard(); if (refreshed) setData(refreshed);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save this client.'); }
+    finally { setSavingReminderClient(false); }
   };
   const selectColumn = (column: Column) => {
     if (cardId || compactBoard) { setExpandedColumnId(column.sourceId); return; }
@@ -265,6 +286,7 @@ export function ProductionBoard() {
     </DndContext>
     <DeckActivity open={activityOpen} hidden={drawerOpen} onOpen={() => { setCardInUrl(); setActivityOpen(true); }} onClose={() => setActivityOpen(false)} onCard={(id) => { setActivityOpen(false); setReturnToActivity(true); setCardInUrl(id); }} />
     {colorColumn && <ColumnColorDialog columnId={colorColumn.sourceId} name={colorColumn.name} color={colorColumn.color} onClose={() => setColorColumn(null)} onSaved={(color) => setData((current) => current && ({ ...current, columns: current.columns.map((column) => column.sourceId === colorColumn.sourceId ? { ...column, color } : column) }))} />}
-    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar">{returnToActivity ? <button type="button" onClick={() => { setCardInUrl(); setReturnToActivity(false); setActivityOpen(true); }}><UiIcon name="back" /> Back to activity</button> : <span>{selectedCard ? 'Production record' : 'New production card'}</span>}<button type="button" onClick={() => setCardInUrl()} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard id={selectedCard.id} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} /> : (() => { const column = data.columns.find((item) => item.sourceId === resolvedNewColumnId); return column ? <ProductionNewCard key={column.sourceId + newCardClient} initialClient={(data.clients || []).find(name => name === newCardClient) || ''} column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(id) => { void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(id); }); }} /> : null; })()}</aside>}
+    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar">{returnToActivity ? <button type="button" onClick={() => { setCardInUrl(); setReturnToActivity(false); setActivityOpen(true); }}><UiIcon name="back" /> Back to activity</button> : <span>{selectedCard ? 'Production record' : 'New production card'}</span>}<button type="button" onClick={closeCardDrawer} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard id={selectedCard.id} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} /> : (() => { const column = data.columns.find((item) => item.sourceId === resolvedNewColumnId); return column ? <ProductionNewCard key={column.sourceId + newCardClient} initialClient={(data.clients || []).find(name => name === newCardClient) || ''} column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(draft) => { setNewlyCreatedCard(draft); void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(draft.id); }); }} /> : null; })()}</aside>}
+    {clientReminderOpen && <div className="client-reminder-modal" role="dialog" aria-modal="true" aria-labelledby="card-client-reminder-title"><div className="client-reminder-panel"><p>One last detail</p><h2 id="card-client-reminder-title">Leave this new card without a client?</h2><span>Adding a client now keeps this card connected to the right work. You can still close it without one.</span><div className="client-reminder-picker"><ClientPicker value={reminderClient} clients={data.clients || []} onChange={setReminderClient} onClientsChanged={(clients) => setData((current) => current ? { ...current, clients } : current)} placeholder="Search or add a client" disabled={savingReminderClient} /></div><div className="client-reminder-actions"><button type="button" disabled={savingReminderClient} onClick={() => { setClientReminderOpen(false); setNewlyCreatedCard(null); setCardInUrl(); }}>Save without client</button><button className="primary" type="button" disabled={savingReminderClient || !reminderClient.trim()} onClick={() => void saveReminderClient()}>{savingReminderClient ? 'Saving…' : 'Save client'}</button></div></div></div>}
   </div>;
 }

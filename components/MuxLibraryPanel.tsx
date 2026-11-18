@@ -289,6 +289,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
   const [tagPickerUploadId, setTagPickerUploadId] = useState('');
   const [savingUploadDetails, setSavingUploadDetails] = useState(false);
+  const [clientReminderOpen, setClientReminderOpen] = useState(false);
   const [replaceTargetId, setReplaceTargetId] = useState('');
   const [replaceProjectId, setReplaceProjectId] = useState('');
   const [replacingProjectId, setReplacingProjectId] = useState('');
@@ -717,6 +718,11 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       setUploads((current) => current.map((upload) => ({ ...upload, saving: false, error: message })));
       setWorkspaceMessage(message);
     } finally { setSavingUploadDetails(false); }
+  }
+
+  function requestSaveUploadDetails() {
+    if (!uploadClient.trim() && uploads.every((upload) => !upload.client.trim())) { setClientReminderOpen(true); return; }
+    void saveUploadDetails();
   }
 
   function chooseUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -1678,8 +1684,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
           </article>;
         })}
       </div>
-      <footer><button type="button" onClick={() => setUploadDrawerOpen(false)}>Keep browsing</button><button className="primary" type="button" disabled={savingUploadDetails || uploads.some((upload) => upload.state === 'uploading') || !uploads.some((upload) => upload.assetId)} onClick={() => void saveUploadDetails()}>{savingUploadDetails ? 'Saving…' : 'Save upload details'}</button></footer>
+      <footer><button type="button" onClick={() => setUploadDrawerOpen(false)}>Keep browsing</button><button className="primary" type="button" disabled={savingUploadDetails || uploads.some((upload) => upload.state === 'uploading') || !uploads.some((upload) => upload.assetId)} onClick={requestSaveUploadDetails}>{savingUploadDetails ? 'Saving…' : 'Save upload details'}</button></footer>
     </aside>}
+    {clientReminderOpen && <div className="client-reminder-modal" role="dialog" aria-modal="true" aria-labelledby="upload-client-reminder-title"><div className="client-reminder-panel"><p>One last detail</p><h2 id="upload-client-reminder-title">Leave this upload without a client?</h2><span>Adding a client now keeps this video easy to find later. You can still save it without one.</span><div className="client-reminder-picker"><ClientPicker value={uploadClient} clients={assignmentClients} onChange={setUploadClient} onClientsChanged={() => void refreshLibrary()} placeholder="Search or add a client" /></div><div className="client-reminder-actions"><button type="button" onClick={() => { setClientReminderOpen(false); void saveUploadDetails(); }}>Save without client</button><button className="primary" type="button" disabled={!uploadClient.trim()} onClick={() => { setClientReminderOpen(false); void saveUploadDetails(); }}>Save client</button></div></div></div>}
     {duplicateRatioWarning && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => setDuplicateRatioWarning(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDuplicateRatioWarning(null)} aria-label="Close"><UiIcon name="close" /></button><div className="mux-bulk-delete"><p>Duplicate ratio</p><h3>Group these anyway?</h3><span>Two or more selected videos appear to share the same ratio. You can cancel and adjust the selection, or continue with this ratio group.</span><div className="mux-collection-delete-actions"><button type="button" onClick={() => setDuplicateRatioWarning(null)}>Cancel</button><button className="danger" type="button" onClick={() => createRatioGroup(duplicateRatioWarning.uploadIds, duplicateRatioWarning.title, true)}>Continue</button></div></div></div></div>}
     <div className="mux-library-toolbar">
       {combinedSearch ? <label className="mux-search"><span>Search titles or clients</span><input value={combinedSearchValue} onChange={(event) => updateCombinedSearch(event.target.value)} placeholder="Search a title or client" list="mux-library-search-suggestions" /><datalist id="mux-library-search-suggestions">{combinedSearchSuggestions.map((suggestion) => <option value={suggestion} key={suggestion} />)}</datalist></label> : <><label className="mux-search"><span>Search title, client, or Mux ID</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Mux" /></label><label className="mux-select"><span>Client</span><select value={client} onChange={(event) => setClient(event.target.value)}>{clients.map((item) => <option value={item} key={item}>{item === 'All' ? 'All clients' : item}</option>)}</select><ChevronDown className="mux-select-chevron" aria-hidden="true" /></label></>}
