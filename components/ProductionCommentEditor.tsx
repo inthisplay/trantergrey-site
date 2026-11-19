@@ -2,7 +2,7 @@
 
 import { UiIcon } from '@/components/UiIcon';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
 import { BaseEditor, createEditor, Editor, Element as SlateElement, Transforms, type Descendant } from 'slate';
 import { Editable, ReactEditor, Slate, withReact, type RenderElementProps, type RenderLeafProps } from 'slate-react';
@@ -115,6 +115,8 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
   const [dragDepth, setDragDepth] = useState(0);
   const [uploading, setUploading] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState('');
+  const mediaInput = useRef<HTMLInputElement>(null);
+  const uploadInFlight = useRef(false);
   useEffect(() => {
     if (!muxPickerOpen || muxRequested) return;
     setMuxRequested(true);
@@ -144,7 +146,8 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
     }
   };
   const uploadFiles = async (files: File[]) => {
-    if (!cardId || !files.length) return;
+    if (!cardId || !files.length || uploadInFlight.current) return;
+    uploadInFlight.current = true;
     setUploadError('');
     setUploading(files.map((file) => file.name));
     try {
@@ -156,12 +159,16 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
         Transforms.insertNodes(editor, { type: 'paragraph', children: [{ text: '' }] });
       }
     } catch (error) { setUploadError(error instanceof Error ? error.message : 'Unable to upload this file.'); }
-    finally { setUploading([]); }
+    finally { setUploading([]); uploadInFlight.current = false; if (mediaInput.current) mediaInput.current.value = ''; }
   };
   const onDrop = (event: DragEvent<HTMLElement>) => { event.preventDefault(); setDragDepth(0); void uploadFiles(Array.from(event.dataTransfer.files)); };
   const ToolbarButton = ({ label, title, active, onMouseDown }: { label: ReactNode; title: string; active?: boolean; onMouseDown: () => void }) => <button type="button" title={title} aria-label={title} className={active ? 'is-active' : ''} onMouseDown={(event) => { event.preventDefault(); onMouseDown(); }}>{label}</button>;
 
   return <section className={`production-comment-composer${dragDepth > 0 ? ' is-dropping' : ''}`} aria-label="Comment composer" onDragEnter={(event) => { event.preventDefault(); setDragDepth((depth) => depth + 1); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { event.preventDefault(); setDragDepth((depth) => Math.max(0, depth - 1)); }} onDrop={onDrop}>
+    {cardId && <div className="production-comment-media-bar">
+      <button type="button" className="production-comment-add-media" disabled={uploading.length > 0} onMouseDown={event => event.preventDefault()} onClick={() => mediaInput.current?.click()}>{uploading.length ? 'Uploading…' : '+ Add photos / videos'}</button>
+      <input ref={mediaInput} type="file" hidden multiple accept="image/*,video/*" aria-label="Choose photos or videos for this comment" onChange={event => { const files = Array.from(event.target.files || []); if (files.length) void uploadFiles(files); }} />
+    </div>}
     <div className="production-comment-composer-bar"><div className="production-comment-tools" aria-label="Text formatting">
       <ToolbarButton label={<UiIcon name="bold" />} title="Bold" active={isMarkActive(editor, 'bold')} onMouseDown={() => toggleMark(editor, 'bold')} />
       <ToolbarButton label={<UiIcon name="italic" />} title="Italic" active={isMarkActive(editor, 'italic')} onMouseDown={() => toggleMark(editor, 'italic')} />
