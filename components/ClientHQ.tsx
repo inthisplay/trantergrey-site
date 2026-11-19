@@ -68,6 +68,7 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
       <div className={styles.clients}>{clients.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).map(c=><a key={c.id} href={`${basePath}?client=${c.id}`}><span className={styles.initial}>{c.name.slice(0,2).toUpperCase()}</span><h2>{c.name}</h2><span>{c.open_todos || 0} open to-dos</span><UiIcon name="forward"/></a>)}</div>
       {!clients.some(c=>c.name.toLowerCase().includes(query.toLowerCase())) && <p className={styles.empty}>No matching clients. Add a client to start a workspace.</p>}
     </> : <>
+      <button type="button" className={styles.activityBar} onClick={()=>setActivityOpen(true)} aria-controls="deck-activity-panel" aria-haspopup="dialog" aria-expanded={activityOpen}>Activity</button>
       <details className={styles.related} onToggle={e=>{if(e.currentTarget.open && !related)void run(()=>loadRelated());}}><summary>Linked Deck cards & videos</summary>{related ? <><div className={styles.fields}><div><div className={styles.relatedHeading}><h3>Deck cards</h3><a className={styles.addDeckCard} href={`/admin/production?newCard=1&client=${encodeURIComponent(client.name)}`} aria-label={`Add Deck card for ${client.name}`} title="Add Deck card"><UiIcon name="plus"/>Add card</a></div>{related.cards.map(c=><a key={c.id} href={`${deckPath}?card=${encodeURIComponent(c.id)}`}>{c.title} <UiIcon name="forward"/></a>)}{!related.cards.length && <p>No linked Deck cards.</p>}{relatedPagination('cards')}</div><div><h3>Videos</h3>{related.videos.map(v=><a key={v.id} href={`/admin/mux/${encodeURIComponent(v.id)}`}>{v.title} <UiIcon name="forward"/></a>)}{!related.videos.length && <p>No linked videos.</p>}{relatedPagination('videos')}</div></div></>:<p>Loading linked work…</p>}</details>
       <div data-workspace-panels className={styles.workspacePanels}>
       {(['todo','note'] as const).map(tab=><section className={styles.panel} key={tab} aria-label={tab==='todo'?'To-dos':'Notes'}>
@@ -95,6 +96,6 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
     </>}
     {readingNote && <ClientNoteModal note={readingNote} onClose={()=>setReadingNote(null)}/>}
   </section>
-    {!loading && client && <DeckActivity key={client.id} client={client} open={activityOpen} hidden={false} onOpen={()=>setActivityOpen(true)} onClose={()=>setActivityOpen(false)} onCard={id=>{window.location.href=`${deckPath}?card=${encodeURIComponent(id)}`;}}/>}
+    {!loading && client && <DeckActivity key={client.id} client={client} open={activityOpen} hidden={true} onOpen={()=>setActivityOpen(true)} onClose={()=>setActivityOpen(false)} onCard={id=>{window.location.href=`${deckPath}?card=${encodeURIComponent(id)}`;}}/>}
   </>;
 }
