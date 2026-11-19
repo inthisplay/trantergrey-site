@@ -20,7 +20,9 @@ export async function drivePreviewResponse(request: Request, token: string, file
  const range=request.headers.get('range');
  if(range && !/^bytes=(?:\d+-\d*|-\d+)$/.test(range))return fail('Invalid byte range.',416);
  const url = info.exported ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}/export?mimeType=application%2Fpdf` : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`;
- const upstream = await fetch(url,{headers:{Authorization:`Bearer ${token}`,...(!info.exported && range ? {Range:range} : {})},redirect:'error'});
+ // Workers supports only follow/manual. Never follow redirects with the Drive token;
+ // a redirect is handled by the non-success response below.
+ const upstream = await fetch(url,{headers:{Authorization:`Bearer ${token}`,...(!info.exported && range ? {Range:range} : {})},redirect:'manual'});
  if(upstream.status===416){const contentRange=upstream.headers.get('content-range');if(contentRange)headers.set('Content-Range',contentRange);await upstream.body?.cancel();return new Response(null,{status:416,headers});}
  if(!upstream.ok){await upstream.body?.cancel();return fail(info.exported?'Google could not export this file as a PDF. Exports are limited to 10 MB; open it in Drive.':'Google could not load this file. Check its download permissions or try again.',upstream.status===403?403:502);}
  headers.set('Content-Type',info.kind==='unsupported'?'application/octet-stream':info.kind==='text'?'text/plain; charset=utf-8':info.mimeType);
