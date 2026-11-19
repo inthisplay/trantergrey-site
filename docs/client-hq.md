@@ -1,5 +1,9 @@
 # Client HQ local review
 
+Client directory cards have a pixel three-dot menu. Pins and colors are personal, stored by the authenticated account's normalized email and stable client ID through `/api/admin/client-preferences` (private/no-store). The request cannot select another user. Archive/restore is shared through the existing Client HQ API and records activity; it never hides or deletes a client. The directory sorts active pinned clients first, then other active clients, then archived clients, alphabetically within each group. Archived cards use dark gray/light text; personal colors return on restore.
+
+Migrations `0038_client_user_preferences.sql` and `0039_client_custom_colors.sql` are required for these features. They add personal preferences, custom hex colors, and the shared `client_directory.archived` flag. Apply locally for review; apply in production only with the eventual release.
+
 Open http://localhost:3100/admin/clients with `npm run dev` running. Use Google sign-in or the existing local owner-password login. Migration 0026 extends `client_directory` (the existing master list) with stable IDs and a Drive folder reference. Migration 0027 adds existing catalog/ratio-set client names to that same list. Notes/to-dos reference the stable ID. No active/potential status is introduced. New clients from legacy selectors receive IDs automatically. Renaming preserves workspace content and updates existing production associations.
 
 ## Google Drive configuration
@@ -33,3 +37,7 @@ Migration 0030 starts the window at migration time for previously completed task
 Client HQ previews use the authenticated `client-hq-drive` endpoint with `client`, `root`, and `preview` (file ID). Every request checks the linked folder ancestry; credentials remain server-side and responses are private/no-store. PDF.js renders PDFs locally, including PDF exports of Google Docs, Sheets, Slides, and Drawings (Google limits exports to 10 MB). Raster images, supported browser audio/video, and small plain-text files preview directly. Other stored formats download as attachments; Google-only formats without a PDF export retain Open in Drive. HTML and SVG are never rendered as active same-origin documents. Download restrictions from Drive are respected.
 
 `npm run dev` and `npm run build:site` prepare versioned PDF.js fonts, CMaps, and WASM assets from the installed package. The worker is bundled by Next; no third-party viewer or CDN receives private file content.
+
+Card colors use the same full picker as Deck panels: presets, native color selection, hex input, preview, and reset. The selected background is displayed with automatically contrasting text. Existing personal preset colors are preserved by migration 0039.
+
+Desktop users (fine pointer, hover, viewport at least 900px) can drag directory cards using the existing dnd-kit library. Mouse activation requires 8px of movement; touch sensors are not registered. Keyboard users can focus a card wrapper and use Space/arrows/Space or Escape. The dragged card leaves a dashed insertion placeholder; cards never combine. Orders are personal, persisted through `client-preferences` with `{action:"reorder",ids:[...]}`. Pinned/active/archived grouping takes precedence, and dragging is limited to the same group. Filtered-out cards retain their slots. Failed saves restore the previous order with an error. Migration `0040_client_card_order.sql` is also required (local only until release).

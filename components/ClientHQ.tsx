@@ -1,4 +1,7 @@
 'use client';
+import { ClientDirectoryGrid } from './ClientDirectoryGrid';
+import { ClientDirectoryCard } from './ClientDirectoryCard';
+import { compareClientCards, type ClientPreference } from '@/lib/client-preferences';
 import { DeckActivity } from './DeckActivity';
 import { useEffect, useState } from 'react';
 import { UiIcon } from './UiIcon';
@@ -11,7 +14,7 @@ import { ClientNoteModal } from './ClientNoteModal';
 import { isArchivedTodo } from '@/lib/client-todo';
 import styles from './ClientHQ.module.css';
 
-type Client={id:string;name:string;drive_folder_id:string|null;open_todos?:number};
+type Client={id:string;name:string;drive_folder_id:string|null;open_todos?:number;archived?:number};
 type Item={id:string;workspace_id:string;kind:'todo'|'note';title:string;body:string;body_format?:string;body_json?:string|null;completed:number;completed_at?:string|null;due_on:string;assignee:string};
 export async function hqRequest(url:string,body?:unknown) {
   const response=await fetch(url,body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {cache:'no-store'});
@@ -23,6 +26,7 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
   const deckPath=teamApp?'/app/deck':'/admin/production';
   const apiPath=teamApp?'/api/internal/v1/client-hq':'/api/admin/client-hq';
   const [clients,setClients]=useState<Client[]>([]),[client,setClient]=useState<Client|null>(null),[items,setItems]=useState<Item[]>([]);
+  const [preferences,setPreferences]=useState<Record<string,ClientPreference>>({}),[canCustomize,setCanCustomize]=useState(false);
   const [activityOpen,setActivityOpen]=useState(false);
   const [query,setQuery]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [expanded,setExpanded]=useState({todo:false,note:false,files:false});
@@ -35,7 +39,7 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
   async function load(){
     const id=new URLSearchParams(location.search).get('client');
     const data=await hqRequest(`${apiPath}${id ? `?id=${encodeURIComponent(id)}` : ''}`);
-    if(id){setClient(data.client);setItems(data.items);setMembers(data.members || []);}else{setClients(data.clients);setClient(null);}setLoading(false);
+    if(id){setClient(data.client);setItems(data.items);setMembers(data.members || []);}else{const personal=await hqRequest('/api/admin/client-preferences');setPreferences(personal.preferences);setCanCustomize(personal.canCustomize);setClients(data.clients);setClient(null);}setLoading(false);
   }
   useEffect(()=>{load().catch(e=>{setError(e.message);setLoading(false);});},[]);
   async function run(action:()=>Promise<void>){setBusy(true);setError('');try{await action();}catch(e){setError(e instanceof Error?e.message:'Something went wrong.');}finally{setBusy(false);}}
@@ -68,7 +72,7 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
       <ClientDriveConnection/>
       <label className={styles.search}>Find a client<input type="search" placeholder="Search clients…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
       <p className={styles.eyebrow}>{clients.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).length} clients</p>
-      <div className={styles.clients}>{clients.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).map(c=><a key={c.id} href={`${basePath}?client=${c.id}`}><span className={styles.initial}>{c.name.slice(0,2).toUpperCase()}</span><h2>{c.name}</h2><span>{c.open_todos || 0} open to-dos</span><UiIcon name="forward"/></a>)}</div>
+      <ClientDirectoryGrid clients={[...clients].sort((a,b)=>compareClientCards(a,b,preferences))} preferences={preferences} query={query} enabled={canCustomize} onReorder={async ids=>{await hqRequest('/api/admin/client-preferences',{action:'reorder',ids});setPreferences(current=>{const next={...current};ids.forEach((id,sortOrder)=>{next[id]={...(next[id]??{pinned:false,color:null}),sortOrder};});return next;});}} renderCard={id=>{const c=clients.find(client=>client.id===id)!;return <ClientDirectoryCard key={c.id} client={c} href={`${basePath}?client=${c.id}`} preference={preferences[c.id]} canCustomize={canCustomize} onArchive={async archived=>{await hqRequest(apiPath,{action:'archive-client',id:c.id,archived});setClients(current=>current.map(item=>item.id===c.id?{...item,archived:archived?1:0}:item));}} onSave={async patch=>{const saved=await hqRequest('/api/admin/client-preferences',{clientId:c.id,...patch});setPreferences(current=>({...current,[c.id]:saved}));}}/>;}}/>
       {!clients.some(c=>c.name.toLowerCase().includes(query.toLowerCase())) && <p className={styles.empty}>No matching clients. Add a client to start a workspace.</p>}
     </> : <>
       <details className={styles.related} onToggle={e=>{if(e.currentTarget.open && !related)void run(()=>loadRelated());}}><summary>Linked Deck cards & videos</summary>{related ? <><div className={styles.fields}><div><div className={styles.relatedHeading}><h3>Deck cards</h3><a className={styles.addDeckCard} href={`/admin/production?newCard=1&client=${encodeURIComponent(client.name)}`} aria-label={`Add Deck card for ${client.name}`} title="Add Deck card"><UiIcon name="plus"/>Add card</a></div>{related.cards.map(c=><a key={c.id} href={`${deckPath}?card=${encodeURIComponent(c.id)}`}>{c.title} <UiIcon name="forward"/></a>)}{!related.cards.length && <p>No linked Deck cards.</p>}{relatedPagination('cards')}</div><div><h3>Videos</h3>{related.videos.map(v=><a key={v.id} href={`/admin/mux/${encodeURIComponent(v.id)}`}>{v.title} <UiIcon name="forward"/></a>)}{!related.videos.length && <p>No linked videos.</p>}{relatedPagination('videos')}</div></div></>:<p>Loading linked work…</p>}</details>

@@ -104,3 +104,36 @@
 .workspaceNavigation{display:flex;align-items:center;justify-content:space-between;gap:20px}
 .hq .activityButton{min-height:44px;padding:8px 0;border:0;color:var(--hq-muted);font-size:13px;flex-shrink:0}
 .hq .activityButton:hover{color:#af4252}
+
+.clientCard{position:relative;min-width:0}
+.clients .clientCard>a{box-sizing:border-box;height:100%;padding-top:26px}
+.clients .clientCard[data-colored]>a{border-color:var(--client-color);background:var(--client-color);color:var(--client-ink)}
+.clientCard[data-colored] .clientMenuTrigger{color:var(--client-ink)}
+.clientCardMenu{position:absolute;top:12px;right:12px;z-index:2;display:flex;align-items:center;gap:4px}
+.clientPin{display:grid;place-items:center;width:28px;height:28px;color:#f5cd38}
+.clientPin svg{width:20px;height:20px}
+.clientCardMenu:has(.clientMenuPanel){z-index:10}
+.hq .clientMenuTrigger{width:44px;height:44px;padding:10px;border:0;color:var(--hq-muted)}
+.clientMenuPanel{position:absolute;right:0;top:48px;box-sizing:border-box;width:240px;max-width:calc(100vw - 68px);padding:16px;background:var(--hq-bg);border:1px solid var(--hq-line);box-shadow:0 12px 35px #0003;color:var(--hq-ink)}
+.clientMenuPanel p{margin:0 0 12px;font-size:12px;color:var(--hq-muted);line-height:1.5}
+.clientMenuPanel>button{width:100%}
+.clientMenuPanel fieldset{border:0;padding:0;margin:16px 0 0;min-width:0}
+.clientMenuPanel legend{font-size:12px;margin-bottom:8px}
+.clientSwatches{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.hq .clientSwatches button{min-width:44px;min-height:44px;padding:8px;color:var(--hq-ink)}
+.hq .clientSwatches button[aria-pressed=true]{outline:2px solid var(--hq-ink);outline-offset:2px}
+.clientSwatches svg{color:#fff;filter:drop-shadow(0 1px 1px #000)}
+
+.clients .clientCard[data-archived]>a{background:#48484b;border-color:#606064;color:#f5f2ed}
+.clientCard[data-archived] .clientMenuTrigger{color:#f5f2ed}
+.clientCard[data-archived] .initial{background:#606064;color:#f5f2ed}
+.clientMenuPanel>button+button{margin-top:8px}
+
+.clientMenuPanel .sharedPreference{margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--hq-line)}
+
+.sortableClient{position:relative;min-width:0}
+.sortableClientContent,.sortableClientContent>.clientCard{height:100%}
+.sortableClient[data-dragging] .sortableClientContent{visibility:hidden}
+.clientDropTarget{position:absolute;inset:0;display:grid;place-items:center;border:2px dashed #b95160;background:color-mix(in srgb,#b95160 8%,var(--hq-bg));color:var(--hq-muted);font:12px var(--mono);pointer-events:none}
+.clientDragOverlay{display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:200px;height:100%;padding:26px;background:#f5f2ed;color:#252222;border:2px solid #b95160;box-shadow:0 16px 40px #0004;font:24px var(--sans);overflow-wrap:anywhere;cursor:grabbing}
+@media(min-width:900px) and (hover:hover) and (pointer:fine){.sortableClient[role=button] .clientCard>a{cursor:grab}.sortableClient:focus-visible{outline:2px solid #b95160;outline-offset:4px}}

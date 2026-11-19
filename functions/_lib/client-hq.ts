@@ -36,6 +36,15 @@ export async function clientHQResponse({ request, env }: Context, actorName?: st
   if (!b) return Response.json({ error: 'Invalid request.' }, { status: 400 });
   const str = (key: string, max: number) => typeof b[key] === 'string' ? (b[key] as string).trim().slice(0,max) : '';
   const id = str('id',100), now = new Date().toISOString();
+  if (b.action === 'archive-client') {
+    if (!id || typeof b.archived !== 'boolean') return Response.json({error:'Choose a client and archive state.'},{status:400});
+    if (!await env.TG_DATA.prepare('SELECT id FROM client_directory WHERE id=?').bind(id).first()) return Response.json({error:'Client not found.'},{status:404});
+    await env.TG_DATA.batch([
+      env.TG_DATA.prepare('UPDATE client_directory SET archived=? WHERE id=?').bind(b.archived?1:0,id),
+      await clientActivity(request,env,id,b.archived?'client_archived':'client_restored',b.archived?'Archived the client.':'Restored the client.','management',actorName),
+    ]);
+    return Response.json({id,archived:b.archived},{headers});
+  }
   if (b.action === 'client') {
     const name = str('name',120);
     if (!name) return Response.json({ error: 'Enter a client name.' }, { status: 400 });

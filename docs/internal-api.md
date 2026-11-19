@@ -75,6 +75,7 @@ These reads require `clients:read`.
 note sanitization, completion timestamps, workspace isolation, and activity log:
 
 - Create a client: `{ "action": "client", "name": "Client name" }` (201, `data.id`).
+- Archive/restore for everyone: `{ "action": "archive-client", "id": "<client-id>", "archived": true }` (use `false` to restore). Clients remain in listings and retain all content; `archived` is returned on client records.
 - Create a note/to-do: `{ "workspace_id": "...", "kind": "todo", "title": "Follow up", "assignee": "", "due_on": "" }`.
 - Update an item: send its `id`, `workspace_id`, `title`, and full editable fields
   (`body`, `body_format`, `body_json`, `completed`, `due_on`, `assignee`). Updates

@@ -7,6 +7,7 @@ import type { DeckHistoryEvent, DeckHistoryMedia, DeckHistoryPage } from '@/lib/
 import styles from './DeckActivityPreview.module.css';
 
 const actions: Record<string, string> = {
+  client_archived:'archived the client',client_restored:'restored the client',
   todo_created:'added a to-do',todo_updated:'updated a to-do',todo_completed:'completed a to-do',todo_reopened:'reopened a to-do',todo_deleted:'deleted a to-do',note_created:'added a note',note_updated:'updated a note',note_deleted:'deleted a note',drive_uploaded:'uploaded a file',drive_folders:'updated linked Drive folders',drive_pins:'updated pinned folders',
   card_created: 'created a card', card_updated: 'updated a card', card_moved: 'moved a card', card_reordered: 'reordered a card',
   card_archived: 'archived a card', card_restored: 'restored a card', notes_updated: 'updated the notes', assignment_updated: 'updated the assignees',
