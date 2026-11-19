@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 
 const cookieName = 'tg_admin';
 const sessionLifetime = 60 * 60 * 12;
+const teamSessionLifetime = 60 * 60 * 24 * 30;
 const adminDomain = 'trantergrey.com';
 
 function password() {
@@ -17,8 +18,8 @@ function sessionSecret() {
   return process.env.ADMIN_SESSION_SECRET || password();
 }
 
-function sessionValue(email: string) {
-  const payload = Buffer.from(JSON.stringify({ email, expiresAt: Date.now() + sessionLifetime * 1000 })).toString('base64url');
+function sessionValue(email: string, lifetime: number) {
+  const payload = Buffer.from(JSON.stringify({ email, expiresAt: Date.now() + lifetime * 1000 })).toString('base64url');
   const signature = createHmac('sha256', sessionSecret()).update(payload).digest('base64url');
   return `${payload}.${signature}`;
 }
@@ -62,8 +63,9 @@ export async function requireAdminApi() {
   return NextResponse.json({ error: password() ? 'Sign in to use the private library.' : 'ADMIN_PASSWORD is not configured.' }, { status: 401 });
 }
 
-export function setAdminSession(response: NextResponse, email = `owner@${adminDomain}`) {
-  response.cookies.set(cookieName, sessionValue(email), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: sessionLifetime, path: '/' });
+export function setAdminSession(response: NextResponse, email?: string) {
+  const lifetime = email && isTranterGreyEmail(email) ? teamSessionLifetime : sessionLifetime;
+  response.cookies.set(cookieName, sessionValue(email || `owner@${adminDomain}`, lifetime), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: lifetime, path: '/' });
 }
 
 export function isTranterGreyEmail(email: string) {

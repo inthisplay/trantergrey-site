@@ -39,6 +39,7 @@ type AdminIdentity = { name: string; email?: string | null };
 
 const sessionCookie = 'tg_admin';
 const sessionLifetimeSeconds = 60 * 60 * 12;
+const teamSessionLifetimeSeconds = 60 * 60 * 24 * 30;
 
 function cookie(request: Request, name: string) {
   const value = request.headers.get('cookie') || '';
@@ -84,14 +85,15 @@ export async function adminResponse(request: Request, env: AdminEnvironment) {
 
 export async function adminCookie(env: AdminEnvironment, identity: AdminIdentity = { name: 'Admin' }) {
   const value = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + sessionLifetimeSeconds * 1000).toISOString();
   const name = identity.name.trim().slice(0, 120) || 'Admin';
   const email = identity.email?.trim().toLowerCase().slice(0, 254) || null;
+  const lifetime = email && isTranterGreyEmail(email) ? teamSessionLifetimeSeconds : sessionLifetimeSeconds;
+  const expiresAt = new Date(Date.now() + lifetime * 1000).toISOString();
   await env.TG_DATA
     .prepare('INSERT INTO admin_sessions (id, expires_at, user_name, user_email) VALUES (?, ?, ?, ?)')
     .bind(value, expiresAt, name, email)
     .run();
-  return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${sessionLifetimeSeconds}`;
+  return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${lifetime}`;
 }
 
 export function clearAdminCookie() {
