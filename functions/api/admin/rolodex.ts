@@ -7,7 +7,7 @@ type Row = Record<string, any>;
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
 const fail = (error: string, status = 400) => json({ error }, status);
 function media(row: Row) { return { id: row.id, personId: row.person_id, title: row.title, kind: row.kind, contentType: row.content_type, url: row.kind === 'mux' ? row.player_url : `/api/admin/rolodex/media/${row.id}`, thumbnailUrl: row.thumbnail_url, sourceCardId: row.source_card_id }; }
-function person(row: Row, cover: Row | undefined) { return { id: row.id, name: row.name, birthday: row.birthday, ethnicity: row.ethnicity, gender: row.gender, tags: JSON.parse(row.tags_json), email: row.email, phone: row.phone, notes: row.notes, coverMediaId: row.cover_media_id, archivedAt: row.archived_at, cover: cover ? media(cover) : null }; }
+function person(row: Row, cover: Row | undefined) { return { id: row.id, name: row.name, birthday: row.birthday, age: row.age ?? null, ageAsOfYear: row.age_as_of_year ?? null, birthYear: row.birth_year ?? null, ethnicity: row.ethnicity, gender: row.gender, tags: JSON.parse(row.tags_json), email: row.email, phone: row.phone, notes: row.notes, coverMediaId: row.cover_media_id, archivedAt: row.archived_at, cover: cover ? media(cover) : null }; }
 function fields(body: Row) {
   const result: Row = {};
   for (const [key, limit] of Object.entries({ name: 180, ethnicity: 100, gender: 100, email: 254, phone: 100, notes: 10000 })) {
@@ -19,7 +19,16 @@ function fields(body: Row) {
     const value = body.birthday;
     if (value && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10) !== value || value > new Date().toISOString().slice(0,10) || value < '1900-01-01')) throw new Error('Enter a valid birthday, not in the future.');
     result.birthday = value || null;
+    if (!('birthYear' in body)) result.birth_year = value ? Number(value.slice(0,4)) : null;
   }
+  const year = new Date().getUTCFullYear();
+  for (const [key, column, min, max] of [['age','age',0,130],['ageAsOfYear','age_as_of_year',1900,year],['birthYear','birth_year',1900,year]] as const) {
+    if (!(key in body)) continue;
+    const value = body[key];
+    if (value !== null && (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max)) throw new Error(`Enter a valid ${key} (${min}–${max}), or leave it blank.`);
+    result[column] = value;
+  }
+  if ('age' in body) result.age_as_of_year = body.age === null ? null : (body.ageAsOfYear ?? year);
   if ('tags' in body) {
     if (!Array.isArray(body.tags) || body.tags.length > 40 || body.tags.some((tag: unknown) => typeof tag !== 'string' || tag.trim().length > 50)) throw new Error('Use up to 40 tags, each 50 characters or fewer.');
     result.tags_json = JSON.stringify([...new Set(body.tags.map((tag: string) => tag.trim().toLowerCase()).filter(Boolean))]);
