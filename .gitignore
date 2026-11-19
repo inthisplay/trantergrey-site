@@ -9,3 +9,5 @@ out/
 .dev.vars
 data/
 .DS_Store
+
+/public/vendor/pdfjs/

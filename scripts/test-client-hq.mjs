@@ -336,3 +336,30 @@ test('Drive connection from the PWA stores an in-app return destination',async()
     assert.equal(db.prepare('SELECT destination FROM client_drive_oauth_states').get().destination,'/app/clients?client='+encodeURIComponent(id));
   } finally {db.close();}
 });
+
+test('private Drive previews enforce client roots, export PDFs, stream ranges and isolate active content',async()=>{
+ const {db,env,request}=fixture(),original=globalThis.fetch;
+ Object.assign(env,{GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',GOOGLE_DRIVE_ENCRYPTION_KEY:'12'.repeat(32),GOOGLE_DRIVE_ID:'root'});
+ const id=db.prepare('SELECT id FROM client_directory').get().id;
+ db.prepare("UPDATE client_directory SET drive_folder_id='linked'").run();
+ db.prepare("INSERT INTO client_drive_connection VALUES('organization',?,?,?,?,0)").run(await handlers.oauth.encryptDriveSecret(env,'refresh'),'owner@trantergrey.com','root','now');
+ const files={root:{id:'root'},linked:{id:'linked',parents:['root']},other:{id:'other',parents:['root']},pdf:{id:'pdf',name:'Brief.pdf',mimeType:'application/pdf',parents:['linked']},outside:{id:'outside',parents:['other']},doc:{id:'doc',name:'Brief',mimeType:'application/vnd.google-apps.document',parents:['linked']},html:{id:'html',name:'Page.html',mimeType:'text/html',parents:['linked']},locked:{id:'locked',name:'Locked.pdf',mimeType:'application/pdf',parents:['linked'],capabilities:{canDownload:false}}};
+ let contentRequests=0,exported=false,receivedRange;
+ globalThis.fetch=async(url,init={})=>{const u=new URL(url);if(u.pathname==='/token')return Response.json({access_token:'server-secret'});
+  if(u.searchParams.get('alt')==='media'||u.pathname.endsWith('/export')){contentRequests++;assert.equal(init.headers.Authorization,'Bearer server-secret');assert.equal(init.redirect,'error');exported=u.pathname.endsWith('/export');receivedRange=init.headers.Range;return new Response('PDF',{status:receivedRange?206:200,headers:{'Content-Type':'text/html','Content-Length':'3',...(receivedRange?{'Content-Range':'bytes 0-2/10','Accept-Ranges':'bytes'}:{})}});}
+  const f=files[u.pathname.split('/').at(-1)];return f?Response.json(f):new Response(null,{status:404});};
+ const api=(file,suffix='',auth=true,range)=>{const req=request(`client-hq-drive?client=${id}&preview=${file}${suffix}`,undefined,auth);if(range)req.headers.set('Range',range);return handlers.drive.onRequest({env,request:req});};
+ try{
+  assert.equal((await api('pdf','',false)).status,401);
+  assert.equal((await api('outside')).status,400);assert.equal(contentRequests,0);
+  assert.equal((await api('pdf','&root=other')).status,400);assert.equal(contentRequests,0);
+  assert.equal((await handlers.drive.onRequest({env,request:request('client-hq-drive?preview=pdf')})).status,400);
+  const info=await (await api('doc','&info=1')).json();assert.equal(info.kind,'pdf');assert.equal(info.exported,true);assert.equal(contentRequests,0);
+  const pdf=await api('pdf','',true,'bytes=0-2');assert.equal(pdf.status,206);assert.equal(receivedRange,'bytes=0-2');assert.equal(pdf.headers.get('Content-Type'),'application/pdf');assert.equal(pdf.headers.get('Content-Range'),'bytes 0-2/10');assert.equal(pdf.headers.get('Cache-Control'),'private, no-store');assert.match(pdf.headers.get('Content-Security-Policy'),/sandbox/);assert.equal(pdf.headers.get('X-Content-Type-Options'),'nosniff');assert.equal(await pdf.text(),'PDF');
+  await api('doc');assert.equal(exported,true);assert.equal(receivedRange,undefined);
+  assert.equal((await api('html')).status,415);
+  const download=await api('html','&download=1');assert.equal(download.headers.get('Content-Type'),'application/octet-stream');assert.match(download.headers.get('Content-Disposition'),/^attachment/);
+  assert.equal((await api('locked')).status,403);
+  assert.equal((await api('pdf','',true,'bytes=0-2,4-6')).status,416);
+ }finally{globalThis.fetch=original;db.close();}
+});

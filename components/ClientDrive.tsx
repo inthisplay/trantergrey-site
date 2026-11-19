@@ -157,7 +157,7 @@ export function ClientDrive({client,onChange}:{client:Client;onChange:()=>Promis
     </>;
   return <section id="workspace-files" className={`${styles.panel} ${styles.drivePanel} ${styles.panelDropZone}`} aria-label="Docs & files" data-dragging={dragging || undefined} {...dropHandlers}>
     <p className={styles.eyebrow}>Google Drive</p>
-    {preview && <ClientDrivePreview file={preview} onClose={()=>setPreview(null)}/>}
+    {preview && <ClientDrivePreview client={client.id} root={selectedRoot} file={preview} onClose={()=>setPreview(null)}/>}
     <div className={styles.sectionHeading}><h2>Docs & files</h2><button disabled={uploading} aria-label="Docs and files settings" title="Docs and files settings" onClick={()=>setSettings(true)}><UiIcon name="settings"/></button></div>
     {!settings && !expanded && pinError && <p role="alert" className={styles.error}>{pinError}</p>}
     {!settings && error && <div className={styles.error} role="alert">{error} <button disabled={busy || uploading} onClick={()=>void browse(path[path.length-1]?.id || '')}>Refresh files</button></div>}

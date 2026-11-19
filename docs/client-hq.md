@@ -27,3 +27,9 @@ OAuth reference: https://developers.google.com/identity/protocols/oauth2/web-ser
 Completion is recorded server-side in `completed_at`. To-dos completed more than 30 days ago appear in the workspace's View archive section instead of the main list. Archive membership is derived from that timestamp; no scheduled worker or deletion is needed. Open workspaces refresh the time comparison every minute. Editing a completed task preserves its completion date. Reopen clears completion and returns it to the main list; completing it again starts a new 30-day window.
 
 Migration 0030 starts the window at migration time for previously completed tasks because their original completion dates were not recorded.
+
+### Private Drive previews
+
+Client HQ previews use the authenticated `client-hq-drive` endpoint with `client`, `root`, and `preview` (file ID). Every request checks the linked folder ancestry; credentials remain server-side and responses are private/no-store. PDF.js renders PDFs locally, including PDF exports of Google Docs, Sheets, Slides, and Drawings (Google limits exports to 10 MB). Raster images, supported browser audio/video, and small plain-text files preview directly. Other stored formats download as attachments; Google-only formats without a PDF export retain Open in Drive. HTML and SVG are never rendered as active same-origin documents. Download restrictions from Drive are respected.
+
+`npm run dev` and `npm run build:site` prepare versioned PDF.js fonts, CMaps, and WASM assets from the installed package. The worker is bundled by Next; no third-party viewer or CDN receives private file content.

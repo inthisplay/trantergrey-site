@@ -1,7 +1,7 @@
 import type { AdminEnvironment } from './admin';
 import { connectionStatus,decryptDriveSecret,sharedDriveId } from './client-drive-oauth';
 export const folderType = 'application/vnd.google-apps.folder';
-export type DriveFile = { id:string; name:string; mimeType:string; parents?:string[]; driveId?:string; trashed?:boolean; thumbnailLink?:string; webViewLink?:string };
+export type DriveFile = { id:string; name:string; mimeType:string; parents?:string[]; driveId?:string; trashed?:boolean; thumbnailLink?:string; webViewLink?:string; size?:string; capabilities?:{canDownload?:boolean} };
 export const driveId = sharedDriveId;
 export const driveConfigured = async(env:AdminEnvironment) => (await connectionStatus(env)).connected;
 export async function driveToken(env:AdminEnvironment) {
@@ -32,7 +32,7 @@ export async function driveRequest<T>(token:string, path:string, init:RequestIni
 }
 export async function driveFile(token:string,id:string) {
   if(!/^[\w-]+$/.test(id)) throw new Error('Invalid Drive item.');
-  return driveRequest<DriveFile>(token,`files/${id}?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId,trashed,thumbnailLink,webViewLink`);
+  return driveRequest<DriveFile>(token,`files/${id}?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId,trashed,thumbnailLink,webViewLink,size,capabilities(canDownload)`);
 }
 export async function driveThumbnail(token:string,link:string):Promise<Response|null> {
   let url=new URL(link);

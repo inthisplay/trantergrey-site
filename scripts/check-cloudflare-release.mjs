@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const requiredFiles = [
   'out/login.html',
@@ -187,5 +187,11 @@ for (const table of ['production_card_video_links', 'production_card_activity', 
 }
 const internalApi = readFileSync('functions/_lib/internal-api.ts', 'utf8');
 if (!internalApi.includes('requireApiScope') || !internalApi.includes('api_integration_credentials')) throw new Error('Internal API authentication is incomplete.');
+
+const pdfVersion = JSON.parse(readFileSync('node_modules/pdfjs-dist/package.json', 'utf8')).version;
+for (const asset of ['cmaps/Adobe-Japan1-UCS2.bcmap', 'standard_fonts/LiberationSans-Regular.ttf', 'wasm/openjpeg.wasm']) {
+  if (!existsSync(`out/vendor/pdfjs/${pdfVersion}/${asset}`)) throw new Error(`PDF preview asset missing: ${asset}`);
+}
+if (!readdirSync('out/_next/static/media').some(name => name.startsWith('pdf.worker.min.') && name.endsWith('.mjs'))) throw new Error('PDF preview worker is missing.');
 
 console.log('Cloudflare release checks passed.');

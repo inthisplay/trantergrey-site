@@ -1,3 +1,4 @@
+import { drivePreviewInfo, drivePreviewResponse } from '../../_lib/client-drive-preview';
 import { clientActivity } from '../../_lib/client-activity';
 import { adminResponse,type AdminEnvironment } from '../../_lib/admin';
 import { driveId,driveToken,requireWithin,listDrive,createFolder,folderType,managedFolder,withDriveLock,driveFolderPath,driveThumbnail } from '../../_lib/client-drive';
@@ -27,7 +28,13 @@ export async function onRequest({request,env}:Context) {
       const parent=url.searchParams.get('folder') || root;
       if(client && !client.drive_folder_id) return Response.json({error:'Choose a Google Drive folder for this client.'},{status:400});
       const thumbnail=url.searchParams.get('thumbnail');
-      const file=await requireWithin(token,thumbnail || parent,root);
+      const preview=url.searchParams.get('preview');
+      if(preview && !client)return Response.json({error:'Select a client first.'},{status:400,headers});
+      const file=await requireWithin(token,preview || thumbnail || parent,root);
+      if(preview){
+        if(url.searchParams.has('info'))return Response.json(drivePreviewInfo(file),{headers});
+        return await drivePreviewResponse(request,token,file);
+      }
       if(thumbnail) {
         if(!file.thumbnailLink) return new Response(null,{status:404});
         const image=await driveThumbnail(token,file.thumbnailLink);
