@@ -1,5 +1,6 @@
 // Shared vector paths for React controls and generated comment HTML.
 export const uiIconPaths = {
+  "clock": "M6 2h12v2H6zM2 6h2v12H2zm18 0h2v12h-2zm-2-2h2v2h-2zM4 4h2v2H4zm2 18h12v-2H6zm12-2h2v-2h-2zM4 20h2v-2H4zm7-14h2v7h-2zm2 7h2v2h-2zm2 2h2v2h-2z",
   "folder": "M2 4h8l2 3h10v13H2V4Zm2 2v12h16V9h-9L9 6H4Z",
   "settings": "M10 2h4v3h3V3l3 3-2 2v2h4v4h-4v2l2 2-3 3v-3h-3v4h-4v-4H7v3l-3-3 2-2v-2H2v-4h4V8L4 6l3-3v2h3V2Zm2 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z",
   "back": "M20 11v2H4v-2zM8 13v2H6v-2zm2 2v2H8v-2zm2 2v2h-2v-2zm-4-6V9H6v2z M10 15V7H8v8zm2 2V5h-2v12z",

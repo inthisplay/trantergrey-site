@@ -51,7 +51,10 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
   const todos=items.filter(i=>i.kind==='todo' && !isArchivedTodo(i,archiveClock)),notes=items.filter(i=>i.kind==='note');
   const archivedTodos=items.filter(i=>isArchivedTodo(i,archiveClock)).sort((a,b)=>(b.completed_at || '').localeCompare(a.completed_at || ''));
   return <><section data-client-workspace={client?.id} className={`${styles.hq} ${client?styles.workspace:''} ${teamApp?styles.teamApp:''}`}>
+    <div className={styles.workspaceNavigation}>
     <a className={styles.back} href={client?basePath:teamApp?'/app/mux':'/admin'}><UiIcon name="back"/>{client?'All clients':teamApp?'Team workspace':'Admin dashboard'}</a>
+      {!loading && client && <button type="button" className={styles.activityButton} onClick={()=>setActivityOpen(true)} aria-controls="deck-activity-panel" aria-haspopup="dialog" aria-expanded={activityOpen}><UiIcon name="clock"/>Activity</button>}
+    </div>
     <header className={styles.heading}><div><p className={styles.eyebrow}>{client?'Client workspace':'TranterGrey / Client HQ'}</p><h1>{client?client.name:'Client HQ'}</h1>{!client && <p>A home for every client. Everything you need to keep work moving.</p>}</div>
       {!loading && <button onClick={()=>{setName(client?.name || '');client?setSettings(!settings):setAdding(!adding);}}><UiIcon name={client?'edit':'plus'}/>{client?'Client settings':'Add client'}</button>}
     </header>
@@ -68,7 +71,6 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
       <div className={styles.clients}>{clients.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).map(c=><a key={c.id} href={`${basePath}?client=${c.id}`}><span className={styles.initial}>{c.name.slice(0,2).toUpperCase()}</span><h2>{c.name}</h2><span>{c.open_todos || 0} open to-dos</span><UiIcon name="forward"/></a>)}</div>
       {!clients.some(c=>c.name.toLowerCase().includes(query.toLowerCase())) && <p className={styles.empty}>No matching clients. Add a client to start a workspace.</p>}
     </> : <>
-      <button type="button" className={styles.activityBar} onClick={()=>setActivityOpen(true)} aria-controls="deck-activity-panel" aria-haspopup="dialog" aria-expanded={activityOpen}>Activity</button>
       <details className={styles.related} onToggle={e=>{if(e.currentTarget.open && !related)void run(()=>loadRelated());}}><summary>Linked Deck cards & videos</summary>{related ? <><div className={styles.fields}><div><div className={styles.relatedHeading}><h3>Deck cards</h3><a className={styles.addDeckCard} href={`/admin/production?newCard=1&client=${encodeURIComponent(client.name)}`} aria-label={`Add Deck card for ${client.name}`} title="Add Deck card"><UiIcon name="plus"/>Add card</a></div>{related.cards.map(c=><a key={c.id} href={`${deckPath}?card=${encodeURIComponent(c.id)}`}>{c.title} <UiIcon name="forward"/></a>)}{!related.cards.length && <p>No linked Deck cards.</p>}{relatedPagination('cards')}</div><div><h3>Videos</h3>{related.videos.map(v=><a key={v.id} href={`/admin/mux/${encodeURIComponent(v.id)}`}>{v.title} <UiIcon name="forward"/></a>)}{!related.videos.length && <p>No linked videos.</p>}{relatedPagination('videos')}</div></div></>:<p>Loading linked work…</p>}</details>
       <div data-workspace-panels className={styles.workspacePanels}>
       {(['todo','note'] as const).map(tab=><section className={styles.panel} key={tab} aria-label={tab==='todo'?'To-dos':'Notes'}>

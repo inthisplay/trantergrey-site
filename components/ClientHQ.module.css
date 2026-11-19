@@ -101,6 +101,6 @@
 .drivePdfPages{display:flex;align-items:center;justify-content:center;gap:16px;position:sticky;top:0;padding:8px;background:#242426;color:#f5f2ed}
 .drivePdfPages button{min-width:44px;min-height:44px;background:#242426;color:#f5f2ed;border:1px solid #666}
 
-.hq .activityBar{display:flex;width:100%;min-height:44px;gap:16px;padding:8px 0;margin:0 0 8px;border:0;color:var(--hq-muted);font:11px var(--mono);letter-spacing:.15em;text-transform:uppercase}
-.hq .activityBar::before,.hq .activityBar::after{content:"";flex:1;height:1px;background:var(--hq-line)}
-.hq .activityBar:hover{color:#af4252}
+.workspaceNavigation{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.hq .activityButton{min-height:44px;padding:8px 0;border:0;color:var(--hq-muted);font-size:13px;flex-shrink:0}
+.hq .activityButton:hover{color:#af4252}
