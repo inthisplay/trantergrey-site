@@ -1,11 +1,12 @@
 'use client';
 
+import { uploadRolodexFile, uploadValidation } from '@/lib/rolodex-upload';
 import { RolodexEthnicitySelect } from './RolodexEthnicitySelect';
 import { ethnicityOptions } from '@/lib/rolodex-ethnicity';
 import { genderOptions, normalizedGender } from '@/lib/rolodex-gender';
 import { mediaVariantUrl, mediaPosterUrl } from '@/lib/media-preview';
 import { useEffect, useRef, useState } from 'react';
-import { castingAge, subscribeRolodexCatalog, rolodexMutation, rolodexRequest, type Talent, type TalentMedia, type TalentHistory } from '@/lib/rolodex';
+import { castingAge, withRolodexCatalogChange, subscribeRolodexCatalog, rolodexMutation, rolodexRequest, type Talent, type TalentMedia, type TalentHistory } from '@/lib/rolodex';
 import { AddTalentToCard, RolodexModal } from './RolodexDialogs';
 import styles from './Rolodex.module.css';
 
@@ -60,6 +61,7 @@ export function Rolodex({teamApp=false}:{teamApp?:boolean}) {
  </section>;
 }
 
+type UploadItem={id:string;file:File;loaded:number;phase:'queued'|'uploading'|'saving'|'success'|'failed';message:string};
 type Detail={person:Talent;media:TalentMedia[];history:TalentHistory[]};
 function TalentPanel({id,previous,next,onNavigate,onChanged,navigationGuard}:{id:string;previous:string|null;next:string|null;onNavigate:(id:string|null)=>void;onChanged:()=>void;navigationGuard:React.MutableRefObject<()=>Promise<boolean>>}) {
  const [detail,setDetail]=useState<Detail|null>(null),[error,setError]=useState('');
@@ -70,6 +72,10 @@ function Profile({detail,previous,next,onNavigate,onChanged,onDetail,navigationG
  const p=detail.person;
  const initial={name:p.name,age:castingAge(p)?.toString()??'',ethnicities:p.ethnicities,gender:normalizedGender(p.gender),tags:p.tags.join(', '),email:p.email,phone:p.phone,notes:p.notes};
  const [form,setForm]=useState(initial),[status,setStatus]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState<TalentMedia|null>(null),[mux,setMux]=useState(false),[confirm,setConfirm]=useState<'delete'|TalentMedia|null>(null),[cardPicker,setCardPicker]=useState(false),[message,setMessage]=useState('');
+ const [uploads,setUploads]=useState<UploadItem[]>([]);
+ const uploading=useRef(false),uploadAbort=useRef<AbortController|null>(null);
+ useEffect(()=>()=>uploadAbort.current?.abort(),[]);
+ useEffect(()=>{if(!busy)return;const warn=(event:BeforeUnloadEvent)=>{if(uploading.current){event.preventDefault();event.returnValue='';}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[busy]);
  const draft=useRef(initial),saved=useRef(JSON.stringify(initial)),timer=useRef<ReturnType<typeof setTimeout>|null>(null),inFlight=useRef<Promise<boolean>|null>(null),input=useRef<HTMLInputElement>(null);
  async function flush():Promise<boolean>{
   if(timer.current)clearTimeout(timer.current);
@@ -86,13 +92,48 @@ function Profile({detail,previous,next,onNavigate,onChanged,onDetail,navigationG
  useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current);},[]);
  async function refresh(){onDetail(await rolodexRequest(`?id=${p.id}`));onChanged();}
  async function mutate(body:object){setBusy(true);setError('');try{if(!await flush())return;await rolodexMutation({id:p.id,...body});await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- async function upload(files:File[]){if(!files.length||busy)return;setBusy(true);setError('');const errors:string[]=[];for(const file of files){try{await rolodexRequest(`/upload?id=${p.id}`,{method:'POST',headers:{'Content-Type':file.type,'X-File-Name':encodeURIComponent(file.name),'X-File-Size':String(file.size)},body:file});}catch(e){errors.push(`${file.name}: ${(e as Error).message}`);}}try{await refresh();}catch(e){errors.push((e as Error).message);}setError(errors.join(' '));setBusy(false);if(input.current)input.current.value='';}
+ async function processUploads(items:UploadItem[]){
+  if(uploading.current||busy)return;
+  uploading.current=true;setBusy(true);setError('');setMessage('');
+  const patch=(id:string,change:Partial<UploadItem>)=>setUploads(current=>current.map(item=>item.id===id?{...item,...change}:item));
+  let succeeded=0;
+  try {
+   if(!await flush()){for(const item of items)patch(item.id,{phase:'failed',message:'Profile edits could not be saved. Resolve the profile error, then retry.'});return;}
+   await withRolodexCatalogChange(async()=>{
+    for(const item of items){
+     const invalid=uploadValidation(item.file);if(invalid){patch(item.id,{phase:'failed',message:invalid});continue;}
+     const controller=new AbortController();uploadAbort.current=controller;
+     patch(item.id,{phase:'uploading',loaded:0,message:''});
+     try {
+      await uploadRolodexFile(p.id,item.file,item.id,progress=>patch(item.id,{phase:progress.phase,loaded:progress.loaded}),controller.signal);
+      succeeded++;patch(item.id,{phase:'success',loaded:item.file.size,message:'Uploaded successfully. Preview may take a moment to appear.'});
+     }catch(e){patch(item.id,{phase:'failed',message:(e as Error).message});}
+     finally{uploadAbort.current=null;}
+    }
+   });
+   if(succeeded)setMessage(`${succeeded} ${succeeded===1?'file uploaded':'files uploaded'} successfully.`);
+   try{await refresh();}catch{setError('The profile could not refresh. Successfully uploaded files are saved; reopen the profile to see them.');}
+  }finally{uploading.current=false;setBusy(false);if(input.current)input.current.value='';}
+ }
+ async function upload(files:File[]){
+  if(!files.length||busy||uploading.current)return;
+  const items:UploadItem[]=files.map(file=>({id:crypto.randomUUID(),file,loaded:0,phase:'queued',message:''}));
+  setUploads(items);await processUploads(items);
+ }
+
  return <><header className={styles.drawerHeader}><div className={styles.actions}><button aria-label="Previous person" type="button" disabled={!previous||busy} onClick={()=>void navigate(previous)}>‹</button><button aria-label="Next person" type="button" disabled={!next||busy} onClick={()=>void navigate(next)}>›</button><span>{p.archivedAt?'Archived':'The Rolodex'}</span></div><button type="button" disabled={busy} onClick={()=>void navigate(null)}><span className={styles.desktopClose}>Close ×</span><span className={styles.mobileBack}>← Back to grid</span></button></header>
  <div className={styles.profile}><div className={styles.profileHeading}><div className={styles.cover}><Face person={p}/></div><div><label>Name<input aria-label="Person name" maxLength={180} value={form.name} onChange={e=>update('name',e.target.value)} onBlur={()=>void flush()}/></label><span role="status" className={styles.saveStatus}>{status}</span><button type="button" disabled={busy||!!p.archivedAt} onClick={()=>setCardPicker(true)}>Add to Deck card</button></div></div>
  {error&&<p role="alert" className={styles.error}>{error} {status==='Not saved'&&<button type="button" onClick={()=>void flush()}>Retry save</button>}</p>}{message&&<p role="status">{message}</p>}
  <div className={styles.fields}><label>Age estimate as of {new Date().getFullYear()}<input type="number" min="0" max="130" step="1" value={form.age} placeholder="Unknown" onChange={e=>update('age',e.target.value)} onBlur={()=>void flush()}/><small>Automatically advances each year.</small></label><RolodexEthnicitySelect value={form.ethnicities} onChange={value=>{update('ethnicities',value);void flush();}}/>{(['gender','email','phone'] as const).map(key=><label key={key}>{key[0].toUpperCase()+key.slice(1)}{key==='gender'?<span className={styles.selectWrap}><select className={styles.genderSelect} value={form.gender} onChange={e=>{update('gender',normalizedGender(e.target.value));void flush();}}>{genderOptions.map(value=><option key={value} value={value}>{value}</option>)}</select></span>:<input type={key==='email'?'email':key==='phone'?'tel':'text'} value={form[key]} placeholder="Optional" onChange={e=>update(key,e.target.value)} onBlur={()=>void flush()}/>}</label>)}</div>
  <label>Tags<input value={form.tags} placeholder="comedy, voiceover, Atlanta…" onChange={e=>update('tags',e.target.value)} onBlur={()=>void flush()}/><small>Separate tags with commas.</small></label><label>Notes<textarea value={form.notes} rows={3} maxLength={10000} onChange={e=>update('notes',e.target.value)} onBlur={()=>void flush()}/></label>
- <section className={styles.mediaSection} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={e=>{e.preventDefault();void upload(Array.from(e.dataTransfer.files));}}><header><h2>Photos & auditions</h2><div className={styles.actions}><button type="button" disabled={busy} onClick={()=>input.current?.click()}>{busy?'Working…':'Upload media'}</button><button type="button" disabled={busy} onClick={()=>setMux(true)}>Search Mux</button></div></header><input hidden ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime" onChange={e=>void upload(Array.from(e.target.files||[]))}/><p className={styles.hint}>Drop photos or videos here · Up to 90 MB per file.</p>
+ <section className={styles.mediaSection} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={e=>{e.preventDefault();void upload(Array.from(e.dataTransfer.files));}}><header><h2>Photos & auditions</h2><div className={styles.actions}><button type="button" disabled={busy} onClick={()=>input.current?.click()}>{uploading.current?(uploads.some(item=>item.phase==='uploading'||item.phase==='saving')?'Uploading…':'Updating profile…'):busy?'Saving…':'Upload media'}</button><button type="button" disabled={busy} onClick={()=>setMux(true)}>Search Mux</button></div></header><input hidden ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime" onChange={e=>void upload(Array.from(e.target.files||[]))}/><p className={styles.hint}>Drop photos or videos here · Up to 90 MB per file.</p>
+ {uploads.length>0&&<div className={styles.uploadQueue} aria-label="Upload progress">{uploads.map(item=><div className={styles.uploadItem} key={item.id}>
+  <div className={styles.uploadHeading}><strong>{item.file.name}</strong><span>{(item.file.size/1024/1024).toFixed(1)} MB</span></div>
+  <progress aria-label={`Upload progress for ${item.file.name}`} max={item.file.size||1} value={item.loaded}/>
+  <div className={styles.uploadStatus} role={item.phase==='failed'?'alert':'status'}>{item.phase==='queued'?'Waiting to upload…':item.phase==='uploading'?`Uploading · ${Math.floor(item.loaded/(item.file.size||1)*100)}%`:item.phase==='saving'?'Transfer complete · Saving to profile…':item.message}</div>
+  {item.phase==='failed'&&<button type="button" disabled={busy} onClick={()=>void processUploads([item])}>Retry</button>}
+  {(item.phase==='uploading'||item.phase==='saving')&&<button type="button" onClick={()=>uploadAbort.current?.abort()}>Cancel upload</button>}
+ </div>)}</div>}
  {!detail.media.length&&<p>No media yet. Add a photo to give this person a face in the grid.</p>}
  <div className={styles.mediaGrid}>{detail.media.map(m=><article key={m.id}><button className={styles.mediaThumb} type="button" aria-label={`Preview ${m.title}`} onClick={()=>setPreview(m)}>{m.kind==='mux'?m.thumbnailUrl?<img src={m.thumbnailUrl} alt=""/>:<span>Mux video</span>:m.contentType?.startsWith('video/')?<img src={mediaVariantUrl(m.url, 'poster')} alt="" loading="lazy"/>:<img src={mediaVariantUrl(m.url, 'thumb')} alt="" loading="lazy"/>}{(m.kind==='mux'||m.contentType?.startsWith('video/'))&&<i>▶</i>}</button><input aria-label={`Media title for ${m.title}`} key={m.title} defaultValue={m.title} maxLength={180} disabled={busy} onBlur={e=>{if(e.target.value!==m.title)void mutate({action:'renameMedia',mediaId:m.id,title:e.target.value});}}/><div className={styles.mediaActions}>{m.kind==='upload'&&<button type="button" disabled={busy||p.coverMediaId===m.id} onClick={()=>void mutate({action:'cover',mediaId:m.id})}>{p.coverMediaId===m.id?'Cover':'Set cover'}</button>}<button type="button" disabled={busy} onClick={()=>setConfirm(m)}>Remove</button></div>{m.sourceCardId&&<a className={styles.source} href={`/app/deck?card=${encodeURIComponent(m.sourceCardId)}`}>Source production ↗</a>}</article>)}</div></section>
  <section className={styles.history}><h2>Production history</h2>{detail.history.length?detail.history.map(h=><a key={h.cardId} href={`/app/deck?card=${encodeURIComponent(h.cardId)}`}><strong>{h.title}</strong><span>{h.tags.join(', ')}{h.approvedAt?' · Approved':''}</span></a>):<p>No linked productions yet.</p>}</section>

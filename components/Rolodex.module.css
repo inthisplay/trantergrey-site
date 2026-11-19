@@ -130,3 +130,13 @@
 .profile .ethnicityChoices label { display:flex; align-items:flex-start; gap:10px; margin:0; padding:7px 0; font-size:14px; line-height:1.4; color:#211a1d; cursor:pointer; }
 .profile .ethnicityChoices input { appearance:auto; flex:none; width:16px; height:16px; margin:2px 0 0; padding:0; accent-color:#913542; }
 .ethnicityChoices button { width:100%; margin-top:10px; }
+
+.uploadQueue { display:grid; gap:12px; margin:16px 0; }
+.uploadItem { padding:14px; background:#fff; border:1px solid #d9cdd0; }
+.uploadHeading { display:flex; justify-content:space-between; gap:12px; font-size:13px; }
+.uploadHeading strong { overflow-wrap:anywhere; min-width:0; }
+.uploadHeading span { white-space:nowrap; color:#82787c; }
+.uploadItem progress { display:block; width:100%; height:8px; margin:12px 0; accent-color:#913542; }
+.uploadStatus { font-size:13px; color:#82787c; }
+.uploadStatus[role=alert] { color:#a42136; }
+.uploadItem button { margin-top:10px; }

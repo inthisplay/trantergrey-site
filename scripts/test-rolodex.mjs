@@ -6,6 +6,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {build} from 'esbuild';
+globalThis.FixedLengthStream=class {
+ constructor(size){let bytes=0;const stream=new TransformStream({transform(chunk,controller){bytes+=chunk.byteLength;if(bytes>size)throw new Error('Upload exceeds declared size');controller.enqueue(chunk);},flush(){if(bytes!==size)throw new Error('Upload was incomplete');}});this.readable=stream.readable;this.writable=stream.writable;}
+};
 const dir=await mkdtemp(join(tmpdir(),'tg-rolodex-'));
 for(const [name,path] of Object.entries({api:'functions/api/admin/rolodex.ts',upload:'functions/api/admin/rolodex/upload.ts',file:'functions/api/admin/rolodex/media/[media].ts',shared:'lib/rolodex.ts'}))await build({entryPoints:[path],bundle:true,platform:'node',format:'esm',outfile:join(dir,`${name}.mjs`)});
 const {onRequest}=await import(pathToFileURL(join(dir,'api.mjs')));
@@ -25,7 +28,7 @@ function fixture(){
  db.exec(migration);db.exec(rolodex);db.exec(ageMigration);db.exec(ageOnlyMigration);
  db.exec(`INSERT INTO production_gallery(id,card_source_id,filename,content_type,byte_size,r2_key,title,tags_json,approved_at,uploaded_by,created_at,updated_at) VALUES('original','source','actor.png','image/png',4,'photo','Alex','["dad"]','approved','Team','now','now');`);
  const objects=new Map([['photo',new TextEncoder().encode('test')]]);
- const env={ADMIN_PASSWORD:'test',TG_DATA:{prepare(sql){let args=[];return{bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};},async batch(statements){db.exec('BEGIN');try{const result=[];for(const s of statements)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}},PRODUCTION_ARCHIVE:{async put(key,data){objects.set(key,data);},async get(key,options){const data=objects.get(key);if(!data)return null;const chunk=options?.range?data.slice(options.range.offset,options.range.offset+options.range.length):data;return{body:new Blob([chunk]).stream(),size:data.length,...(options?.range?{range:options.range}:{})};}}};
+ const env={ADMIN_PASSWORD:'test',TG_DATA:{prepare(sql){let args=[];return{bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};},async batch(statements){db.exec('BEGIN');try{const result=[];for(const s of statements)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}},PRODUCTION_ARCHIVE:{async put(key,data){objects.set(key,data instanceof ReadableStream?new Uint8Array(await new Response(data).arrayBuffer()):data);},async get(key,options){const data=objects.get(key);if(!data)return null;const chunk=options?.range?data.slice(options.range.offset,options.range.offset+options.range.length):data;return{body:new Blob([chunk]).stream(),size:data.length,...(options?.range?{range:options.range}:{})};}}};
  const call=(body,query='',headers={cookie:'tg_admin=test'})=>onRequest({env,request:new Request(`http://localhost/api/admin/rolodex${query}`,{method:body?'POST':'GET',headers, ...(body?{body:JSON.stringify(body)}:{})})});
  const file=(id,headers={cookie:'tg_admin=test'})=>onRequestGet({env,params:{media:id},request:new Request('http://localhost/file',{headers})});
  return{db,env,call,file,objects};
@@ -67,7 +70,7 @@ test('attach to existing person, isolate media actions, private upload and range
  assert.equal((await call({action:'cover',id:other.id,mediaId:details.media[0].id})).status,404);
  assert.equal((await call({action:'removeMedia',id:other.id,mediaId:details.media[0].id})).status,404);
  const upload=(headers,body='clip')=>onRequestPost({env,request:new Request(`http://localhost/api/admin/rolodex/upload?id=${id}`,{method:'POST',headers:{cookie:'tg_admin=test','content-type':'video/mp4','x-file-size':'4','x-file-name':'Audition.mp4',...headers},body})});
- assert.equal((await upload({'content-type':'image/svg+xml'})).status,415);assert.equal((await upload({'x-file-size':'2'})).status,413);
+ assert.equal((await upload({'content-type':'image/svg+xml'})).status,415);assert.equal((await upload({'x-file-size':'2'})).status,503);
  const m=await(await upload({})).json();assert.ok(m.id);
  const partial=await file(m.id,{cookie:'tg_admin=test',range:'bytes=1-2'});assert.equal(partial.status,206);assert.equal(await partial.text(),'li');
  await call({action:'cover',id,mediaId:m.id});assert.equal((await(await call(null,`?id=${id}`)).json()).person.coverMediaId,m.id);
@@ -159,5 +162,26 @@ test('race / ethnicity migration retains specific source text and maps explicit 
  for(const [value] of values){const {id}=await(await call({action:'create',name:'Actor'})).json();ids.push(id);db.prepare("UPDATE rolodex_people SET ethnicity=?,notes='Slide notes' WHERE id=?").run(value,id);}
  db.exec(await readFile('migrations/0045_rolodex_ethnicity.sql','utf8'));
  for(let i=0;i<values.length;i++){const row=db.prepare('SELECT ethnicity,notes FROM rolodex_people WHERE id=?').get(ids[i]);assert.equal(row.ethnicity,values[i][1]);assert.ok(row.notes.startsWith('Slide notes'));if(values[i][0]&&values[i][0]!==values[i][1])assert.ok(row.notes.includes(values[i][0]));}
+ }finally{db.close();}
+});
+
+test('upload returns before preview processing and retries reuse the same saved media',async()=>{
+ const {db,env,call,objects}=fixture();try{
+ const {id}=await(await call({action:'create',name:'Upload actor'})).json();
+ const uploadId=crypto.randomUUID();const tasks=[];
+ env.MEDIA_OPTIMIZER={fetch:async()=>new Promise(()=>{})};
+ const send=()=>onRequestPost({env,waitUntil:promise=>tasks.push(promise),request:new Request(`http://localhost/api/admin/rolodex/upload?id=${id}`,{method:'POST',headers:{cookie:'tg_admin=test','content-type':'video/mp4','x-file-size':'4','x-file-name':'Audition.mp4','x-upload-id':uploadId},body:'clip'})});
+ const first=await send();assert.equal(first.status,201);assert.equal((await first.json()).id,uploadId);assert.equal(tasks.length,1);
+ const retry=await send();assert.equal(retry.status,200);assert.equal((await retry.json()).id,uploadId);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM rolodex_media WHERE person_id=?').get(id).n,1);
+ assert.equal(objects.get(`rolodex/${id}/${uploadId}`).length,4);
+ }finally{db.close();}
+});
+test('storage failure has a readable error and never creates a media record',async()=>{
+ const {db,env,call}=fixture();try{
+ const {id}=await(await call({action:'create',name:'Upload actor'})).json();
+ env.PRODUCTION_ARCHIVE.put=async(key,stream)=>{await new Response(stream).arrayBuffer();throw new Error('Storage unavailable');};
+ const response=await onRequestPost({env,request:new Request(`http://localhost/api/admin/rolodex/upload?id=${id}`,{method:'POST',headers:{cookie:'tg_admin=test','content-type':'video/mp4','x-file-size':'4'},body:'clip'})});
+ assert.equal(response.status,503);assert.match((await response.json()).error,/could not be stored completely/);assert.equal(db.prepare('SELECT COUNT(*) n FROM rolodex_media').get().n,0);
  }finally{db.close();}
 });

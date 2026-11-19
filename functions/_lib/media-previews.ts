@@ -2,13 +2,18 @@ import type { AdminEnvironment } from './admin';
 
 type Variant = 'thumb' | 'preview' | 'poster';
 async function generate(env: AdminEnvironment, key: string, variant: Variant) {
-  if (!env.MEDIA_OPTIMIZER) return;
+  const optimizer = env.MEDIA_OPTIMIZER;
+  if (!optimizer) return;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await env.MEDIA_OPTIMIZER.fetch('https://media-optimizer/', {
-      method: 'POST', body: JSON.stringify({ key, variant }),
+    await Promise.race([(async () => {
+    const response = await optimizer.fetch('https://media-optimizer/', {
+      method: 'POST', signal: controller.signal, body: JSON.stringify({ key, variant }),
     });
     await response.text();
-  } catch (error) { console.error('Media preview unavailable', error); }
+    })(), new Promise<void>(resolve => { timer = setTimeout(() => { controller.abort(); resolve(); }, 10_000); })]);
+  } catch (error) { console.error('Media preview unavailable', error); } finally { clearTimeout(timer); }
 }
 
 // Originals are already safely stored before this is called. Preview failure must never fail an upload.

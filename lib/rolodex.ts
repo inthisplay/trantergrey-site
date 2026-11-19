@@ -15,7 +15,7 @@ export function castingAge(person: Pick<Talent, 'age' | 'ageAsOfYear'>, today = 
   return null;
 }
 async function rawRolodexRequest(path = '', init?: RequestInit) {
-  const response = await fetch(`/api/admin/rolodex${path}`, { cache: 'no-store', ...init });
+  const response = await fetch(`/api/admin/rolodex${path}`, { cache: 'no-store', ...init, signal: init?.signal || AbortSignal.timeout(20_000) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Unable to save. Please retry.');
   return data;
@@ -54,4 +54,10 @@ export async function rolodexRequest(path = '', init?: RequestInit) {
     }
   }
   return !path && !init ? catalog.read() : rawRolodexRequest(path, init);
+}
+
+export async function withRolodexCatalogChange<T>(save:()=>Promise<T>):Promise<T> {
+  connectCatalog();
+  try { return await catalog.change(save); }
+  finally { catalogChannel?.postMessage('invalidate'); catalogListeners.forEach(listener=>listener()); }
 }

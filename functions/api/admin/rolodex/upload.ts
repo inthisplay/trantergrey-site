@@ -1,6 +1,8 @@
 import { prepareMediaPreviews } from '../../../_lib/media-previews';
 import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
-export async function onRequestPost({request,env}: {request:Request;env:AdminEnvironment}) {
+declare const FixedLengthStream: { new(size:number): { readable:ReadableStream; writable:WritableStream } };
+export async function onRequestPost(context: {request:Request;env:AdminEnvironment;waitUntil?:(promise:Promise<unknown>)=>void}) {
+ const {request,env}=context;
  const denied=await adminResponse(request,env); if(denied)return denied;
  const fail=(error:string,status=400)=>Response.json({error},{status});
  if(request.headers.get('origin') && request.headers.get('origin')!==new URL(request.url).origin)return fail('Invalid request origin.',403);
@@ -12,16 +14,36 @@ export async function onRequestPost({request,env}: {request:Request;env:AdminEnv
  const size=Number(request.headers.get('x-file-size'));
  if(!Number.isInteger(size)||size<1||size>90*1024*1024)return fail('Maximum file size is 90 MB.',413);
  let filename; try{filename=decodeURIComponent(request.headers.get('x-file-name')||'Media').replace(/[\\/\0]/g,'-').slice(0,180);}catch{return fail('Invalid filename.');}
- const reader=request.body?.getReader(); if(!reader)return fail('Choose a file.');
- const buffer=new Uint8Array(size);let bytes=0;
- while(true){const chunk=await reader.read();if(chunk.done)break;bytes+=chunk.value.byteLength;if(bytes>size){await reader.cancel();return fail('Upload exceeds declared size.',413);}buffer.set(chunk.value,bytes-chunk.value.byteLength);}
- if(bytes!==size)return fail('Upload was incomplete. Please retry.');
- const mediaId=crypto.randomUUID(),key=`rolodex/${id}/${mediaId}`,now=new Date().toISOString();
- await env.PRODUCTION_ARCHIVE.put(key,buffer,{httpMetadata:{contentType}});
+ if(!request.body)return fail('Choose a file.');
+ const suppliedId=request.headers.get('x-upload-id');
+ if(suppliedId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedId))return fail('Invalid upload identifier. Choose the file again.');
+ const mediaId=suppliedId||crypto.randomUUID(),key=`rolodex/${id}/${mediaId}`,now=new Date().toISOString();
+ const existing=await env.TG_DATA.prepare('SELECT person_id,filename,byte_size,content_type,deleted_at FROM rolodex_media WHERE id=?').bind(mediaId).first<{person_id:string;filename:string;byte_size:number;content_type:string;deleted_at:string|null}>();
+ if(existing){
+  if(existing.person_id!==id||existing.filename!==filename||existing.byte_size!==size||existing.content_type!==contentType||existing.deleted_at)return fail('This upload identifier is already in use. Choose the file again.',409);
+  return Response.json({id:mediaId,message:'Already uploaded successfully.'});
+ }
+ // FixedLengthStream checks truncation/overflow while streaming directly to storage,
+ // avoiding a 90 MB allocation (and copies) inside a 128 MB Worker.
+ const stream=new FixedLengthStream(size);
+ const transferAbort=new AbortController();
+ try {
+  await Promise.all([request.body.pipeTo(stream.writable,{signal:transferAbort.signal}),env.PRODUCTION_ARCHIVE.put(key,stream.readable,{httpMetadata:{contentType}})]);
+ } catch(error) {
+  transferAbort.abort();
+  console.error('Rolodex upload transfer failed', {mediaId,error});
+  return fail('The file could not be stored completely. Check your connection and retry this upload.',503);
+ }
+ try {
  await env.TG_DATA.batch([
- env.TG_DATA.prepare(`INSERT INTO rolodex_media(id,person_id,title,kind,filename,content_type,byte_size,r2_key,created_at) VALUES(?,?,?,'upload',?,?,?,?,?)`).bind(mediaId,id,filename.replace(/\.[^.]+$/,'')||filename,filename,contentType,size,key,now),
+ env.TG_DATA.prepare(`INSERT OR IGNORE INTO rolodex_media(id,person_id,title,kind,filename,content_type,byte_size,r2_key,created_at) VALUES(?,?,?,'upload',?,?,?,?,?)`).bind(mediaId,id,filename.replace(/\.[^.]+$/,'')||filename,filename,contentType,size,key,now),
  env.TG_DATA.prepare('UPDATE rolodex_people SET cover_media_id=COALESCE(cover_media_id,?),updated_at=? WHERE id=?').bind(mediaId,now,id)
  ]);
- await prepareMediaPreviews(env, key, contentType);
- return Response.json({id:mediaId},{status:201});
+ } catch(error) {
+  console.error('Rolodex upload record failed', {mediaId,error});
+  return fail('The file reached storage, but the profile could not be updated. Retry this upload to finish saving it.',503);
+ }
+ // Preview work must not hold the successful upload response open.
+ if(context.waitUntil)context.waitUntil(prepareMediaPreviews(env, key, contentType));
+ return Response.json({id:mediaId,message:'Uploaded successfully. A preview may take a moment to appear.'},{status:201});
 }
