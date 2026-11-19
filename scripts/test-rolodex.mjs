@@ -118,3 +118,46 @@ test('new age edits automatically anchor to the current year and clearing stays 
  assert.equal(castingAge(p),null);assert.equal(p.ageAsOfYear,null);
  }finally{db.close();}
 });
+
+test('gender selector values are canonical, defaults are N/A and invalid writes are rejected',async()=>{
+ const {db,call}=fixture();try{
+ const {id}=await(await call({action:'create',name:'Actor'})).json();
+ assert.equal((await(await call(null,`?id=${id}`)).json()).person.gender,'N/A');
+ for(const gender of ['Male','Female','N/A']){
+  assert.equal((await call({action:'update',id,gender})).status,200);
+  assert.equal((await(await call(null,`?id=${id}`)).json()).person.gender,gender);
+ }
+ assert.equal((await call({action:'update',id,gender:'unknown value'})).status,400);
+ assert.equal((await call({action:'update',id,gender:null})).status,400);
+ }finally{db.close();}
+});
+test('legacy genders normalize without discarding ambiguous source wording',async()=>{
+ const {db,call}=fixture();try{
+ const values=[['Boy','Male'],['Girl','Female'],['female','Female'],['male','Male'],['','N/A'],['Male?','N/A'],['Santa','N/A']];
+ const ids=[];
+ for(const [gender] of values){const {id}=await(await call({action:'create',name:'Actor'})).json();ids.push(id);db.prepare("UPDATE rolodex_people SET gender=?,notes='Original slide text' WHERE id=?").run(gender,id);}
+ db.exec(await readFile('migrations/0044_rolodex_gender.sql','utf8'));
+ for(let i=0;i<values.length;i++){const row=db.prepare('SELECT gender,notes FROM rolodex_people WHERE id=?').get(ids[i]);assert.equal(row.gender,values[i][1]);assert.ok(row.notes.startsWith('Original slide text'));if(['Male?','Santa'].includes(values[i][0]))assert.ok(row.notes.includes(`Original gender entry: ${values[i][0]}`));}
+ }finally{db.close();}
+});
+
+test('race / ethnicity supports multiple standard categories plus Ambiguous and clears explicitly',async()=>{
+ const {db,call}=fixture();try{
+ const {id}=await(await call({action:'create',name:'Actor'})).json();
+ assert.deepEqual((await(await call(null,`?id=${id}`)).json()).person.ethnicities,[]);
+ assert.equal((await call({action:'update',id,ethnicities:['White','Asian','Ambiguous','Asian']})).status,200);
+ let p=(await(await call(null,`?id=${id}`)).json()).person;
+ assert.deepEqual(p.ethnicities,['Asian','White','Ambiguous']);
+ assert.equal(db.prepare('SELECT ethnicity FROM rolodex_people WHERE id=?').get(id).ethnicity,'Asian; White; Ambiguous');
+ for(const ethnicities of [['Unknown value'],'Asian',[null]])assert.equal((await call({action:'update',id,ethnicities})).status,400);
+ await call({action:'update',id,ethnicities:[]});p=(await(await call(null,`?id=${id}`)).json()).person;assert.deepEqual(p.ethnicities,[]);assert.equal(p.ethnicity,'');
+ }finally{db.close();}
+});
+test('race / ethnicity migration retains specific source text and maps explicit Ambiguous entries',async()=>{
+ const {db,call}=fixture();try{
+ const values=[['Caucasian','White'],['Asian/Vietnamese','Asian'],['African American/Ambiguous','Black or African American; Ambiguous'],['Ambiguous','Ambiguous'],['Santa',''],['','']];const ids=[];
+ for(const [value] of values){const {id}=await(await call({action:'create',name:'Actor'})).json();ids.push(id);db.prepare("UPDATE rolodex_people SET ethnicity=?,notes='Slide notes' WHERE id=?").run(value,id);}
+ db.exec(await readFile('migrations/0045_rolodex_ethnicity.sql','utf8'));
+ for(let i=0;i<values.length;i++){const row=db.prepare('SELECT ethnicity,notes FROM rolodex_people WHERE id=?').get(ids[i]);assert.equal(row.ethnicity,values[i][1]);assert.ok(row.notes.startsWith('Slide notes'));if(values[i][0]&&values[i][0]!==values[i][1])assert.ok(row.notes.includes(values[i][0]));}
+ }finally{db.close();}
+});

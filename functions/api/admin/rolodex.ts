@@ -1,3 +1,5 @@
+import { ethnicityOptions, normalizedEthnicities } from '../../../lib/rolodex-ethnicity';
+import { normalizedGender } from '../../../lib/rolodex-gender';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../_lib/admin';
 import { readMuxBrowseAssetsById } from '../../_lib/mux-library';
 import { readVideoProjectStore } from '../../_lib/mux-state';
@@ -7,13 +9,24 @@ type Row = Record<string, any>;
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
 const fail = (error: string, status = 400) => json({ error }, status);
 function media(row: Row) { return { id: row.id, personId: row.person_id, title: row.title, kind: row.kind, contentType: row.content_type, url: row.kind === 'mux' ? row.player_url : `/api/admin/rolodex/media/${row.id}`, thumbnailUrl: row.thumbnail_url, sourceCardId: row.source_card_id }; }
-function person(row: Row, cover: Row | undefined) { return { id: row.id, name: row.name, birthday: row.birthday, age: row.age ?? null, ageAsOfYear: row.age_as_of_year ?? null, birthYear: row.birth_year ?? null, ethnicity: row.ethnicity, gender: row.gender, tags: JSON.parse(row.tags_json), email: row.email, phone: row.phone, notes: row.notes, coverMediaId: row.cover_media_id, archivedAt: row.archived_at, cover: cover ? media(cover) : null }; }
+function person(row: Row, cover: Row | undefined) { return { id: row.id, name: row.name, birthday: row.birthday, age: row.age ?? null, ageAsOfYear: row.age_as_of_year ?? null, birthYear: row.birth_year ?? null, ethnicity: normalizedEthnicities(row.ethnicity).join('; '), ethnicities: normalizedEthnicities(row.ethnicity), gender: normalizedGender(row.gender), tags: JSON.parse(row.tags_json), email: row.email, phone: row.phone, notes: row.notes, coverMediaId: row.cover_media_id, archivedAt: row.archived_at, cover: cover ? media(cover) : null }; }
 function fields(body: Row) {
   const result: Row = {};
-  for (const [key, limit] of Object.entries({ name: 180, ethnicity: 100, gender: 100, email: 254, phone: 100, notes: 10000 })) {
+  for (const [key, limit] of Object.entries({ name: 180, email: 254, phone: 100, notes: 10000 })) {
     if (!(key in body)) continue;
     if (typeof body[key] !== 'string' || body[key].trim().length > limit || (key === 'name' && !body[key].trim())) throw new Error(`Enter a valid ${key} (${limit} characters maximum).`);
     result[key] = body[key].trim();
+  }
+  if ('ethnicities' in body) {
+    if (!Array.isArray(body.ethnicities) || body.ethnicities.length > ethnicityOptions.length || body.ethnicities.some((value: unknown) => typeof value !== 'string' || !ethnicityOptions.includes(value as typeof ethnicityOptions[number]))) throw new Error('Choose one or more listed race / ethnicity categories, or clear to Not provided.');
+    result.ethnicity = ethnicityOptions.filter(value => body.ethnicities.includes(value)).join('; ');
+  } else if ('ethnicity' in body) {
+    if (typeof body.ethnicity !== 'string' || (body.ethnicity.trim() && !normalizedEthnicities(body.ethnicity).length)) throw new Error('Choose a listed race / ethnicity category.');
+    result.ethnicity = normalizedEthnicities(body.ethnicity).join('; ');
+  }
+  if ('gender' in body) {
+    if (typeof body.gender !== 'string' || !['male', 'female', 'n/a', ''].includes(body.gender.trim().toLowerCase())) throw new Error('Choose Male, Female, or N/A.');
+    result.gender = normalizedGender(body.gender);
   }
   if ('birthday' in body) {
     const value = body.birthday;
@@ -100,7 +113,7 @@ export async function onRequest({ request, env }: Context): Promise<Response> {
       if (!p) return fail('Active person not found.',404);
     } else {
       let data; try { data = fields({ name: body.name }); } catch (e) { return fail((e as Error).message); }
-      statements.push(db.prepare('INSERT INTO rolodex_people(id,name,created_at,updated_at) VALUES(?,?,?,?)').bind(id,data.name,now,now));
+      statements.push(db.prepare("INSERT INTO rolodex_people(id,name,gender,created_at,updated_at) VALUES(?,?,'N/A',?,?)").bind(id,data.name,now,now));
     }
     if (source) {
       const mediaId = crypto.randomUUID();

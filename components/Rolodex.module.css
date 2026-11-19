@@ -111,3 +111,22 @@
 @media(min-width:761px){
  .adminPage .split .drawer { position:fixed; inset:0 0 0 50%; width:50%; height:100dvh; z-index:50; }
 }
+
+.selectWrap { display:block; position:relative; }
+.selectWrap::after { content:''; position:absolute; right:16px; top:50%; width:7px; height:7px; border-right:1.5px solid #913542; border-bottom:1.5px solid #913542; transform:translateY(-70%) rotate(45deg); pointer-events:none; }
+.profile .genderSelect { appearance:none; -webkit-appearance:none; display:block; width:100%; min-height:44px; margin-top:5px; padding:10px 38px 10px 12px; font:16px var(--sans),sans-serif; color:#211a1d; background:#fff; border:0; border-bottom:1px solid #d9cdd0; border-radius:0; cursor:pointer; }
+.profile .genderSelect:hover { border-bottom-color:#913542; }
+.profile .genderSelect:focus-visible { outline:2px solid #913542; outline-offset:2px; }
+
+.ethnicityField { min-width:0; margin-bottom:14px; font-size:12px; color:#913542; }
+.ethnicitySelect { position:relative; margin-top:5px; }
+.ethnicitySelect summary { position:relative; display:block; min-height:44px; box-sizing:border-box; padding:10px 38px 10px 12px; font:16px var(--sans),sans-serif; color:#211a1d; background:#fff; border-bottom:1px solid #d9cdd0; cursor:pointer; list-style:none; overflow-wrap:anywhere; }
+.ethnicitySelect summary::-webkit-details-marker { display:none; }
+.ethnicitySelect summary::after { content:''; position:absolute; right:16px; top:18px; width:7px; height:7px; border-right:1.5px solid #913542; border-bottom:1.5px solid #913542; transform:rotate(45deg); }
+.ethnicitySelect[open] summary::after { transform:rotate(225deg); top:22px; }
+.ethnicitySelect summary:focus-visible { outline:2px solid #913542; outline-offset:2px; }
+.ethnicityChoices { position:absolute; left:0; right:0; z-index:3; padding:12px; background:white; border:1px solid #d9cdd0; box-shadow:0 8px 24px #211a1d18; }
+.ethnicityChoices p { margin:0 0 10px; color:#82787c; font-size:12px; }
+.profile .ethnicityChoices label { display:flex; align-items:flex-start; gap:10px; margin:0; padding:7px 0; font-size:14px; line-height:1.4; color:#211a1d; cursor:pointer; }
+.profile .ethnicityChoices input { appearance:auto; flex:none; width:16px; height:16px; margin:2px 0 0; padding:0; accent-color:#913542; }
+.ethnicityChoices button { width:100%; margin-top:10px; }

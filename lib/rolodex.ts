@@ -1,7 +1,7 @@
 import { createCatalogCache } from './catalog-cache';
 
 export type TalentMedia = { id: string; personId: string; title: string; kind: 'upload' | 'mux'; contentType: string | null; url: string; thumbnailUrl: string | null; sourceCardId: string | null };
-export type Talent = { id: string; name: string; birthday: string | null; age: number | null; ageAsOfYear: number | null; birthYear: number | null; ethnicity: string; gender: string; tags: string[]; email: string; phone: string; notes: string; coverMediaId: string | null; archivedAt: string | null; cover: TalentMedia | null };
+export type Talent = { id: string; name: string; birthday: string | null; age: number | null; ageAsOfYear: number | null; birthYear: number | null; ethnicity: string; ethnicities: string[]; gender: string; tags: string[]; email: string; phone: string; notes: string; coverMediaId: string | null; archivedAt: string | null; cover: TalentMedia | null };
 export type TalentHistory = { cardId: string; title: string; tags: string[]; approvedAt: string | null };
 export function actualAge(birthday: string | null, today = new Date()) {
   if (!birthday) return null;
