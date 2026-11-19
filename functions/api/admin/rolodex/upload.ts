@@ -1,3 +1,4 @@
+import { prepareMediaPreviews } from '../../../_lib/media-previews';
 import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
 export async function onRequestPost({request,env}: {request:Request;env:AdminEnvironment}) {
  const denied=await adminResponse(request,env); if(denied)return denied;
@@ -21,5 +22,6 @@ export async function onRequestPost({request,env}: {request:Request;env:AdminEnv
  env.TG_DATA.prepare(`INSERT INTO rolodex_media(id,person_id,title,kind,filename,content_type,byte_size,r2_key,created_at) VALUES(?,?,?,'upload',?,?,?,?,?)`).bind(mediaId,id,filename.replace(/\.[^.]+$/,'')||filename,filename,contentType,size,key,now),
  env.TG_DATA.prepare('UPDATE rolodex_people SET cover_media_id=COALESCE(cover_media_id,?),updated_at=? WHERE id=?').bind(mediaId,now,id)
  ]);
+ await prepareMediaPreviews(env, key, contentType);
  return Response.json({id:mediaId},{status:201});
 }

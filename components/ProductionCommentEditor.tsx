@@ -1,5 +1,7 @@
 'use client';
 
+import { mediaVariantUrl, mediaPosterUrl } from '@/lib/media-preview';
+
 import { UiIcon } from '@/components/UiIcon';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -88,13 +90,13 @@ function Element({ attributes, children, element }: RenderElementProps) {
     return <div {...attributes} className="production-comment-mux-embed"><div contentEditable={false}><div className="production-comment-mux-videos">{media.map((video) => video.playerUrl ? <iframe key={video.id} src={video.playerUrl} title={video.title} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen /> : <div className="production-comment-mux-unavailable" key={video.id}>{video.thumbnailUrl && <img src={video.thumbnailUrl} alt="" />}<span>Preview unavailable</span></div>)}</div><div className="production-comment-mux-caption">{element.client && <small>{element.client}</small>}<strong>{element.title || 'Mux video'}</strong><em>{typeLabel}</em></div><div className="production-comment-mux-actions"><a className="production-comment-mux-public-link" href={href} target="_blank" rel="noreferrer">Open public page <UiIcon name="external" /></a><button type="button" onClick={() => void navigator.clipboard.writeText(new URL(href, window.location.origin).toString())}>Copy public link</button></div></div>{children}</div>;
   }
   if (element.type === 'comment-media') {
-    return <figure {...attributes} className="production-comment-upload"><div contentEditable={false}>{element.mediaKind === 'image' ? <img src={element.url} alt={element.title || 'Photo'} /> : <video src={element.url} controls preload="metadata" />}<figcaption>{element.title || 'Copied media'}</figcaption></div>{children}</figure>;
+    return <figure {...attributes} className="production-comment-upload"><div contentEditable={false}>{element.mediaKind === 'image' ? <img src={mediaVariantUrl(element.url || '', 'preview')} alt={element.title || 'Photo'} /> : <video src={element.url} poster={mediaPosterUrl(element.url || '')} controls preload="none" />}<figcaption>{element.title || 'Copied media'}</figcaption></div>{children}</figure>;
   }
   if (element.type === 'attachment') {
     const url = typeof element.attachmentId === 'string' ? `/api/admin/production-board/attachments/${encodeURIComponent(element.attachmentId)}` : '';
     const label = element.filename || 'Attachment';
     const type = element.contentType || '';
-    return <figure {...attributes} className="production-comment-upload"><div contentEditable={false}>{type.startsWith('image/') && url ? <img src={url} alt={label} /> : type.startsWith('video/') && url ? <video controls preload="metadata" src={url} /> : type.startsWith('audio/') && url ? <audio controls preload="metadata" src={url} /> : null}<figcaption><a href={url} target="_blank" rel="noreferrer">{label}</a>{element.byteSize ? <small>{Math.ceil(element.byteSize / 1024)} KB</small> : null}</figcaption></div>{children}</figure>;
+    return <figure {...attributes} className="production-comment-upload"><div contentEditable={false}>{type.startsWith('image/') && url ? <img src={mediaVariantUrl(url, 'preview')} alt={label} /> : type.startsWith('video/') && url ? <video controls preload="none" poster={mediaPosterUrl(url)} src={url} /> : type.startsWith('audio/') && url ? <audio controls preload="metadata" src={url} /> : null}<figcaption><a href={url} target="_blank" rel="noreferrer">{label}</a>{element.byteSize ? <small>{Math.ceil(element.byteSize / 1024)} KB</small> : null}</figcaption></div>{children}</figure>;
   }
   return <p {...attributes} style={style}>{children}</p>;
 }

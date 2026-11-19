@@ -31,6 +31,7 @@ export type AdminEnvironment = {
   PRODUCTION_API_TOKEN?: string;
   TG_DATA: { prepare(query: string): Statement; batch(statements: Statement[]): Promise<unknown> };
   PRODUCTION_ARCHIVE?: PrivateBucket;
+  MEDIA_OPTIMIZER?: { fetch(url: string, init?: RequestInit): Promise<Response> };
 };
 
 export type AdminSession = { name: string; email: string | null };

@@ -1,3 +1,4 @@
+import { mediaPreviewResponse } from '../../../../../_lib/media-previews';
 import { adminResponse, type AdminEnvironment } from '../../../../../_lib/admin';
 
 type Context = { request: Request; env: AdminEnvironment; params: { id: string; media: string } };
@@ -16,6 +17,8 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
   if (!env.PRODUCTION_ARCHIVE) return Response.json({ error: 'Private production storage is not configured.' }, { status: 503 });
   const attachment = await env.TG_DATA.prepare(`SELECT g.filename, g.content_type AS contentType, g.r2_key AS r2Key, 'stored' AS status FROM production_gallery g JOIN production_cards p ON p.source_id=g.card_source_id LEFT JOIN production_card_overrides o ON o.card_source_id=p.source_id WHERE g.id=? AND p.id=? AND g.deleted_at IS NULL AND o.deleted_at IS NULL`).bind(params.media, params.id).first<{ filename: string; contentType: string | null; r2Key: string | null; status: string }>();
   if (!attachment || attachment.status !== 'stored' || !attachment.r2Key) return Response.json({ error: 'This source file is unavailable.' }, { status: 404 });
+  const preview = await mediaPreviewResponse(request, env, attachment.r2Key, attachment.contentType);
+  if (preview) return preview;
   // Fetch the archive object directly first. Some historic uploads are
   // available through Pages' R2 binding but reject an initial 1-byte range
   // probe, even though the full object is present.

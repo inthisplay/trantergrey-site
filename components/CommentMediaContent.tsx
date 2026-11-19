@@ -1,5 +1,7 @@
 'use client';
 
+import { mediaVariantUrl, mediaPosterUrl } from '@/lib/media-preview';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Descendant } from 'slate';
@@ -38,10 +40,11 @@ function galleryMarkup(html: string, decisions: Decision[]) {
       if (!match) return source;
       const img = document.createElement('img'); img.src = `https://image.mux.com/${match[1]}/thumbnail.jpg?width=320&fit_mode=preserve`; img.alt = ''; img.loading = 'lazy'; button.append(img);
     } else {
-      const thumbnail = media.cloneNode(true) as HTMLImageElement | HTMLVideoElement;
-      thumbnail.removeAttribute('style'); thumbnail.removeAttribute('width'); thumbnail.removeAttribute('height');
-      if (thumbnail instanceof HTMLVideoElement) { thumbnail.removeAttribute('controls'); thumbnail.removeAttribute('autoplay'); thumbnail.muted = true; thumbnail.setAttribute('muted', ''); thumbnail.setAttribute('playsinline', ''); thumbnail.preload = 'metadata'; if (!url.includes('#')) thumbnail.src = `${url}#t=0.1`; }
-      else { thumbnail.alt = ''; thumbnail.loading = 'lazy'; thumbnail.draggable = false; }
+      const thumbnail = document.createElement('img');
+      thumbnail.src = mediaVariantUrl(url, kind === 'video' ? 'poster' : 'thumb');
+      // Remote videos do not support our private poster endpoint.
+      if (kind === 'video' && !mediaPosterUrl(url)) thumbnail.removeAttribute('src');
+      thumbnail.alt = ''; thumbnail.loading = 'lazy'; thumbnail.draggable = false;
       button.append(thumbnail);
     }
     if (kind !== 'img') { const play = document.createElement('span'); play.className = 'comment-media-play'; play.textContent = '▶'; play.setAttribute('aria-hidden', 'true'); button.append(play); }
@@ -67,6 +70,14 @@ function galleryMarkup(html: string, decisions: Decision[]) {
     }
     flush();
   }
+  template.content.querySelectorAll<HTMLImageElement>('img:not(.comment-media-tile img)').forEach(img => {
+    img.src = mediaVariantUrl(img.getAttribute('src') || '', 'preview'); img.loading = 'lazy';
+  });
+  template.content.querySelectorAll<HTMLVideoElement>('video').forEach(video => {
+    const poster = mediaPosterUrl(video.getAttribute('src') || '');
+    if (poster) video.poster = poster;
+    video.preload = 'none';
+  });
   return template.innerHTML;
 }
 
@@ -148,7 +159,8 @@ export function CommentMediaContent({ html, cardId, commentKey, onCopy }: { html
   </div>, document.body)}
   {preview && createPortal(<dialog ref={dialog} className="comment-media-preview" aria-label={preview.label} onCancel={event => { event.preventDefault(); event.stopPropagation(); close(); }} onClick={event => { if (event.target === event.currentTarget) close(); }}>
     <button type="button" className="comment-media-close" onClick={close} aria-label="Close media preview">Close ×</button>
-    {preview.kind === 'image' ? <img src={preview.url} alt={preview.label} /> : preview.kind === 'video' ? <video src={preview.url} controls playsInline /> : <iframe src={preview.url} title={preview.label} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture" allowFullScreen />}
+    {preview.kind === 'image' ? <img src={mediaVariantUrl(preview.url, 'preview')} alt={preview.label} /> : preview.kind === 'video' ? <video src={preview.url} poster={mediaPosterUrl(preview.url)} preload="none" controls playsInline /> : <iframe src={preview.url} title={preview.label} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture" allowFullScreen />}
+    <a href={preview.url} target="_blank" rel="noreferrer">Open original file</a>
   </dialog>, document.body)}
   </>;
 }

@@ -30,7 +30,19 @@
           "binding": "PRODUCTION_ARCHIVE",
           "bucket_name": "trantergrey-production-archive"
         }
+      ],
+      "services": [
+        {
+          "binding": "MEDIA_OPTIMIZER",
+          "service": "trantergrey-media-optimizer"
+        }
       ]
     }
-  }
+  },
+  "services": [
+    {
+      "binding": "MEDIA_OPTIMIZER",
+      "service": "trantergrey-media-optimizer"
+    }
+  ]
 }

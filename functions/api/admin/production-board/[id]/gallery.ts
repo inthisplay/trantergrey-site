@@ -1,3 +1,4 @@
+import { prepareMediaPreviews } from '../../../../_lib/media-previews';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../../_lib/admin';
 
 type Context = { request: Request; env: AdminEnvironment; params: { id: string } };
@@ -31,6 +32,7 @@ export async function onRequest({ request, env, params }: Context): Promise<Resp
     const id = crypto.randomUUID(); const key = `gallery/${card.source_id}/${id}`;
     await env.PRODUCTION_ARCHIVE.put(key, buffer, { httpMetadata: { contentType } });
     await env.TG_DATA.prepare(`INSERT INTO production_gallery (id,card_source_id,filename,content_type,byte_size,r2_key,title,uploaded_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(id, card.source_id, filename, contentType, bytes, key, filename.replace(/\.[^.]+$/, '') || filename, session.email || session.name, now, now).run();
+    await prepareMediaPreviews(env, key, contentType);
     return Response.json({ id }, { status: 201 });
   }
   if (!['PATCH', 'DELETE'].includes(request.method)) return fail('Method not allowed.', 405);
