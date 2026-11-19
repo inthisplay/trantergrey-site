@@ -2,7 +2,7 @@
 
 import { mediaVariantUrl, mediaPosterUrl } from '@/lib/media-preview';
 import { useEffect, useRef, useState } from 'react';
-import { castingAge, rolodexMutation, rolodexRequest, type Talent, type TalentMedia, type TalentHistory } from '@/lib/rolodex';
+import { castingAge, subscribeRolodexCatalog, rolodexMutation, rolodexRequest, type Talent, type TalentMedia, type TalentHistory } from '@/lib/rolodex';
 import { AddTalentToCard, RolodexModal } from './RolodexDialogs';
 import styles from './Rolodex.module.css';
 
@@ -12,7 +12,7 @@ export function Rolodex({teamApp=false}:{teamApp?:boolean}) {
  const [query,setQuery]=useState(''),[filters,setFilters]=useState(false),[gender,setGender]=useState(''),[ethnicity,setEthnicity]=useState(''),[tag,setTag]=useState(''),[minAge,setMinAge]=useState(''),[maxAge,setMaxAge]=useState(''),[archived,setArchived]=useState(false);
  const [current,setCurrent]=useState<string|null>(null),[selecting,setSelecting]=useState(false),[selected,setSelected]=useState<string[]>([]),[cardPicker,setCardPicker]=useState(false),[creating,setCreating]=useState(false),[newName,setNewName]=useState(''),[busy,setBusy]=useState(false);
  async function load(){const d=await rolodexRequest();setPeople(d.people);}
- useEffect(()=>{load().catch(e=>setError(e.message)).finally(()=>setLoading(false));const id=new URLSearchParams(window.location.search).get('person');if(id)setCurrent(id);},[]);
+ useEffect(()=>{let active=true;const reload=()=>{rolodexRequest().then(d=>{if(active){setPeople(d.people);setError('');}}).catch(e=>{if(active){setPeople([]);setError(e.message);}}).finally(()=>{if(active)setLoading(false);});};reload();const unsubscribe=subscribeRolodexCatalog(reload);const id=new URLSearchParams(window.location.search).get('person');if(id)setCurrent(id);return()=>{active=false;unsubscribe();};},[]);
  const shown=people.filter(p=>Boolean(p.archivedAt)===archived && `${p.name} ${p.tags.join(' ')} ${p.ethnicity} ${p.gender}`.toLowerCase().includes(query.toLowerCase()) && (!gender||p.gender===gender)&&(!ethnicity||p.ethnicity===ethnicity)&&(!tag||p.tags.includes(tag))&&(!minAge||castingAge(p)!==null&&castingAge(p)!>=Number(minAge))&&(!maxAge||castingAge(p)!==null&&castingAge(p)!<=Number(maxAge)));
  const genders=[...new Set(people.map(p=>p.gender).filter(Boolean))].sort(),ethnicities=[...new Set(people.map(p=>p.ethnicity).filter(Boolean))].sort(),tags=[...new Set(people.flatMap(p=>p.tags))].sort();
  const navigationGuard=useRef<()=>Promise<boolean>>(async()=>true);
