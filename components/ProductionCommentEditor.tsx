@@ -11,7 +11,7 @@ type ProductionCommentEditorProps = { client?: string | null; initialValue?: Des
 type TextAlign = 'left' | 'center' | 'right' | 'justify';
 type MuxItemKind = 'video' | 'ratio-group' | 'collection';
 type MuxEmbedVideo = { id: string; title: string; client: string | null; thumbnailUrl: string | null; playerUrl: string | null };
-type CommentElement = { type: 'paragraph' | 'heading-one' | 'heading-two' | 'block-quote' | 'bulleted-list' | 'numbered-list' | 'list-item' | 'mux-asset' | 'attachment'; align?: TextAlign; assetId?: string; attachmentId?: string; filename?: string; contentType?: string; byteSize?: number; title?: string; client?: string | null; duration?: number; thumbnailUrl?: string | null; itemKind?: MuxItemKind; href?: string; ratioCount?: number; videoCount?: number; media?: MuxEmbedVideo[]; children: Descendant[] };
+type CommentElement = { type: 'paragraph' | 'heading-one' | 'heading-two' | 'block-quote' | 'bulleted-list' | 'numbered-list' | 'list-item' | 'mux-asset' | 'attachment' | 'comment-media'; url?: string; mediaKind?: string; align?: TextAlign; assetId?: string; attachmentId?: string; filename?: string; contentType?: string; byteSize?: number; title?: string; client?: string | null; duration?: number; thumbnailUrl?: string | null; itemKind?: MuxItemKind; href?: string; ratioCount?: number; videoCount?: number; media?: MuxEmbedVideo[]; children: Descendant[] };
 type CommentText = { text: string; bold?: boolean; italic?: boolean; underline?: boolean; code?: boolean };
 type MuxPickerAsset = { id: string; kind: MuxItemKind; title: string; client: string | null; duration: number; thumbnailUrl: string | null; playerUrl: string | null; href: string; ratioCount?: number; videoCount?: number; clients?: string[]; children?: MuxPickerAsset[] };
 
@@ -27,7 +27,7 @@ const isEmptyComment = (value: Descendant[]) => value.length === 1 && SlateEleme
 const duration = (value: number) => `${Math.floor(value / 60)}:${String(Math.round(value % 60)).padStart(2, '0')}`;
 const withMuxAssets = (editor: BaseEditor & ReactEditor) => {
   const { isVoid } = editor;
-  editor.isVoid = (element) => element.type === 'mux-asset' || element.type === 'attachment' || isVoid(element);
+  editor.isVoid = (element) => element.type === 'mux-asset' || element.type === 'attachment' || element.type === 'comment-media' || isVoid(element);
   return editor;
 };
 
@@ -86,6 +86,9 @@ function Element({ attributes, children, element }: RenderElementProps) {
     const media = element.media?.length ? element.media : [{ id: element.assetId || '', title: element.title || 'Mux video', client: element.client || null, thumbnailUrl: element.thumbnailUrl || null, playerUrl: null }];
     const href = element.href || `/watch/${encodeURIComponent(element.assetId || '')}`;
     return <div {...attributes} className="production-comment-mux-embed"><div contentEditable={false}><div className="production-comment-mux-videos">{media.map((video) => video.playerUrl ? <iframe key={video.id} src={video.playerUrl} title={video.title} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen /> : <div className="production-comment-mux-unavailable" key={video.id}>{video.thumbnailUrl && <img src={video.thumbnailUrl} alt="" />}<span>Preview unavailable</span></div>)}</div><div className="production-comment-mux-caption">{element.client && <small>{element.client}</small>}<strong>{element.title || 'Mux video'}</strong><em>{typeLabel}</em></div><div className="production-comment-mux-actions"><a className="production-comment-mux-public-link" href={href} target="_blank" rel="noreferrer">Open public page <UiIcon name="external" /></a><button type="button" onClick={() => void navigator.clipboard.writeText(new URL(href, window.location.origin).toString())}>Copy public link</button></div></div>{children}</div>;
+  }
+  if (element.type === 'comment-media') {
+    return <figure {...attributes} className="production-comment-upload"><div contentEditable={false}>{element.mediaKind === 'image' ? <img src={element.url} alt={element.title || 'Photo'} /> : <video src={element.url} controls preload="metadata" />}<figcaption>{element.title || 'Copied media'}</figcaption></div>{children}</figure>;
   }
   if (element.type === 'attachment') {
     const url = typeof element.attachmentId === 'string' ? `/api/admin/production-board/attachments/${encodeURIComponent(element.attachmentId)}` : '';

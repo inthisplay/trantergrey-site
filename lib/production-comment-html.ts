@@ -1,7 +1,8 @@
+import { safeCommentMediaUrl } from './comment-media';
 import { uiIconMarkup } from './ui-icons';
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 type SlateText = { text?: unknown; bold?: unknown; italic?: unknown; underline?: unknown; code?: unknown };
-type SlateNode = { type?: unknown; children?: unknown; align?: unknown; assetId?: unknown; attachmentId?: unknown; filename?: unknown; contentType?: unknown; byteSize?: unknown; title?: unknown; client?: unknown; duration?: unknown; thumbnailUrl?: unknown; itemKind?: unknown; href?: unknown; ratioCount?: unknown; videoCount?: unknown; media?: unknown };
+type SlateNode = { url?: unknown; mediaKind?: unknown; type?: unknown; children?: unknown; align?: unknown; assetId?: unknown; attachmentId?: unknown; filename?: unknown; contentType?: unknown; byteSize?: unknown; title?: unknown; client?: unknown; duration?: unknown; thumbnailUrl?: unknown; itemKind?: unknown; href?: unknown; ratioCount?: unknown; videoCount?: unknown; media?: unknown };
 export const slateHtml = (body: unknown) => {
   if (!Array.isArray(body)) return '';
   const renderChildren = (children: unknown): string => {
@@ -43,6 +44,14 @@ export const slateHtml = (body: unknown) => {
         ? `<div class="production-comment-mux-asset-videos">${media.map((video) => `<iframe src="${video.playerUrl}" title="${video.title}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`).join('')}</div>`
         : thumbnail ? `<div class="production-comment-mux-asset-fallback">${thumbnail}</div>` : '';
       return `<div class="production-comment-mux-asset">${preview}<div class="production-comment-mux-asset-caption">${client}<strong>${title}</strong><em>${typeLabel}</em></div><div class="production-comment-mux-actions"><a class="production-comment-mux-asset-public-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">Open public page ${uiIconMarkup('external')}</a><button type="button" data-copy-public-link="${escapeHtml(href)}">Copy public link</button></div></div>`;
+    }
+    if (node.type === 'comment-media') {
+      const url = typeof node.url === 'string' ? node.url : '';
+      const kind = String(node.mediaKind || '');
+      if (!['image', 'video'].includes(kind) || !safeCommentMediaUrl(url, kind)) return '';
+      const label = escapeHtml(typeof node.title === 'string' ? node.title.slice(0, 240) : 'Media');
+      const src = escapeHtml(url);
+      return `<figure class="production-comment-upload">${kind === 'image' ? `<img src="${src}" alt="${label}">` : `<video controls preload="metadata" src="${src}" title="${label}"></video>`}<figcaption><a href="${src}" target="_blank" rel="noreferrer noopener">${label}</a></figcaption></figure>`;
     }
     if (node.type === 'attachment') {
       const attachmentId = typeof node.attachmentId === 'string' ? node.attachmentId : '';

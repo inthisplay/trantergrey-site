@@ -187,3 +187,27 @@
   }
 
 }
+
+@media (max-width: 620px) {
+  .cardDetail > a { margin-bottom: 18px; }
+  .cardDetail :global(.production-card-heading) { display: block; margin: 0 0 20px; }
+  .cardDetail :global(.production-card-heading .eyebrow) { margin: 0 0 10px; font-size: 8px; line-height: 1.5; letter-spacing: .06em; color: #777174; }
+  .cardDetail :global(.production-inline-title) { font-size: clamp(26px, 7vw, 34px); line-height: 1.15; letter-spacing: -.035em; }
+  .cardDetail :global(.production-card .production-properties) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; margin: 0 0 22px !important; }
+  .cardDetail :global(.production-properties > div) { display: grid; gap: 5px; min-width: 0; }
+  .cardDetail :global(.production-properties > div:nth-child(-n+2)) { grid-column: 1 / -1; }
+  .cardDetail :global(.production-properties dt) { font-size: 9px; line-height: 1.4; }
+  .cardDetail :global(.production-properties dd) { min-width: 0; max-width: none; width: 100%; }
+  .cardDetail :global(.production-inline-properties input),
+  .cardDetail :global(.production-inline-properties select) { min-height: 40px; max-width: 100%; font-size: 16px; margin: 0; padding: 6px 0; }
+  .cardDetail :global(.production-inline-properties input:not(:disabled):hover),
+  .cardDetail :global(.production-inline-properties select:not(:disabled):hover),
+  .cardDetail :global(.production-inline-properties input:focus),
+  .cardDetail :global(.production-inline-properties select:focus) { margin: 0; padding: 6px 0; }
+  .cardDetail :global(.team-member-picker-control) { max-width: none; min-height: 40px; }
+  .cardDetail :global(.production-date-field input) { min-width: 0; width: 100%; text-align: left; }
+  .cardDetail :global(.production-date-field[data-empty=true] .production-date-placeholder) { display: block; position: absolute; top: 50%; left: 0; transform: translateY(-50%); color: #777174; font-size: 16px; pointer-events: none; }
+  .cardDetail :global(.production-date-field[data-empty=true] input::-webkit-datetime-edit) { opacity: 0; }
+  .cardDetail :global(.production-date-field:focus-within .production-date-placeholder) { display: none; }
+  .cardDetail :global(.production-date-field:focus-within input::-webkit-datetime-edit) { opacity: 1; }
+}
