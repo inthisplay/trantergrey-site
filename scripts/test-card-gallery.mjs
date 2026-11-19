@@ -56,3 +56,23 @@ test('invalid types, sizes and truncated uploads are rejected without creating r
  assert.equal(objects.size,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM production_gallery').get().n,0);
  }finally{db.close();}
 });
+
+test('casting resolves the clicked profile media by stored file, even after the cover changes', async () => {
+ const {db,request,upload}=fixture();
+ try {
+  const {id}=await (await upload()).json();
+  const {r2_key}=db.prepare('SELECT r2_key FROM production_gallery WHERE id=?').get(id);
+  db.exec("INSERT INTO rolodex_people(id,name,cover_media_id,created_at,updated_at) VALUES('person','Actor','new-cover','now','now')");
+  db.prepare("INSERT INTO rolodex_media(id,person_id,title,kind,r2_key,created_at) VALUES('original','person','Headshot','upload',?,'now')").run(r2_key);
+  db.prepare('UPDATE production_gallery SET rolodex_person_id=? WHERE id=?').run('person',id);
+  let item=(await (await request()).json()).items[0];
+  assert.equal(item.rolodexPersonId,'person');assert.equal(item.rolodexMediaId,'original');
+  // Media saved from Casting can be associated through its source gallery too.
+  db.prepare('UPDATE production_gallery SET rolodex_person_id=NULL WHERE id=?').run(id);
+  db.prepare("UPDATE rolodex_media SET source_gallery_id=? WHERE id='original'").run(id);
+  item=(await (await request()).json()).items[0];
+  assert.equal(item.rolodexPersonId,'person');assert.equal(item.rolodexMediaId,'original');
+  db.exec("UPDATE rolodex_media SET deleted_at='now'");
+  item=(await (await request()).json()).items[0];assert.equal(item.rolodexMediaId,null);
+ } finally { db.close(); }
+});

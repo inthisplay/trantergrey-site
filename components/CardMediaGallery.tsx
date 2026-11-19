@@ -1,14 +1,15 @@
 'use client';
 
-import { mediaVariantUrl, mediaPosterUrl } from '@/lib/media-preview';
+import { mediaVariantUrl } from '@/lib/media-preview';
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './CardMediaGallery.module.css';
 import { AddFromRolodex, AddToRolodex } from './RolodexDialogs';
+import { CastingMediaPreview } from './CastingMediaPreview';
 import { useMediaPressHold } from './useMediaPressHold';
 
-type Item = { rolodexPersonId?: string | null; id: string; title: string; filename: string; contentType: string; tags: string[]; approvedAt: string | null; approvedBy: string | null; url: string };
+type Item = { rolodexMediaId?: string | null; rolodexPersonId?: string | null; id: string; title: string; filename: string; contentType: string; tags: string[]; approvedAt: string | null; approvedBy: string | null; url: string };
 type Menu = { item: Item; x: number; y: number };
 type Metadata = { title: string; tags: string[] };
 
@@ -125,7 +126,7 @@ export function CardMediaGallery({ cardId }: { cardId: string }) {
     window.addEventListener('pointerdown', outside); window.addEventListener('resize', close); window.addEventListener('scroll', close, true);
     return () => { window.removeEventListener('pointerdown', outside); window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true); };
   }, [menu]);
-  useEffect(() => { if (edit || preview) dialogRef.current?.showModal(); }, [edit, preview]);
+  useEffect(() => { if (edit) dialogRef.current?.showModal(); }, [edit]);
   function closeDialog() { setEdit(null); setPreview(null); returnFocus.current?.focus(); }
   function openMenu(item: Item, x: number, y: number, target: HTMLElement) { if (busy || hasPendingEdits) return; returnFocus.current = target; setMenu({ item, x: Math.max(8, Math.min(x, window.innerWidth - 230)), y: Math.max(8, Math.min(y, window.innerHeight - 270)) }); }
   const holdHandlers = useMediaPressHold('[data-casting-preview]', (button, x, y) => {
@@ -216,12 +217,13 @@ export function CardMediaGallery({ cardId }: { cardId: string }) {
       <button type="button" role="menuitem" onClick={() => { if (menu.item.rolodexPersonId) window.location.href = `/app/rolodex?person=${encodeURIComponent(menu.item.rolodexPersonId)}`; else setRolodexItem(menu.item); setMenu(null); }}>{menu.item.rolodexPersonId ? 'Open Rolodex profile' : 'Add to Rolodex'}</button>
       <button type="button" role="menuitem" onClick={() => { setEdit({ item: menu.item, field: 'remove' }); setMenu(null); }}>Remove from casting</button>
     </div>, document.body)}
-    {(edit || preview) && createPortal(<dialog ref={dialogRef} className={styles.dialog} aria-label={preview ? preview.title : edit?.field === 'tags' ? 'Edit tags' : edit?.field === 'remove' ? 'Remove media' : 'Edit title'} onCancel={event => { event.stopPropagation(); if (busy) event.preventDefault(); else closeDialog(); }} onClick={event => { if (event.target === event.currentTarget && !busy) closeDialog(); }}>
-      {preview ? <><div className={styles.heading}><h3>{preview.title}</h3><button type="button" onClick={closeDialog}>Close ×</button></div>{preview.contentType.startsWith('video/') ? <video src={preview.url} poster={mediaPosterUrl(preview.url)} preload="none" controls playsInline autoPlay={false} /> : <img src={mediaVariantUrl(preview.url, 'preview')} alt={preview.title} />}<a href={preview.url} target="_blank" rel="noreferrer">Open original file</a></> : edit && <form onSubmit={event => { event.preventDefault(); void change(edit.item, edit.field === 'title' ? { title: value } : edit.field === 'tags' ? { tags: value.split(',').map(t => t.trim()).filter(Boolean) } : {}, edit.field === 'remove' ? 'DELETE' : 'PATCH'); }}>
+    {preview && createPortal(<CastingMediaPreview item={preview} onClose={closeDialog} />, document.body)}
+    {edit && createPortal(<dialog ref={dialogRef} className={styles.dialog} aria-label={edit.field === 'tags' ? 'Edit tags' : edit.field === 'remove' ? 'Remove media' : 'Edit title'} onCancel={event => { event.stopPropagation(); if (busy) event.preventDefault(); else closeDialog(); }} onClick={event => { if (event.target === event.currentTarget && !busy) closeDialog(); }}>
+      <form onSubmit={event => { event.preventDefault(); void change(edit.item, edit.field === 'title' ? { title: value } : edit.field === 'tags' ? { tags: value.split(',').map(t => t.trim()).filter(Boolean) } : {}, edit.field === 'remove' ? 'DELETE' : 'PATCH'); }}>
       <h3>{edit.field === 'title' ? 'Title / name' : edit.field === 'tags' ? 'Tags' : 'Remove from casting?'}</h3>
       {edit.field === 'remove' ? <p>Remove “{edit.item.title}” from this card’s casting section?</p> : <label>{edit.field === 'tags' ? 'Separate tags with commas, for example: mom, teacher' : 'Name this photo or video'}<input autoFocus value={value} maxLength={edit.field === 'title' ? 180 : 1020} required={edit.field === 'title'} onChange={event => setValue(event.target.value)} list={edit.field === 'tags' ? 'gallery-tag-options' : undefined} /></label>}
       <datalist id="gallery-tag-options">{tags.map(tag => <option key={tag} value={tag} />)}</datalist>
-      {error && <p role="alert" className={styles.error}>{error}</p>}<div className={styles.actions}><button type="button" disabled={busy} onClick={closeDialog}>Cancel</button><button type="submit" disabled={busy}>{busy ? 'Saving…' : edit.field === 'remove' ? 'Remove' : 'Save'}</button></div></form>}
+      {error && <p role="alert" className={styles.error}>{error}</p>}<div className={styles.actions}><button type="button" disabled={busy} onClick={closeDialog}>Cancel</button><button type="submit" disabled={busy}>{busy ? 'Saving…' : edit.field === 'remove' ? 'Remove' : 'Save'}</button></div></form>
     </dialog>, document.body)}
     {fromRolodex && createPortal(<AddFromRolodex cardId={cardId} onClose={() => setFromRolodex(false)} onAdded={message => { setFromRolodex(false); setRolodexMessage(message); selectFilter(''); void load().catch(e => setError(e.message)); }} />, document.body)}
     {rolodexItem && createPortal(<AddToRolodex cardId={cardId} galleryId={rolodexItem.id} name={rolodexItem.title} onClose={() => setRolodexItem(null)} onAdded={() => { setRolodexItem(null); void load().catch(e => setError(e.message)); }} />, document.body)}
