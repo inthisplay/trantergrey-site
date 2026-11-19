@@ -14,6 +14,7 @@ const {onRequestGet}=await import(pathToFileURL(join(dir,'file.mjs')));
 const {actualAge,castingAge}=await import(pathToFileURL(join(dir,'shared.mjs')));
 const migration=await readFile('migrations/0035_card_media_gallery.sql','utf8');
 const rolodex=await readFile('migrations/0037_rolodex.sql','utf8');
+const ageOnlyMigration=await readFile('migrations/0042_rolodex_age_estimates.sql','utf8');
 const ageMigration=await readFile('migrations/0041_rolodex_age.sql','utf8');
 after(()=>rm(dir,{recursive:true,force:true}));
 function fixture(){
@@ -21,7 +22,7 @@ function fixture(){
  db.exec(`CREATE TABLE admin_sessions(id TEXT,user_name TEXT,user_email TEXT,expires_at TEXT);INSERT INTO admin_sessions VALUES('test','Team','team@example.com','9999');
  CREATE TABLE production_cards(id TEXT,source_id TEXT UNIQUE,title TEXT,archived INTEGER);INSERT INTO production_cards VALUES('card','source','Shoot A',0),('other','other-source','Shoot B',0);
  CREATE TABLE production_card_overrides(card_source_id TEXT,deleted_at TEXT,title TEXT,archived INTEGER);`);
- db.exec(migration);db.exec(rolodex);db.exec(ageMigration);
+ db.exec(migration);db.exec(rolodex);db.exec(ageMigration);db.exec(ageOnlyMigration);
  db.exec(`INSERT INTO production_gallery(id,card_source_id,filename,content_type,byte_size,r2_key,title,tags_json,approved_at,uploaded_by,created_at,updated_at) VALUES('original','source','actor.png','image/png',4,'photo','Alex','["dad"]','approved','Team','now','now');`);
  const objects=new Map([['photo',new TextEncoder().encode('test')]]);
  const env={ADMIN_PASSWORD:'test',TG_DATA:{prepare(sql){let args=[];return{bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};},async batch(statements){db.exec('BEGIN');try{const result=[];for(const s of statements)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}},PRODUCTION_ARCHIVE:{async put(key,data){objects.set(key,data);},async get(key,options){const data=objects.get(key);if(!data)return null;const chunk=options?.range?data.slice(options.range.offset,options.range.offset+options.range.length):data;return{body:new Blob([chunk]).stream(),size:data.length,...(options?.range?{range:options.range}:{})};}}};
@@ -77,11 +78,11 @@ test('actual age uses birthday boundary, including unknown age',()=>{
  assert.equal(actualAge(null),null);assert.equal(actualAge('2000-11-19',new Date(2026,10,18)),25);assert.equal(actualAge('2000-11-19',new Date(2026,10,19)),26);
 });
 
-test('casting ages advance reported ages and use known birth years without guessing missing values',()=>{
+test('casting ages advance reported ages without restoring cleared estimates',()=>{
  const person={age:35,ageAsOfYear:2025,birthYear:null,birthday:null};
  assert.equal(castingAge(person,new Date(2026,10,19)),36);
  assert.equal(castingAge({...person,age:0,ageAsOfYear:2026},new Date(2026,10,19)),0);
- assert.equal(castingAge({...person,age:null,birthYear:2000},new Date(2026,10,19)),26);
+ assert.equal(castingAge({...person,age:null},new Date(2026,10,19)),null);
  assert.equal(castingAge({...person,age:null},new Date(2026,10,19)),null);
 });
 test('age API validates values, retains reference year and leaves source text intact',async()=>{
@@ -93,5 +94,27 @@ test('age API validates values, retains reference year and leaves source text in
  let p=(await(await call(null,`?id=${id}`)).json()).person;assert.equal(p.age,35);assert.equal(p.ageAsOfYear,2025);assert.equal(p.birthYear,null);
  await call({action:'update',id,phone:'123'});p=(await(await call(null,`?id=${id}`)).json()).person;assert.equal(p.ageAsOfYear,2025);
  await call({action:'update',id,age:null,birthYear:1990});p=(await(await call(null,`?id=${id}`)).json()).person;assert.equal(p.age,null);assert.equal(p.ageAsOfYear,null);assert.equal(p.birthYear,1990);assert.equal(p.notes,'Age:35 (as of 2025)');
+ }finally{db.close();}
+});
+
+test('birth-year-only records become anchored age estimates without overwriting reported ages',()=>{
+ const {db}=fixture();try{
+ db.exec("INSERT INTO rolodex_people(id,name,birth_year,age,age_as_of_year,created_at,updated_at) VALUES('year','Year',2000,NULL,NULL,'now','now'),('reported','Reported',1990,35,2025,'now','now'),('unknown','Unknown',NULL,NULL,NULL,'now','now');");
+ db.exec(ageOnlyMigration);
+ const year=new Date().getUTCFullYear();
+ assert.deepEqual({...db.prepare("SELECT age,age_as_of_year FROM rolodex_people WHERE id='year'").get()},{age:year-2000,age_as_of_year:year});
+ assert.deepEqual({...db.prepare("SELECT age,age_as_of_year FROM rolodex_people WHERE id='reported'").get()},{age:35,age_as_of_year:2025});
+ assert.equal(db.prepare("SELECT age FROM rolodex_people WHERE id='unknown'").get().age,null);
+ }finally{db.close();}
+});
+test('new age edits automatically anchor to the current year and clearing stays unknown',async()=>{
+ const {db,call}=fixture();try{
+ const {id}=await(await call({action:'create',name:'Actor'})).json();
+ await call({action:'update',id,age:25});
+ let p=(await(await call(null,`?id=${id}`)).json()).person;
+ const year=new Date().getUTCFullYear();assert.equal(p.ageAsOfYear,year);
+ assert.equal(castingAge(p,new Date(year+1,6,1)),26);
+ await call({action:'update',id,age:null});p=(await(await call(null,`?id=${id}`)).json()).person;
+ assert.equal(castingAge(p),null);assert.equal(p.ageAsOfYear,null);
  }finally{db.close();}
 });
