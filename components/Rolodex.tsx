@@ -1,6 +1,7 @@
 'use client';
 
-import { uploadRolodexFile, uploadValidation } from '@/lib/rolodex-upload';
+import { compressVideo } from '@/lib/compress-video';
+import { MAX_UPLOAD_BYTES, uploadContentType, uploadRolodexFile, uploadValidation } from '@/lib/rolodex-upload';
 import { RolodexEthnicitySelect } from './RolodexEthnicitySelect';
 import { ethnicityOptions } from '@/lib/rolodex-ethnicity';
 import { genderOptions, normalizedGender } from '@/lib/rolodex-gender';
@@ -61,7 +62,7 @@ export function Rolodex({teamApp=false}:{teamApp?:boolean}) {
  </section>;
 }
 
-type UploadItem={id:string;file:File;loaded:number;phase:'queued'|'uploading'|'saving'|'success'|'failed';message:string};
+type UploadItem={id:string;file:File;loaded:number;phase:'queued'|'compressing'|'uploading'|'saving'|'success'|'failed';message:string};
 type Detail={person:Talent;media:TalentMedia[];history:TalentHistory[]};
 function TalentPanel({id,previous,next,onNavigate,onChanged,navigationGuard}:{id:string;previous:string|null;next:string|null;onNavigate:(id:string|null)=>void;onChanged:()=>void;navigationGuard:React.MutableRefObject<()=>Promise<boolean>>}) {
  const [detail,setDetail]=useState<Detail|null>(null),[error,setError]=useState('');
@@ -101,12 +102,19 @@ function Profile({detail,previous,next,onNavigate,onChanged,onDetail,navigationG
    if(!await flush()){for(const item of items)patch(item.id,{phase:'failed',message:'Profile edits could not be saved. Resolve the profile error, then retry.'});return;}
    await withRolodexCatalogChange(async()=>{
     for(const item of items){
-     const invalid=uploadValidation(item.file);if(invalid){patch(item.id,{phase:'failed',message:invalid});continue;}
      const controller=new AbortController();uploadAbort.current=controller;
      patch(item.id,{phase:'uploading',loaded:0,message:''});
      try {
-      await uploadRolodexFile(p.id,item.file,item.id,progress=>patch(item.id,{phase:progress.phase,loaded:progress.loaded}),controller.signal);
-      succeeded++;patch(item.id,{phase:'success',loaded:item.file.size,message:'Uploaded successfully. Preview may take a moment to appear.'});
+      let file=item.file;
+      if(file.size>MAX_UPLOAD_BYTES&&uploadContentType(file).startsWith('video/')){
+       patch(item.id,{phase:'compressing',loaded:0,message:''});
+       file=await compressVideo(file,progress=>patch(item.id,{loaded:item.file.size*progress}),controller.signal);
+       // Retry the compressed copy without recompressing; original file on disk is untouched.
+       patch(item.id,{file,loaded:0,phase:'uploading'});
+      }
+      const invalid=uploadValidation(file);if(invalid)throw new Error(invalid);
+      await uploadRolodexFile(p.id,file,item.id,progress=>patch(item.id,{phase:progress.phase,loaded:progress.loaded}),controller.signal);
+      succeeded++;patch(item.id,{phase:'success',loaded:file.size,message:'Uploaded successfully. Preview may take a moment to appear.'});
      }catch(e){patch(item.id,{phase:'failed',message:(e as Error).message});}
      finally{uploadAbort.current=null;}
     }
@@ -126,13 +134,13 @@ function Profile({detail,previous,next,onNavigate,onChanged,onDetail,navigationG
  {error&&<p role="alert" className={styles.error}>{error} {status==='Not saved'&&<button type="button" onClick={()=>void flush()}>Retry save</button>}</p>}{message&&<p role="status">{message}</p>}
  <div className={styles.fields}><label>Age estimate as of {new Date().getFullYear()}<input type="number" min="0" max="130" step="1" value={form.age} placeholder="Unknown" onChange={e=>update('age',e.target.value)} onBlur={()=>void flush()}/><small>Automatically advances each year.</small></label><RolodexEthnicitySelect value={form.ethnicities} onChange={value=>{update('ethnicities',value);void flush();}}/>{(['gender','email','phone'] as const).map(key=><label key={key}>{key[0].toUpperCase()+key.slice(1)}{key==='gender'?<span className={styles.selectWrap}><select className={styles.genderSelect} value={form.gender} onChange={e=>{update('gender',normalizedGender(e.target.value));void flush();}}>{genderOptions.map(value=><option key={value} value={value}>{value}</option>)}</select></span>:<input type={key==='email'?'email':key==='phone'?'tel':'text'} value={form[key]} placeholder="Optional" onChange={e=>update(key,e.target.value)} onBlur={()=>void flush()}/>}</label>)}</div>
  <label>Tags<input value={form.tags} placeholder="comedy, voiceover, Atlanta…" onChange={e=>update('tags',e.target.value)} onBlur={()=>void flush()}/><small>Separate tags with commas.</small></label><label>Notes<textarea value={form.notes} rows={3} maxLength={10000} onChange={e=>update('notes',e.target.value)} onBlur={()=>void flush()}/></label>
- <section className={styles.mediaSection} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={e=>{e.preventDefault();void upload(Array.from(e.dataTransfer.files));}}><header><h2>Photos & auditions</h2><div className={styles.actions}><button type="button" disabled={busy} onClick={()=>input.current?.click()}>{uploading.current?(uploads.some(item=>item.phase==='uploading'||item.phase==='saving')?'Uploading…':'Updating profile…'):busy?'Saving…':'Upload media'}</button><button type="button" disabled={busy} onClick={()=>setMux(true)}>Search Mux</button></div></header><input hidden ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime" onChange={e=>void upload(Array.from(e.target.files||[]))}/><p className={styles.hint}>Drop photos or videos here · Up to 90 MB per file.</p>
+ <section className={styles.mediaSection} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={e=>{e.preventDefault();void upload(Array.from(e.dataTransfer.files));}}><header><h2>Photos & auditions</h2><div className={styles.actions}><button type="button" disabled={busy} onClick={()=>input.current?.click()}>{uploading.current?(uploads.some(item=>item.phase==='compressing')?'Compressing…':uploads.some(item=>item.phase==='uploading'||item.phase==='saving')?'Uploading…':'Updating profile…'):busy?'Saving…':'Upload media'}</button><button type="button" disabled={busy} onClick={()=>setMux(true)}>Search Mux</button></div></header><input hidden ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime" onChange={e=>void upload(Array.from(e.target.files||[]))}/><p className={styles.hint}>Drop photos or videos here · Videos over 90 MB are compressed on your device before upload. Keep this tab open; your original stays unchanged.</p>
  {uploads.length>0&&<div className={styles.uploadQueue} aria-label="Upload progress">{uploads.map(item=><div className={styles.uploadItem} key={item.id}>
   <div className={styles.uploadHeading}><strong>{item.file.name}</strong><span>{(item.file.size/1024/1024).toFixed(1)} MB</span></div>
   <progress aria-label={`Upload progress for ${item.file.name}`} max={item.file.size||1} value={item.loaded}/>
-  <div className={styles.uploadStatus} role={item.phase==='failed'?'alert':'status'}>{item.phase==='queued'?'Waiting to upload…':item.phase==='uploading'?`Uploading · ${Math.floor(item.loaded/(item.file.size||1)*100)}%`:item.phase==='saving'?'Transfer complete · Saving to profile…':item.message}</div>
+  <div className={styles.uploadStatus} role={item.phase==='failed'?'alert':'status'}>{item.phase==='queued'?'Waiting to upload…':item.phase==='compressing'?`Compressing video on your device · ${Math.floor(item.loaded/(item.file.size||1)*100)}%`:item.phase==='uploading'?`Uploading · ${Math.floor(item.loaded/(item.file.size||1)*100)}%`:item.phase==='saving'?'Transfer complete · Saving to profile…':item.message}</div>
   {item.phase==='failed'&&<button type="button" disabled={busy} onClick={()=>void processUploads([item])}>Retry</button>}
-  {(item.phase==='uploading'||item.phase==='saving')&&<button type="button" onClick={()=>uploadAbort.current?.abort()}>Cancel upload</button>}
+  {(item.phase==='compressing'||item.phase==='uploading'||item.phase==='saving')&&<button type="button" onClick={()=>uploadAbort.current?.abort()}>Cancel upload</button>}
  </div>)}</div>}
  {!detail.media.length&&<p>No media yet. Add a photo to give this person a face in the grid.</p>}
  <div className={styles.mediaGrid}>{detail.media.map(m=><article key={m.id}><button className={styles.mediaThumb} type="button" aria-label={`Preview ${m.title}`} onClick={()=>setPreview(m)}>{m.kind==='mux'?m.thumbnailUrl?<img src={m.thumbnailUrl} alt=""/>:<span>Mux video</span>:m.contentType?.startsWith('video/')?<img src={mediaVariantUrl(m.url, 'poster')} alt="" loading="lazy"/>:<img src={mediaVariantUrl(m.url, 'thumb')} alt="" loading="lazy"/>}{(m.kind==='mux'||m.contentType?.startsWith('video/'))&&<i>▶</i>}</button><input aria-label={`Media title for ${m.title}`} key={m.title} defaultValue={m.title} maxLength={180} disabled={busy} onBlur={e=>{if(e.target.value!==m.title)void mutate({action:'renameMedia',mediaId:m.id,title:e.target.value});}}/><div className={styles.mediaActions}>{m.kind==='upload'&&<button type="button" disabled={busy||p.coverMediaId===m.id} onClick={()=>void mutate({action:'cover',mediaId:m.id})}>{p.coverMediaId===m.id?'Cover':'Set cover'}</button>}<button type="button" disabled={busy} onClick={()=>setConfirm(m)}>Remove</button></div>{m.sourceCardId&&<a className={styles.source} href={`/app/deck?card=${encodeURIComponent(m.sourceCardId)}`}>Source production ↗</a>}</article>)}</div></section>

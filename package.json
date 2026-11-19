@@ -25,6 +25,7 @@
     "@vimeo/player": "^2.30.4",
     "@zip.js/zip.js": "^2.24.0",
     "fuse.js": "^7.5.0",
+    "mediabunny": "1.66.2",
     "next": "^16.4.5",
     "pdfjs-dist": "^6.5.438",
     "pixelarticons": "^2.4.2",
