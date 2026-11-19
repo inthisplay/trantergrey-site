@@ -42,3 +42,15 @@ test('inactivity and total deadlines stop stuck processing',async t=>{
  promise=compressVideo(file,()=>{});rejection=assert.rejects(promise,/exceeded 20 minutes/);
  for(let i=0;i<20;i++){worker.onmessage({data:{type:'progress',progress:i/20}});t.mock.timers.tick(60000);}await rejection;assert.ok(worker.terminated);
 });
+
+test('Apple spatial audio uses only a matching stereo fallback',async()=>{
+ await build({entryPoints:['lib/video-audio-selection.ts'],outfile:join(dir,'audio.mjs'),platform:'node',bundle:true,format:'esm'});
+ const {spatialAudioFallbacks}=await import(pathToFileURL(join(dir,'audio.mjs')));
+ const apac={codec:null,internalCodec:'apac',start:0,duration:28.359,language:'und'};
+ const aac={codec:'aac',internalCodec:'mp4a',start:0,duration:28.358,language:'und'};
+ assert.deepEqual([...spatialAudioFallbacks([apac,aac])],[0]);
+ assert.equal(spatialAudioFallbacks([aac]).size,0);
+ for(const other of [undefined,{...aac,duration:20},{...aac,start:2},{...aac,language:'spa'},{...aac,duration:NaN}])assert.throws(()=>spatialAudioFallbacks(other?[apac,other]:[apac]),/without a matching stereo/);
+ // Unknown codecs are not silently treated as optional spatial audio.
+ assert.equal(spatialAudioFallbacks([{...apac,internalCodec:'unknown'},aac]).size,0);
+});
