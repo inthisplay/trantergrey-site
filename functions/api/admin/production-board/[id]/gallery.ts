@@ -13,7 +13,7 @@ export async function onRequest({ request, env, params }: Context): Promise<Resp
   const session = (await adminSession(request, env))!;
   const now = new Date().toISOString();
   if (request.method === 'GET') {
-    const { results } = await env.TG_DATA.prepare(`SELECT id, title, filename, content_type AS contentType, tags_json, approved_at AS approvedAt, approved_by AS approvedBy, created_at AS createdAt FROM production_gallery WHERE card_source_id=? AND deleted_at IS NULL ORDER BY (approved_at IS NOT NULL) DESC, created_at DESC, id`).bind(card.source_id).all<{ tags_json: string; id: string }>();
+    const { results } = await env.TG_DATA.prepare(`SELECT id, (SELECT p.id FROM rolodex_people p WHERE p.deleted_at IS NULL AND (p.id=production_gallery.rolodex_person_id OR p.id IN (SELECT m.person_id FROM rolodex_media m WHERE m.source_gallery_id=production_gallery.id AND m.deleted_at IS NULL)) LIMIT 1) AS rolodexPersonId, title, filename, content_type AS contentType, tags_json, approved_at AS approvedAt, approved_by AS approvedBy, created_at AS createdAt FROM production_gallery WHERE card_source_id=? AND deleted_at IS NULL ORDER BY (approved_at IS NOT NULL) DESC, created_at DESC, id`).bind(card.source_id).all<{ tags_json: string; id: string }>();
     return Response.json({ items: results.map(({ tags_json, ...item }) => ({ ...item, tags: JSON.parse(tags_json), url: `/api/admin/production-board/${encodeURIComponent(params.id)}/gallery/${item.id}` })) }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
   if (request.method === 'POST') {

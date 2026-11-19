@@ -79,3 +79,28 @@
 .pageStatus { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .gallery .thumbnail, .gallery .thumbnail img, .gallery .thumbnail video { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: pan-y pinch-zoom; }
+
+.gallery .headingActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gallery .headingActions button { border: 1px solid #9c3544; background: white; color: #842b38; padding: 6px 10px; font-size: 12px; min-height: 36px; }
+.gallery .headingActions button[aria-pressed=true] { background: #913542; color: white; }
+.gallery .grid.editGrid { grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr)); gap: 16px; }
+.gallery .editGrid .item { aspect-ratio: auto; overflow: visible; background: white; box-shadow: none; }
+.gallery .editGrid .item .thumbnail { height: auto; aspect-ratio: 1; }
+.gallery .editFields { padding: 10px 0 0; }
+.gallery .editFields label { display: block; margin: 0 0 8px; padding: 0 8px; font-size: 11px; color: #913542; }
+.gallery .editFields input { display: block; box-sizing: border-box; width: 100%; min-width: 0; min-height: 34px; margin: 0; padding: 2px 0 8px; border: 0; border-radius: 0; outline: none; box-shadow: none; font: inherit; font-size: 16px; color: #211a1d; background: transparent; }
+.gallery .editFields input:focus { outline: none; box-shadow: inset 0 -1px #913542; background: transparent; }
+.gallery .editFooter { padding: 0 8px; min-height: 28px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #716b6e; }
+.gallery .editFooter button { background: transparent; border: 0; color: #842b38; text-decoration: underline; padding: 4px; }
+
+.gallery .editFields input::placeholder { color: #c9c4c6; opacity: 1; }
+
+/* Match the square thumbnail so status sits over its lower edge. */
+.gallery .saveOverlay { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 1; box-sizing: border-box; display: flex; align-items: flex-end; padding: 6px; pointer-events: none; }
+.gallery .saveOverlay span { max-width: 100%; padding: 2px 5px; border-radius: 2px; background: #19171999; color: #fff; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+
+.gallery .saveSpinner { display: block; width: 11px; height: 11px; margin: 2px 0; border: 2px solid #ffffff55; border-top-color: white; border-radius: 50%; animation: casting-save-spin .7s linear infinite; }
+@keyframes casting-save-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gallery .saveSpinner { animation: none; } }
+
+.gallery .editFooter a { color: #842b38; font-size: 11px; text-decoration: none; padding: 4px 0; }

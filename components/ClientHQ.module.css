@@ -88,3 +88,7 @@
 .uploadProgress{display:grid;gap:6px;margin:12px 0 20px;font-size:12px;color:var(--hq-muted)}.uploadProgress progress{width:100%;height:8px;accent-color:var(--red)}
 
 .pinnedFolders{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.hq .pinnedFolders button{justify-content:flex-start;padding:7px 10px;min-height:34px;max-width:100%;font-size:12px;overflow-wrap:anywhere;color:var(--red)}.pinnedFolders p{font-size:12px;color:var(--hq-muted);margin:0}.pinFolderAction{margin:0 0 16px}.hq .pinFolderAction button{color:var(--red);font-size:12px;padding:6px 10px;min-height:32px}.pinManagement{margin:20px 0 28px}.pinSetting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--hq-line)}.pinSetting>span{overflow-wrap:anywhere;min-width:0}.pinSetting>div{display:flex;flex-wrap:wrap;gap:4px}.hq .pinSetting button{font-size:12px;padding:5px 8px;min-height:30px}
+
+.hq.teamApp{padding:20px 0 40px}
+
+.hq .heading h1 { font-family:var(--display); font-weight:800; }

@@ -1,5 +1,5 @@
-const CACHE = 'tg-team-shell-v5';
-const SHELL = ['/app', '/app/mux', '/app/deck', '/manifest.webmanifest', '/tg-team-icon.png', '/favicon.svg'];
+const CACHE = 'tg-team-shell-v7';
+const SHELL = ['/app', '/app/mux', '/app/deck', '/app/clients', '/app/rolodex', '/manifest.webmanifest', '/tg-team-icon.png', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

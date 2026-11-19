@@ -13,6 +13,7 @@ const { onRequest } = await import(pathToFileURL(join(dir, 'api.mjs')));
 const { onRequestGet } = await import(pathToFileURL(join(dir, 'file.mjs')));
 after(() => rm(dir, { recursive: true, force: true }));
 const migration = await readFile('migrations/0035_card_media_gallery.sql', 'utf8');
+const rolodexMigration = await readFile('migrations/0037_rolodex.sql', 'utf8');
 function fixture() {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE admin_sessions(id TEXT,user_name TEXT,user_email TEXT,expires_at TEXT);
@@ -20,6 +21,7 @@ function fixture() {
     CREATE TABLE production_cards(id TEXT,source_id TEXT UNIQUE); INSERT INTO production_cards VALUES('card','source'),('other','other-source');
     CREATE TABLE production_card_overrides(card_source_id TEXT,deleted_at TEXT);`);
   db.exec(migration);
+  db.exec(rolodexMigration);
   const objects = new Map();
   const env = { ADMIN_PASSWORD: 'test', TG_DATA: { prepare(sql) { let args = []; return { bind(...values) { args=values; return this; }, async first() { return db.prepare(sql).get(...args) || null; }, async all() { return { results: db.prepare(sql).all(...args) }; }, async run() { return db.prepare(sql).run(...args); } }; } }, PRODUCTION_ARCHIVE: { async put(key, value) { objects.set(key, value); }, async get(key, options) { const data=objects.get(key); if(!data)return null; const chunk=options?.range ? data.slice(options.range.offset, options.range.offset+options.range.length) : data; return {body:new Blob([chunk]).stream(),size:data.length,...(options?.range ? {range:options.range}: {})}; } } };
   const request = (method='GET', body, card='card', auth=true, extra={}) => onRequest({env,params:{id:card},request:new Request('http://localhost/api/gallery',{method,headers:{...(auth?{cookie:'tg_admin=test'}:{}),...extra},...(body!==undefined?{body:typeof body==='string'?body:JSON.stringify(body)}:{})})});

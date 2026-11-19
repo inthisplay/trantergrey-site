@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 const dir=await mkdtemp(join(tmpdir(),'tg-client-hq-'));
 const handlers={};
-for(const [name,path] of Object.entries({history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
+for(const [name,path] of Object.entries({internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
   await build({entryPoints:[path],bundle:true,platform:'node',format:'esm',outfile:join(dir,name+'.mjs')});handlers[name]=await import(pathToFileURL(join(dir,name+'.mjs')));
 }
 after(()=>rm(dir,{recursive:true,force:true}));
@@ -296,4 +296,43 @@ test('client activity isolates clients and paginates merged Deck and workspace h
  assert.equal((await (await api(`client=${client}&filter=management`)).json()).events.length,0);
  assert.equal((await (await api('')).json()).events.length,2);
  }finally{db.close();}
+});
+
+
+test('internal Client HQ enforces scopes, returns envelopes, and attributes integration edits',async()=>{
+  const {db,env}=fixture();
+  try {
+    db.exec('CREATE TABLE api_integration_credentials(id TEXT,name TEXT,scopes_json TEXT,secret_hash TEXT,revoked_at TEXT,last_used_at TEXT)');
+    const credentialId='12345678-1234-1234-1234-123456789012';
+    const token=`tg_${credentialId}_${'s'.repeat(24)}`;
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
+    const hash=Buffer.from(digest).toString('hex');
+    db.prepare('INSERT INTO api_integration_credentials(id,name,scopes_json,secret_hash) VALUES(?,?,?,?)').run(credentialId,'HQ integration','["clients:read"]',hash);
+    const api=(body,headers={authorization:`Bearer ${token}`},query='')=>handlers.internalHQ.onRequest({env,request:new Request('https://local.test/api/internal/v1/client-hq'+query,{method:body?'POST':'GET',headers:{...headers,...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})})});
+    assert.equal((await api(undefined,{})).status,401);
+    const listing=await api();assert.equal(listing.headers.get('cache-control'),'private, no-store');
+    const id=(await listing.json()).data.clients[0].id;
+    assert.equal((await api({kind:'todo',title:'Blocked',workspace_id:id})).status,403);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n,0);
+    db.prepare('UPDATE api_integration_credentials SET scopes_json=?').run('["clients:read","clients:write"]');
+    assert.equal((await api({kind:'todo',title:'API task',workspace_id:id})).status,200);
+    assert.equal(db.prepare('SELECT actor FROM client_activity').get().actor,'HQ integration');
+    const detail=await (await api(undefined,undefined,'?id='+id)).json();assert.equal(detail.data.items[0].title,'API task');
+    const missing=await api(undefined,undefined,'?id=missing');assert.equal(missing.status,404);assert.equal((await missing.json()).error.code,'client_hq_failed');
+    assert.equal((await api({kind:'todo',title:'Cross origin',workspace_id:id},{cookie:'tg_admin=test',origin:'https://elsewhere.test'})).status,403);
+    assert.equal((await api(undefined,{cookie:'tg_admin=test'})).status,200);
+    db.exec("UPDATE api_integration_credentials SET revoked_at='now'");
+    assert.equal((await api()).status,401);
+  } finally {db.close();}
+});
+
+test('Drive connection from the PWA stores an in-app return destination',async()=>{
+  const {db,env,request}=fixture();
+  try {
+    Object.assign(env,{GOOGLE_CLIENT_ID:'client',GOOGLE_CLIENT_SECRET:'secret',GOOGLE_DRIVE_ENCRYPTION_KEY:'12'.repeat(32)});
+    const id=db.prepare('SELECT id FROM client_directory').get().id;
+    const response=await handlers.connection.onRequest({env,request:request('client-drive-connection',{action:'connect',client:id,teamApp:true})});
+    assert.equal(response.status,200);
+    assert.equal(db.prepare('SELECT destination FROM client_drive_oauth_states').get().destination,'/app/clients?client='+encodeURIComponent(id));
+  } finally {db.close();}
 });

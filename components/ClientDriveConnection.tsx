@@ -8,7 +8,7 @@ export function ClientDriveConnection({client,onStatus}:{client?:string;onStatus
   const [status,setStatus]=useState<Status|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
   async function load(){const value=await hqRequest('/api/admin/client-drive-connection');setStatus(value);onStatus?.(value.connected);}
   useEffect(()=>{void load().catch(e=>setError(e.message));const result=new URLSearchParams(location.search).get('drive');if(result)setMessage(outcomes[result] || outcomes.failed);},[]);
-  async function connect(){setBusy(true);setError('');try{const result=await hqRequest('/api/admin/client-drive-connection',{action:'connect',client});location.assign(result.authorizationUrl);}catch(e){setError((e as Error).message);setBusy(false);}}
+  async function connect(){setBusy(true);setError('');try{const result=await hqRequest('/api/admin/client-drive-connection',{action:'connect',client,teamApp:location.pathname.startsWith('/app/')});location.assign(result.authorizationUrl);}catch(e){setError((e as Error).message);setBusy(false);}}
   async function disconnect(){if(!confirm('Disconnect Google Drive for everyone using this environment? Files and client-folder links will stay intact.'))return;setBusy(true);setError('');try{await hqRequest('/api/admin/client-drive-connection',{action:'disconnect'});setMessage('Google Drive disconnected.');await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   return <div className={styles.driveConnection}>
     {message && <p role="status">{message}</p>}{error && <p role="alert" className={styles.error}>{error}</p>}

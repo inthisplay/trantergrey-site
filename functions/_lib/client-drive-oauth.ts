@@ -26,11 +26,11 @@ export async function connectionStatus(env:AdminEnvironment) {
   const row=await env.TG_DATA.prepare("SELECT account_email,drive_id,needs_reconnect FROM client_drive_connection WHERE id='organization'").first<{account_email:string;drive_id:string;needs_reconnect:number}>();
   return {connected:Boolean(row && !row.needs_reconnect && row.drive_id===sharedDriveId(env) && driveOAuthReady(env)),ready:driveOAuthReady(env),account:row?.account_email || null,needsReconnect:Boolean(row && (row.needs_reconnect || row.drive_id!==sharedDriveId(env)))};
 }
-export async function startDriveOAuth(request:Request,env:AdminEnvironment,client?:string) {
+export async function startDriveOAuth(request:Request,env:AdminEnvironment,client?:string,teamApp=false) {
   if(!driveOAuthReady(env))throw new Error('Google Drive connection setup is incomplete on this server.');
   const redirect=env.GOOGLE_REDIRECT_URI || new URL('/api/auth/google/callback',request.url).toString();
   if(new URL(redirect).origin!==new URL(request.url).origin)throw new Error('The Google callback must use this website’s origin.');
-  let destination='/admin/clients';
+  let destination=teamApp?'/app/clients':'/admin/clients';
   if(client){if(!await env.TG_DATA.prepare('SELECT id FROM client_directory WHERE id=?').bind(client).first())throw new Error('Client not found.');destination+=`?client=${encodeURIComponent(client)}`;}
   const state='drive_'+random(),verifier=random();
   await env.TG_DATA.prepare('DELETE FROM client_drive_oauth_states WHERE expires_at<=?').bind(new Date().toISOString()).run();

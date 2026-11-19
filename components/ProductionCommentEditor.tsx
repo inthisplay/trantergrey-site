@@ -7,7 +7,7 @@ import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
 import { BaseEditor, createEditor, Editor, Element as SlateElement, Transforms, type Descendant } from 'slate';
 import { Editable, ReactEditor, Slate, withReact, type RenderElementProps, type RenderLeafProps } from 'slate-react';
 
-type ProductionCommentEditorProps = { client?: string | null; initialValue?: Descendant[]; onChange: (value: Descendant[]) => void };
+type ProductionCommentEditorProps = { client?: string | null; initialValue?: Descendant[]; onChange: (value: Descendant[]) => void; renderActions?: (uploadButton: ReactNode, uploading: boolean) => ReactNode };
 type TextAlign = 'left' | 'center' | 'right' | 'justify';
 type MuxItemKind = 'video' | 'ratio-group' | 'collection';
 type MuxEmbedVideo = { id: string; title: string; client: string | null; thumbnailUrl: string | null; playerUrl: string | null };
@@ -99,7 +99,7 @@ function Element({ attributes, children, element }: RenderElementProps) {
   return <p {...attributes} style={style}>{children}</p>;
 }
 
-export function ProductionCommentEditor({ client, initialValue = emptyValue, onChange, cardId }: ProductionCommentEditorProps & { cardId?: string }) {
+export function ProductionCommentEditor({ client, initialValue = emptyValue, onChange, cardId, renderActions }: ProductionCommentEditorProps & { cardId?: string }) {
   const editor = useMemo(() => withMuxAssets(withReact(createEditor())), []);
   const renderElement = useCallback((props: RenderElementProps) => <Element {...props} />, []);
   const renderLeaf = useCallback((props: RenderLeafProps) => <Leaf {...props} />, []);
@@ -164,11 +164,11 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
   const onDrop = (event: DragEvent<HTMLElement>) => { event.preventDefault(); setDragDepth(0); void uploadFiles(Array.from(event.dataTransfer.files)); };
   const ToolbarButton = ({ label, title, active, onMouseDown }: { label: ReactNode; title: string; active?: boolean; onMouseDown: () => void }) => <button type="button" title={title} aria-label={title} className={active ? 'is-active' : ''} onMouseDown={(event) => { event.preventDefault(); onMouseDown(); }}>{label}</button>;
 
-  return <section className={`production-comment-composer${dragDepth > 0 ? ' is-dropping' : ''}`} aria-label="Comment composer" onDragEnter={(event) => { event.preventDefault(); setDragDepth((depth) => depth + 1); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { event.preventDefault(); setDragDepth((depth) => Math.max(0, depth - 1)); }} onDrop={onDrop}>
-    {cardId && <div className="production-comment-media-bar">
-      <button type="button" className="production-comment-add-media" disabled={uploading.length > 0} onMouseDown={event => event.preventDefault()} onClick={() => mediaInput.current?.click()}>{uploading.length ? 'Uploading…' : '+ Add photos / videos'}</button>
-      <input ref={mediaInput} type="file" hidden multiple accept="image/*,video/*" aria-label="Choose photos or videos for this comment" onChange={event => { const files = Array.from(event.target.files || []); if (files.length) void uploadFiles(files); }} />
-    </div>}
+  const uploadButton = cardId ? <button type="button" className="production-comment-add-media" disabled={uploading.length > 0} onMouseDown={event => event.preventDefault()} onClick={() => mediaInput.current?.click()}>{uploading.length ? 'Uploading…' : 'Upload media'}</button> : null;
+
+  return <><section className={`production-comment-composer${dragDepth > 0 ? ' is-dropping' : ''}`} aria-label="Comment composer" onDragEnter={(event) => { event.preventDefault(); setDragDepth((depth) => depth + 1); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { event.preventDefault(); setDragDepth((depth) => Math.max(0, depth - 1)); }} onDrop={onDrop}>
+    {cardId && <input ref={mediaInput} type="file" hidden multiple accept="image/*,video/*" aria-label="Choose photos or videos for this comment" onChange={event => { const files = Array.from(event.target.files || []); if (files.length) void uploadFiles(files); }} />}
+    {!renderActions && cardId && <div className="production-comment-media-bar">{uploadButton}</div>}
     <div className="production-comment-composer-bar"><div className="production-comment-tools" aria-label="Text formatting">
       <ToolbarButton label={<UiIcon name="bold" />} title="Bold" active={isMarkActive(editor, 'bold')} onMouseDown={() => toggleMark(editor, 'bold')} />
       <ToolbarButton label={<UiIcon name="italic" />} title="Italic" active={isMarkActive(editor, 'italic')} onMouseDown={() => toggleMark(editor, 'italic')} />
@@ -189,5 +189,5 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
       <ToolbarButton label={<AlignmentIcon align="justify" />} title="Justify" active={isAlignActive(editor, 'justify')} onMouseDown={() => toggleAlignment(editor, 'justify')} />
     </div></div>{muxPickerOpen && <div className="production-mux-picker"><input autoFocus value={muxSearch} onChange={(event) => setMuxSearch(event.target.value)} placeholder="Search Mux title, client, or ID…" aria-label="Search Mux library" />{muxLoading && <p>Loading Mux library…</p>}{muxError && <p>{muxError}</p>}{!muxLoading && !muxError && <div>{visibleMuxAssets.map((asset) => <div className="production-mux-picker-item" key={asset.id}><div><button type="button" className="production-mux-picker-select" onMouseDown={(event) => { event.preventDefault(); insertMuxAsset(asset); }}><>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span className="production-mux-picker-placeholder" />}</><span>{asset.client && <small>{asset.client}</small>}<b>{asset.title}</b><em>{muxItemLabel(asset)}</em></span></button>{asset.children && asset.children.length > 0 && <button type="button" className="production-mux-picker-twirl" aria-label={`Show videos in ${asset.title}`} aria-expanded={expandedMuxItems.includes(asset.id)} onMouseDown={(event) => { event.preventDefault(); toggleMuxItem(asset.id); }}>{expandedMuxItems.includes(asset.id) ? <UiIcon name="chevronDown" /> : <UiIcon name="chevronRight" />}</button>}</div>{expandedMuxItems.includes(asset.id) && asset.children && <div className="production-mux-picker-children">{asset.children.map((child) => <button type="button" key={child.id} onMouseDown={(event) => { event.preventDefault(); insertMuxAsset(child); }}>{child.thumbnailUrl ? <img src={child.thumbnailUrl} alt="" /> : <span className="production-mux-picker-placeholder" />}<span>{child.client && <small>{child.client}</small>}<b>{child.title}</b><em>{muxItemLabel(child)}</em></span></button>)}</div>}</div>)}{muxAssets.length > 0 && visibleMuxAssets.length === 0 && <p>No Mux videos match that search.</p>}</div>}</div>}
     <Slate editor={editor} initialValue={initialValue} onValueChange={update}><div className="production-comment-editor-wrap"><Editable className="production-comment-editor" renderElement={renderElement} renderLeaf={renderLeaf} onKeyDown={onKeyDown} aria-label="Add an update, question, or useful context" />{isEmpty && <span className="production-comment-placeholder" aria-hidden="true">Add an update, question, or useful context…</span>}</div></Slate>{dragDepth > 0 && <div className="production-comment-drop-message">Drop files to attach them</div>}{uploading.length > 0 && <p className="production-comment-upload-status">Uploading {uploading.join(', ')}…</p>}{uploadError && <p className="production-comment-upload-error">{uploadError}</p>}
-  </section>;
+  </section>{renderActions?.(uploadButton, uploading.length > 0)}</>;
 }

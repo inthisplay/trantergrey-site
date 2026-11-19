@@ -3,7 +3,7 @@ import { adminSession, sameValue, type AdminEnvironment } from './admin';
 export type ApiActor = { type: 'user' | 'integration'; id: string; name: string; email: string | null; scopes: Set<string> };
 type Credential = { id: string; name: string; scopes_json: string };
 
-const allScopes = new Set(['videos:read', 'cards:read', 'cards:write', 'associations:write']);
+const allScopes = new Set(['videos:read', 'cards:read', 'cards:write', 'associations:write', 'clients:read', 'clients:write']);
 
 function bearer(request: Request) {
   return request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || '';
