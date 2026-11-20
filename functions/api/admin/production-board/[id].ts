@@ -34,10 +34,10 @@ const preferPreservedNotes = (card: Record<string, unknown>) => {
 export async function onRequestGet({ request, env, params }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
   const viewer = await adminSession(request, env);
-  const storedCard = await env.TG_DATA.prepare(`SELECT p.*, p.description_html AS source_notes_html, o.notes_html AS local_notes_html, o.description_html AS legacy_notes_html, COALESCE(o.title, p.title) AS title, COALESCE(o.notes_html, o.description_html, p.description_html) AS notes_html,
+  const storedCard = await env.TG_DATA.prepare(`SELECT p.*, s.attention, s.filming_on AS filmingOn, s.dismissed_at AS dismissedAt, p.description_html AS source_notes_html, o.notes_html AS local_notes_html, o.description_html AS legacy_notes_html, COALESCE(o.title, p.title) AS title, COALESCE(o.notes_html, o.description_html, p.description_html) AS notes_html,
     COALESCE(o.column_source_id, p.column_source_id) AS column_source_id, COALESCE(o.archived, p.archived) AS archived,
     COALESCE(o.client, '') AS client, COALESCE(o.assignees_json, p.assignees_json, '[]') AS assignees_json, COALESCE(o.due_on, p.due_on) AS due_on, o.edited_at
-    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ? AND o.deleted_at IS NULL`).bind(params.id).first();
+    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id LEFT JOIN production_card_signals s ON s.card_source_id=p.source_id WHERE p.id = ? AND o.deleted_at IS NULL`).bind(params.id).first();
   if (!storedCard) return Response.json({ error: 'Production card not found.' }, { status: 404 });
   const card = preferPreservedNotes(storedCard as Record<string, unknown>) as Record<string, unknown>;
   for (const field of ['notes_html', 'description_html', 'source_notes_html', 'local_notes_html', 'legacy_notes_html']) {
@@ -50,7 +50,7 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     env.TG_DATA.prepare('SELECT source_id AS sourceId, filename, content_type AS contentType, byte_size AS byteSize, status FROM production_attachments WHERE card_source_id = ? ORDER BY filename').bind((card as { source_id: string }).source_id).all(),
     env.TG_DATA.prepare('SELECT source_id AS sourceId, name, position FROM production_columns ORDER BY position, source_id').all(),
     env.TG_DATA.prepare('SELECT changed_at AS changedAt, actor, before_json AS beforeJson, after_json AS afterJson FROM production_card_edit_log WHERE card_source_id = ? ORDER BY changed_at DESC').bind((card as { source_id: string }).source_id).all(),
-    env.TG_DATA.prepare('SELECT id, body_html AS bodyHtml, body_json AS bodyJson, author_name AS authorName, author_email AS authorEmail, created_at AS createdAt, deleted_at AS deletedAt, deleted_by_name AS deletedByName FROM production_local_comments WHERE card_source_id = ? ORDER BY created_at, id').bind((card as { source_id: string }).source_id).all(),
+    env.TG_DATA.prepare('SELECT id, is_question AS isQuestion, question_resolved_at AS questionResolvedAt, body_html AS bodyHtml, body_json AS bodyJson, author_name AS authorName, author_email AS authorEmail, created_at AS createdAt, deleted_at AS deletedAt, deleted_by_name AS deletedByName FROM production_local_comments WHERE card_source_id = ? ORDER BY created_at, id').bind((card as { source_id: string }).source_id).all(),
     readClientDirectory(env),
     env.TG_DATA.prepare('SELECT nickname AS name FROM admin_team_directory').all<{ name: string }>(),
   ]);

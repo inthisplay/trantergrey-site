@@ -14,7 +14,7 @@ for (const [name, path] of Object.entries(entries)) {
   handlers[name] = await import(pathToFileURL(join(dir, name + '.mjs')));
 }
 after(() => rm(dir, { recursive: true, force: true }));
-const migrations = await Promise.all(['0008_production_board','0009_production_card_overrides','0010_production_card_work_fields','0011_production_card_sort_order','0012_production_column_controls','0013_production_comment_blocks','0015_production_comment_authors','0017_internal_api_foundation','0023_production_column_colors','0025_production_card_deletions'].map(name => readFile('migrations/' + name + '.sql', 'utf8')));
+const migrations = await Promise.all(['0008_production_board','0009_production_card_overrides','0010_production_card_work_fields','0011_production_card_sort_order','0012_production_column_controls','0013_production_comment_blocks','0015_production_comment_authors','0017_internal_api_foundation','0023_production_column_colors','0025_production_card_deletions','0050_production_card_signals','0051_comment_questions'].map(name => readFile('migrations/' + name + '.sql', 'utf8')));
 const migration = await readFile('migrations/0024_deck_history.sql', 'utf8');
 function fixture() {
   const db = new DatabaseSync(':memory:');

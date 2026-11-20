@@ -63,7 +63,7 @@ function CastingFields({ item, save, report, onRolodex }: { item: Item; save: (i
   </div>;
 }
 
-export function CardMediaGallery({ cardId }: { cardId: string }) {
+export function CardMediaGallery({ cardId, onUpdated }: { cardId: string; onUpdated?: () => void }) {
   const endpoint = `/api/admin/production-board/${encodeURIComponent(cardId)}/gallery`;
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,7 +116,7 @@ export function CardMediaGallery({ cardId }: { cardId: string }) {
     if (!response.ok) throw new Error(result.error || 'Unable to save casting changes. Please retry.');
     return result;
   }
-  async function load() { const result = await request(); setItems(result.items); }
+  async function load() { const result = await request(); setItems(result.items); onUpdated?.(); }
   useEffect(() => { let active = true; request().then(result => { if (active) setItems(result.items); }).catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, [endpoint]);
   useEffect(() => {
     if (!menu) return;
