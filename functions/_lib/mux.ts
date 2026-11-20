@@ -89,7 +89,7 @@ function normalize(asset: MuxAsset): MuxLibraryAsset | null {
   };
 }
 
-async function muxFetch<T>(env: AdminEnvironment, path: string, init?: RequestInit) {
+export async function muxFetch<T>(env: AdminEnvironment, path: string, init?: RequestInit) {
   const response = await fetch(`https://api.mux.com/video/v1/${path}`, {
     ...init,
     headers: { Authorization: authorization(env), 'Content-Type': 'application/json', ...init?.headers },

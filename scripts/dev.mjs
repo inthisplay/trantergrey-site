@@ -3,6 +3,8 @@ import { createServer, request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const nextBin = path.join(project, 'node_modules/next/dist/bin/next');
@@ -89,4 +91,7 @@ start(process.execPath, [
 ]);
 proxy.listen(3100, '127.0.0.1', () => {
   console.log('Local site ready at http://localhost:3100');
+  if (parseEnv(readFileSync(path.join(project, '.env.local'), 'utf8')).ARCHIVE_WORKER_SECRET) {
+    start(process.execPath, ['scripts/archive-worker.mjs']);
+  }
 });

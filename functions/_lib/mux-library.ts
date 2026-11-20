@@ -148,6 +148,9 @@ export async function readEnrichedMuxLibrary(env: AdminEnvironment, options: { f
     readMuxMetadata(env),
     readVideoProjectStore(env),
   ]);
+  const archiveRows = await env.TG_DATA.prepare('SELECT j.asset_id,j.vimeo_id,j.upload_id,v.title,v.created_at,v.client,v.folder FROM archive_imports j JOIN archive_videos v ON v.vimeo_id=j.vimeo_id').all<{asset_id:string|null;vimeo_id:string;upload_id:string|null;title:string;created_at:string;client:string;folder:string}>();
+  const archiveByAsset = new Map(archiveRows.results.map(row => [row.asset_id,row]));
+  const archiveByVimeo = new Map(archiveRows.results.filter(row => row.upload_id).map(row => [row.vimeo_id,row]));
   // Keep the bundled historic archive only to preserve legacy dates and client
   // names while Mux metadata is being completed. No runtime Vimeo state or API
   // is consulted by the Mux catalog.
@@ -159,6 +162,7 @@ export async function readEnrichedMuxLibrary(env: AdminEnvironment, options: { f
   const byId = new Map(videos.map((video) => [video.id, video]));
   const projectClients = new Map(store.projects.flatMap((project) => project.variants.map((variant) => [variant.assetId, project.client] as const)));
   const assets = matchMuxAssetsToVimeo(muxAssets, videos).map((matched) => {
+    const archived = archiveByAsset.get(matched.id) || (matched.vimeoId ? archiveByVimeo.get(matched.vimeoId) : undefined);
     const sourceId = matched.vimeoMatch?.id || matched.vimeoId;
     const source = sourceId ? byId.get(sourceId) : undefined;
     const saved = metadata[matched.id];
@@ -167,15 +171,15 @@ export async function readEnrichedMuxLibrary(env: AdminEnvironment, options: { f
       title: saved?.title || source?.customTitle?.trim() || source?.title?.trim() || matched.title,
       client: saved?.client || projectClients.get(matched.id) || matched.client || source?.client?.trim() || null,
       localTags: saved?.tags ?? (Array.isArray(source?.localTags) ? source.localTags : []),
-      libraryStatus: saved?.status || source?.libraryStatus || 'unreviewed',
+      libraryStatus: saved?.status || (archived?.upload_id ? 'unreviewed' : source?.libraryStatus) || 'unreviewed',
       thumbnailTime: saved?.thumbnailTime ?? 1,
       hasCustomThumbnail: saved?.thumbnailTime !== null && saved?.thumbnailTime !== undefined,
       thumbnailUrl: matched.playbackId && saved?.thumbnailTime !== null && saved?.thumbnailTime !== undefined ? muxThumbnailUrl(matched.playbackId, saved.thumbnailTime) : matched.thumbnailUrl,
       downloadsEnabled: saved?.downloadsEnabled !== false,
-      historicTitle: source?.title || matched.historicTitle,
-      historicCreatedAt: source?.createdAt || matched.historicCreatedAt,
-      historicClient: source?.client || matched.historicClient,
-      historicFolderPath: source?.folderPath || matched.historicFolderPath,
+      historicTitle: archived?.title || source?.title || matched.historicTitle,
+      historicCreatedAt: archived?.created_at || source?.createdAt || matched.historicCreatedAt,
+      historicClient: archived?.client || source?.client || matched.historicClient,
+      historicFolderPath: archived?.folder || source?.folderPath || matched.historicFolderPath,
     } satisfies MatchedMuxLibraryAsset & { thumbnailTime: number; hasCustomThumbnail: boolean; downloadsEnabled: boolean };
   });
   return { assets, ...store };

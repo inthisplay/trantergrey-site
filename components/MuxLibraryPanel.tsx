@@ -1,5 +1,7 @@
 'use client';
 
+import { VideoArchive } from './VideoArchive';
+
 import { UiIcon } from '@/components/UiIcon';
 
 import { uiIconMarkup } from '@/lib/ui-icons';
@@ -20,7 +22,6 @@ import { VideoModal } from './VideoModal';
 
 type LibraryStatus = MatchedMuxLibraryAsset['libraryStatus'];
 type StatusFilter = LibraryStatus | 'all';
-type ThumbnailFilter = 'all' | 'needs-thumbnail' | 'custom-thumbnail';
 type GroupMode = 'date' | 'client';
 type BulkAction = 'ratio' | 'project' | 'collection' | 'add-to-collection' | 'client' | 'detach' | 'delete' | 'remove-collection' | null;
 type LibraryDisplayItem =
@@ -204,7 +205,6 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [combinedSearchValue, setCombinedSearchValue] = useState('');
   const [dateRange, setDateRange] = useState<MuxDateRange | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [thumbnailFilter, setThumbnailFilter] = useState<ThumbnailFilter>('all');
   const [groupMode, setGroupMode] = useState<GroupMode>('date');
   const [selectionMove, setSelectionMove] = useState<{ ids: string[]; destination: string; sourceCollectionId?: string } | null>(null);
   const [moveName, setMoveName] = useState('');
@@ -297,6 +297,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [replacementProgress, setReplacementProgress] = useState<ReplacementProgress | null>(null);
   const [deckVideo, setDeckVideo] = useState<MatchedMuxLibraryAsset | null>(null);
   const [deckCards, setDeckCards] = useState<DeckCardMatch[]>([]);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [selectedDeckCardId, setSelectedDeckCardId] = useState('');
   const [loadingDeckCards, setLoadingDeckCards] = useState(false);
   const [postingToDeck, setPostingToDeck] = useState(false);
@@ -328,7 +329,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       let response: Response | undefined;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const params = new URLSearchParams({ limit: '48', query, client, status: statusFilter, thumbnail: thumbnailFilter });
+          const params = new URLSearchParams({ limit: '48', query, client, status: statusFilter, thumbnail: 'all' });
           if (dateRange) { params.set('dateStart', dateRange.start); params.set('dateEnd', dateRange.end); }
           if (cursor !== null) params.set('cursor', String(cursor));
           response = await fetch(`/api/mux/library?${params}`, { cache: 'no-store', signal: AbortSignal.timeout(30000) });
@@ -368,7 +369,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   useEffect(() => {
     const timeout = window.setTimeout(() => { void refreshLibrary(); }, query ? 220 : 0);
     return () => window.clearTimeout(timeout);
-  }, [query, client, dateRange, statusFilter, thumbnailFilter]);
+  }, [query, client, dateRange, statusFilter]);
 
   useEffect(() => {
     if (!assets || !locallyProcessingAssetIds.length) return;
@@ -759,8 +760,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     return matchedAssetIds.map((id) => byId.get(id)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset));
   }, [assets, matchedAssetIds]);
   const statusCounts = facets?.statusCounts ?? { all: 0, published: 0, unreviewed: 0, hidden: 0 };
-  const thumbnailCounts = facets?.thumbnailCounts ?? { needsThumbnail: 0, customThumbnail: 0 };
-  const hasFilters = Boolean(dateRange || query.trim()) || client !== 'All' || statusFilter !== 'all' || thumbnailFilter !== 'all';
+  const hasFilters = Boolean(dateRange || query.trim()) || client !== 'All' || statusFilter !== 'all';
   const driveSearchTerm = query.trim() || (client === 'All' || client === 'Unassigned' ? '' : client);
   const driveSearchUrl = `https://drive.google.com/drive/search?q=${encodeURIComponent(['type:video', driveSearchTerm].filter(Boolean).join(' '))}`;
   const assetsById = useMemo(() => new Map((assets ?? []).map((asset) => [asset.id, asset])), [assets]);
@@ -1694,9 +1694,10 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     </div>
     <div className="mux-library-subtoolbar">
       <div className="mux-filter-set mux-status-filter"><span>Status</span>{(['all', 'published', 'unreviewed', 'hidden'] as StatusFilter[]).map((item) => <button className={statusFilter === item ? 'active' : ''} onClick={() => setStatusFilter(item)} key={item}><span>{item === 'unreviewed' ? 'unpublished' : item}</span><b>{statusCounts[item].toLocaleString()}</b></button>)}</div>
-      <div className="mux-filter-set"><span>Thumbnail</span><button className={thumbnailFilter === 'all' ? 'active' : ''} onClick={() => setThumbnailFilter('all')}><span>all</span></button><button className={thumbnailFilter === 'needs-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('needs-thumbnail')}><span>needs selection</span><b>{thumbnailCounts.needsThumbnail.toLocaleString()}</b></button><button className={thumbnailFilter === 'custom-thumbnail' ? 'active' : ''} onClick={() => setThumbnailFilter('custom-thumbnail')}><span>selected</span><b>{thumbnailCounts.customThumbnail.toLocaleString()}</b></button></div>
       <div className="mux-filter-set"><span>Index by</span>{(['date', 'client'] as GroupMode[]).map((item) => <button className={groupMode === item ? 'active' : ''} onClick={() => setGroupMode(item)} key={item}>{item === 'date' ? 'Timeline' : 'Client'}</button>)}</div>
-      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setCombinedSearchValue(''); setStatusFilter('all'); setThumbnailFilter('all'); setDateRange(null); }}>Clear filters</button>}
+      {archiveOpen && <VideoArchive onClose={() => setArchiveOpen(false)} onImported={() => void refreshLibrary()} />}
+      <div className="mux-filter-set"><span>Vimeo</span><button type="button" onClick={() => { setArchiveOpen(true); }}>View archive</button></div>
+      {hasFilters && <button className="mux-clear-filters" onClick={() => { setQuery(''); setClient('All'); setCombinedSearchValue(''); setStatusFilter('all'); setDateRange(null); }}>Clear filters</button>}
       <div className="mux-library-actions"><MuxThemeToggle /><button className={`mux-selection-toggle${selectionMode ? ' active' : ''}`} onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}>{selectionMode ? 'Cancel selection' : 'Select videos'}</button></div>
     </div>
     <p className="mux-library-result-count"><strong>{resultTotal.toLocaleString()}</strong> of {statusCounts.all.toLocaleString()} assets</p>
