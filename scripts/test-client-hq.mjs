@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 const dir=await mkdtemp(join(tmpdir(),'tg-client-hq-'));
 const handlers={};
-for(const [name,path] of Object.entries({publicLogo:'functions/api/watch/[slug]/logo.ts',publicWatch:'functions/_lib/mux-public.ts',logo:'functions/api/admin/client-logo.ts',preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
+for(const [name,path] of Object.entries({unbranded:'functions/_lib/unbranded-page.ts',publicLogo:'functions/api/watch/[slug]/logo.ts',publicWatch:'functions/_lib/mux-public.ts',logo:'functions/api/admin/client-logo.ts',preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
   await build({entryPoints:[path],bundle:true,platform:'node',format:'esm',outfile:join(dir,name+'.mjs')});handlers[name]=await import(pathToFileURL(join(dir,name+'.mjs')));
 }
 after(()=>rm(dir,{recursive:true,force:true}));
@@ -540,4 +540,21 @@ test('unbranded video logos are public only through enabled projects and follow 
     db.exec("UPDATE client_directory SET logo_key='logos/two'");assert.equal(await (await get()).text(),'replacement');
     db.exec("UPDATE client_directory SET logo_key=NULL");assert.equal((await get()).status,404);assert.equal((await handlers.publicWatch.publicWatchData(env,'film')).clientLogoUrl,null);
   } finally {db.close();}
+});
+
+test('standalone videos can enable unbranded sharing and reuse the page when toggled',async()=>{
+  const {db,env}=fixture();
+  db.exec("DROP TABLE mux_video_projects; CREATE TABLE mux_video_projects(id TEXT PRIMARY KEY,slug TEXT UNIQUE,value TEXT,created_at TEXT,updated_at TEXT); CREATE TABLE mux_video_collections(value TEXT,updated_at TEXT);");
+  for(const column of ['title TEXT','tags TEXT','status TEXT','thumbnail_time REAL','downloads_enabled INTEGER'])db.exec('ALTER TABLE mux_asset_metadata ADD COLUMN '+column);
+  db.exec("INSERT INTO mux_asset_metadata(asset_id,client,title) VALUES('standalone','Existing','Saved title')");
+  const asset={id:'standalone',title:'Upload title',playbackId:'public123',playbackPolicy:'public',aspectRatio:'16:9'};
+  try{
+    await assert.rejects(()=>handlers.unbranded.setAssetUnbrandedPage(env,asset,false),/no unbranded page/);
+    const page=await handlers.unbranded.setAssetUnbrandedPage(env,asset,true);
+    assert.equal(page.title,'Saved title');assert.equal(page.client,'Existing');assert.equal(page.unbrandedPublicPage,true);assert.equal(page.variants[0].assetId,asset.id);
+    const disabled=await handlers.unbranded.setAssetUnbrandedPage(env,asset,false);assert.equal(disabled.id,page.id);assert.equal(disabled.unbrandedPublicPage,false);
+    const enabled=await handlers.unbranded.setAssetUnbrandedPage(env,asset,true);assert.equal(enabled.slug,page.slug);assert.equal(enabled.unbrandedPublicPage,true);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM mux_video_projects').get().n,1);
+    await assert.rejects(()=>handlers.unbranded.setAssetUnbrandedPage(env,{...asset,id:'private',playbackPolicy:'signed'},true),/public Mux playback/);
+  }finally{db.close();}
 });
