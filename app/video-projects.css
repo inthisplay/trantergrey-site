@@ -604,3 +604,12 @@
     animation: none;
   }
 }
+
+.unbranded-video-frame .solo-download-menu{top:auto;bottom:calc(100% + 8px);background:#fff;border-color:rgba(23,25,29,.24);box-shadow:0 12px 32px rgba(23,25,29,.15)}
+.unbranded-video-frame .solo-download-menu-group+ .solo-download-menu-group{border-color:rgba(23,25,29,.16)}
+.unbranded-video-frame .solo-download-menu-group>span{color:#25272a}
+.unbranded-video-frame .solo-download-menu button:focus-visible{background:#25272a;color:#fff}
+
+.unbranded-video-frame .solo-download-preparing{background:rgba(23,25,29,.15)}
+.unbranded-video-frame .solo-video-notification.success{border-color:#287347;color:#205d39}
+.unbranded-video-frame .solo-video-notification.error{border-color:#aa3342;color:#922536}
