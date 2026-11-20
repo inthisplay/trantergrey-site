@@ -18,14 +18,14 @@ const originalSchema = await readFile('migrations/0012_production_column_control
 function fixture() {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE admin_sessions (id TEXT, user_name TEXT, user_email TEXT, expires_at TEXT);
-    INSERT INTO admin_sessions VALUES ('test', 'Test', NULL, '9999-01-01');
+    INSERT INTO admin_sessions VALUES ('test', 'Test', 'test@trantergrey.com', '9999-01-01');
     CREATE TABLE production_columns (source_id TEXT PRIMARY KEY, name TEXT);
     INSERT INTO production_columns VALUES ('edit', 'edit'), ('done', 'Done');`);
   db.exec(originalSchema);
   db.exec("INSERT INTO production_column_overrides VALUES ('edit', 'Editing', 0, 'before')");
   db.exec(migration);
   db.exec("ALTER TABLE production_column_overrides ADD COLUMN edited_by TEXT NOT NULL DEFAULT 'Admin'");
-  const env = { ADMIN_PASSWORD: 'fixture', TG_DATA: { prepare(sql) {
+  const env = { GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture', TG_DATA: { prepare(sql) {
     let args = [];
     const statement = { bind(...values) { args = values; return statement; },
       async first() { return db.prepare(sql).get(...args) ?? null; },

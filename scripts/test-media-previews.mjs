@@ -25,7 +25,7 @@ function fixture(){
  db.exec(migration);
  const objects=new Map([['photo',new Uint8Array(1000)],['video',new Uint8Array(5000)]]);let transforms=0;
  const transform={input(){return{transform(){return{output(){transforms++;return{response:()=>new Response(new Uint8Array(50))};}};}};}};
- const env={ADMIN_PASSWORD:'test',TG_DATA:{prepare(sql){let args=[];return{bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};}},PRODUCTION_ARCHIVE:{async get(key){const bytes=objects.get(key);return bytes?{body:new Blob([bytes]).stream(),size:bytes.byteLength}:null;},async put(key,bytes){objects.set(key,new Uint8Array(bytes));}},IMAGES:transform,MEDIA:transform};
+ const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let args=[];return{bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};}},PRODUCTION_ARCHIVE:{async get(key){const bytes=objects.get(key);return bytes?{body:new Blob([bytes]).stream(),size:bytes.byteLength}:null;},async put(key,bytes){objects.set(key,new Uint8Array(bytes));}},IMAGES:transform,MEDIA:transform};
  env.MEDIA_OPTIMIZER={async fetch(url,init){const b=JSON.parse(init.body);return Response.json(await optimize(env,b.key,b.variant));}};
  return{db,env,objects,count:()=>transforms};
 }

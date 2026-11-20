@@ -192,7 +192,7 @@ function fixture(){
     CREATE TABLE mux_library_browse_state(id TEXT,refreshed_at TEXT,refresh_id TEXT);
     CREATE TABLE mux_library_browse_assets(asset_id TEXT,client TEXT,refresh_id TEXT);
   `);db.exec(migration);db.exec(richNoteMigration);
-  const env={ADMIN_PASSWORD:'test',TG_DATA:{prepare(sql){let values=[];const s={bind(...args){values=args;return s;},async first(){return db.prepare(sql).get(...values)??null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){const r=db.prepare(sql).run(...values);return {meta:{changes:r.changes}};}};return s;},async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
+  const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let values=[];const s={bind(...args){values=args;return s;},async first(){return db.prepare(sql).get(...values)??null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){const r=db.prepare(sql).run(...values);return {meta:{changes:r.changes}};}};return s;},async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
   const request=(path='',body,auth=true)=>new Request('https://local.test/api/admin/'+path,{method:body?'POST':'GET',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(body?{'Content-Type':'application/json',Origin:'https://local.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const hq=(body,path='client-hq',auth=true)=>handlers.hq.onRequest({env,request:request(path,body,auth)});
   return {db,env,request,hq};
@@ -408,8 +408,8 @@ test('client pins and colors belong to the signed-in user; archive is shared and
   db.prepare("UPDATE client_directory SET name='Renamed' WHERE id=?").run(id);
   assert.equal((await (await api()).json()).preferences[id].pinned,true);
   db.prepare('UPDATE admin_sessions SET user_email=NULL').run();
-  assert.equal((await (await api()).json()).canCustomize,false);
-  assert.equal((await api({clientId:id,pinned:true})).status,403);
+  assert.equal((await api()).status,401);
+  assert.equal((await api({clientId:id,pinned:true})).status,401);
  }finally{db.close();}
 });
 

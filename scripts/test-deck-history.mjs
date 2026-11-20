@@ -10,7 +10,7 @@ const dir = await mkdtemp(join(tmpdir(), 'tg-history-'));
 const entries = { history: 'functions/api/admin/production-board/history.ts', columns: 'functions/api/admin/production-board/columns/[id].ts', comments: 'functions/api/admin/production-board/[id]/comments.ts', commands: 'functions/_lib/production-commands.ts', card: 'functions/api/admin/production-board/[id].ts', cards: 'functions/api/admin/production-board/cards.ts', media: 'functions/_lib/deck-history.ts' };
 const handlers = {};
 for (const [name, path] of Object.entries(entries)) {
-  await build({ entryPoints: [path], bundle: true, platform: 'node', format: 'esm', outfile: join(dir, name + '.mjs') });
+  await build({ entryPoints: [path], bundle: true, platform: 'browser', format: 'esm', outfile: join(dir, name + '.mjs') });
   handlers[name] = await import(pathToFileURL(join(dir, name + '.mjs')));
 }
 after(() => rm(dir, { recursive: true, force: true }));
@@ -29,7 +29,7 @@ function fixture() {
     INSERT INTO production_events(source_id,card_source_id,summary,source_json,imported_at) VALUES ('undated','source','Warren moved this card to Edit.','{}','2026-11-17');
     INSERT INTO production_comments(source_id,card_source_id,body_html,author_json,created_at,source_json,imported_at) VALUES ('old-comment','source','<p>Original comment</p>','{"name":"Original Author"}','2026-11-02T09:00:00Z','{}','2026-11-17');`);
   db.exec(migration);
-  const env = { ADMIN_PASSWORD: 'fixture', TG_DATA: { prepare(sql) {
+  const env = { GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture', TG_DATA: { prepare(sql) {
     let values = [];
     const statement = { bind(...args) { values = args; return statement; }, async first() { return db.prepare(sql).get(...values) ?? null; }, async all() { return { results: db.prepare(sql).all(...values) }; }, async run() { return db.prepare(sql).run(...values); } };
     return statement;

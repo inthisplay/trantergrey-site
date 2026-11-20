@@ -1,19 +1,14 @@
+import { sanitizeProductionHtml } from '../../../../../lib/production-html';
 import { slateHtml } from '../../../../../lib/production-comment-html';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../../_lib/admin';
 import { addProductionComment } from '../../../../_lib/production-commands';
 
 type Context = { request: Request; env: AdminEnvironment; params: { id: string } };
-const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-const sanitizeCommentHtml = (value: string) => value.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, (tag) => {
-  if (/^<\/?(?:strong|b|em|i|ul|ol|li|br|p)\s*\/?>$/i.test(tag)) return tag;
-  const anchor = tag.match(/^<a\s+href=(['"])(https?:\/\/[^'"\s<>]+|mailto:[^'"\s<>]+)\1\s*>$/i);
-  return anchor ? `<a href="${escapeHtml(anchor[2])}" rel="noreferrer noopener" target="_blank">` : '';
-});
 type EditorBlock = { type?: unknown; data?: unknown };
 type EditorPayload = { blocks?: unknown };
 const editorHtml = (body: EditorPayload) => {
   if (!Array.isArray(body.blocks)) return '';
-  const inline = (value: unknown) => sanitizeCommentHtml(typeof value === 'string' ? value : '');
+  const inline = (value: unknown) => sanitizeProductionHtml(typeof value === 'string' ? value : '');
   const listItems = (items: unknown, nested = false): string => {
     if (!Array.isArray(items)) return '';
     const rendered = items.map((item) => {

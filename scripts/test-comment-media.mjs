@@ -22,7 +22,7 @@ function fixture(){
  const html=`<figure class="production-comment-upload"><img src="${url}" alt="Actor &amp; audition"></figure><iframe src="https://player.mux.com/abcdef12345"></iframe>`;
  db.prepare('INSERT INTO production_comments VALUES(?,?,?)').run('original','source',html);
  db.prepare('INSERT INTO production_local_comments VALUES(?,?,?,NULL)').run('localid','source',html);
- const env={ADMIN_PASSWORD:'test',TG_DATA:{prepare(sql){let args=[];return{bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};}}};
+ const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let args=[];return{bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};}}};
  const call=(method='GET',body={},card='card',auth=true,origin)=>onRequest({env,params:{id:card},request:new Request('http://localhost/media?comment='+encodeURIComponent(body.commentKey||'comment-original'),{method,headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(origin?{origin}:{})},...(method!=='GET'?{body:JSON.stringify({commentKey:'comment-original',url,...body})}:{})})});
  return{db,call};
 }

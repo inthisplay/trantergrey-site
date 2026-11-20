@@ -1,3 +1,4 @@
+import { sanitizeProductionHtml } from '../../../../lib/production-html';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../_lib/admin';
 import { readClientDirectory, registerClient } from '../../../_lib/client-directory';
 
@@ -38,7 +39,10 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     COALESCE(o.client, '') AS client, COALESCE(o.assignees_json, p.assignees_json, '[]') AS assignees_json, COALESCE(o.due_on, p.due_on) AS due_on, o.edited_at
     FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ? AND o.deleted_at IS NULL`).bind(params.id).first();
   if (!storedCard) return Response.json({ error: 'Production card not found.' }, { status: 404 });
-  const card = preferPreservedNotes(storedCard as Record<string, unknown>);
+  const card = preferPreservedNotes(storedCard as Record<string, unknown>) as Record<string, unknown>;
+  for (const field of ['notes_html', 'description_html', 'source_notes_html', 'local_notes_html', 'legacy_notes_html']) {
+    if (typeof card[field] === 'string') card[field] = sanitizeProductionHtml(card[field]);
+  }
   const [steps, comments, events, attachments, columns, editLog, localComments, clients, teamMembers] = await Promise.all([
     env.TG_DATA.prepare('SELECT * FROM production_card_steps WHERE card_source_id = ? ORDER BY position, source_id').bind((card as { source_id: string }).source_id).all(),
     env.TG_DATA.prepare('SELECT * FROM production_comments WHERE card_source_id = ? ORDER BY created_at, source_id').bind((card as { source_id: string }).source_id).all(),
@@ -51,42 +55,22 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     env.TG_DATA.prepare('SELECT nickname AS name FROM admin_team_directory').all<{ name: string }>(),
   ]);
   const assignees = [...new Set(teamMembers.results.map((member) => member.name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  return Response.json({ card, steps: steps.results, comments: comments.results, events: events.results, attachments: attachments.results, columns: columns.results, editLog: editLog.results, localComments: localComments.results, clients, assignees, viewer });
+  const safeComments = comments.results.map(row => {
+    const comment = row as Record<string, unknown>;
+    return { ...comment, body_html: sanitizeProductionHtml(comment.body_html) };
+  });
+  const safeLocalComments = localComments.results.map(row => {
+    const comment = row as Record<string, unknown>;
+    return { ...comment, bodyHtml: sanitizeProductionHtml(comment.bodyHtml) };
+  });
+  return Response.json({
+    card, steps: steps.results, comments: safeComments, events: events.results,
+    attachments: attachments.results, columns: columns.results, editLog: editLog.results,
+    localComments: safeLocalComments, clients, assignees, viewer,
+  });
 }
 
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-const sanitizeNotesHtml = (value: string) => value.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, (tag) => {
-  const parsed = tag.match(/^<(\/)?([a-z0-9-]+)\b([^>]*)>$/i);
-  if (!parsed) return '';
-  const [, closing, rawName, rawAttributes] = parsed;
-  const name = rawName.toLowerCase();
-  const allowed = new Set(['p', 'div', 'h2', 'h3', 'blockquote', 'ul', 'ol', 'li', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre', 'a', 'input', 'figure', 'figcaption', 'img', 'video', 'audio', 'source', 'iframe']);
-  if (!allowed.has(name)) return '';
-  if (closing) return `</${name}>`;
-  const attributes: string[] = [];
-  const className = rawAttributes.match(/\bclass=(['"])(.*?)\1/i)?.[2]?.split(/\s+/).filter((item) => ['production-note-checklist', 'production-imported-attachment', 'production-imported-attachment--video', 'production-imported-attachment--file'].includes(item)).join(' ');
-  if (className) attributes.push(`class="${escapeHtml(className)}"`);
-  const href = rawAttributes.match(/\bhref=(['"])(.*?)\1/i)?.[2];
-  if (name === 'a' && href && /^(?:https?:\/\/|mailto:|\/api\/admin\/production-board\/attachments\/|\/watch\/)/i.test(href)) attributes.push(`href="${escapeHtml(href)}" rel="noreferrer noopener" target="_blank"`);
-  const src = rawAttributes.match(/\bsrc=(['"])(.*?)\1/i)?.[2];
-  if (src && /^(?:https:\/\/|\/api\/admin\/production-board\/attachments\/)/i.test(src)) {
-    if (name === 'iframe' && !/^https:\/\/player\.mux\.com\/[A-Za-z0-9_-]+(?:\?[^"'<>]*)?$/i.test(src)) return '';
-    attributes.push(`src="${escapeHtml(src)}"`);
-  }
-  if (name === 'input' && /\btype=(['"])checkbox\1/i.test(rawAttributes)) {
-    attributes.push('type="checkbox"');
-    if (/\bchecked(?:\s|=|\/|$)/i.test(rawAttributes)) attributes.push('checked');
-  } else if (name === 'input') return '';
-  if (name === 'img') {
-    const alt = rawAttributes.match(/\balt=(['"])(.*?)\1/i)?.[2];
-    if (alt !== undefined) attributes.push(`alt="${escapeHtml(alt)}"`);
-  }
-  if (['video', 'audio', 'iframe'].includes(name) && /\bcontrols(?:\s|=|\/|$)/i.test(rawAttributes)) attributes.push('controls');
-  if (name === 'iframe') attributes.push('allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"', 'allowfullscreen');
-  const alignment = rawAttributes.match(/\bstyle=(['"])[^'"]*text-align\s*:\s*(left|center|right|justify)[^'"]*\1/i)?.[2];
-  if (alignment) attributes.push(`style="text-align:${alignment.toLowerCase()}"`);
-  return `<${name}${attributes.length ? ` ${attributes.join(' ')}` : ''}>`;
-});
 
 export async function onRequestPatch({ request, env, params }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
@@ -111,7 +95,7 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
   // Retain Basecamp's original rich HTML if the editor's plain-text value is
   // unchanged. Changing another field must not silently flatten old notes.
   const notesHtml = typeof body.notesHtml === 'string'
-    ? sanitizeNotesHtml(body.notesHtml)
+    ? sanitizeProductionHtml(body.notesHtml)
     : noteFingerprint(card.description_html) === noteFingerprint(body.notes)
     ? null
     : body.notes ? escapeHtml(body.notes).replace(/\r?\n/g, '<br>') : '';
