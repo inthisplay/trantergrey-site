@@ -1,4 +1,5 @@
 'use client';
+import { ClientLogoSettings, clientLogoUrl } from './ClientLogoSettings';
 import { ClientDirectoryGrid } from './ClientDirectoryGrid';
 import { ClientDirectoryCard } from './ClientDirectoryCard';
 import { compareClientCards, type ClientPreference } from '@/lib/client-preferences';
@@ -14,7 +15,7 @@ import { ClientNoteModal } from './ClientNoteModal';
 import { isArchivedTodo } from '@/lib/client-todo';
 import styles from './ClientHQ.module.css';
 
-type Client={id:string;name:string;drive_folder_id:string|null;open_todos?:number;archived?:number};
+type Client={logo_key?:string|null;id:string;name:string;drive_folder_id:string|null;open_todos?:number;archived?:number};
 type Item={id:string;workspace_id:string;kind:'todo'|'note';title:string;body:string;body_format?:string;body_json?:string|null;completed:number;completed_at?:string|null;due_on:string;assignee:string};
 export async function hqRequest(url:string,body?:unknown) {
   const response=await fetch(url,body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {cache:'no-store'});
@@ -59,12 +60,12 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
     <a className={styles.back} href={client?basePath:teamApp?'/app/mux':'/admin'}><UiIcon name="back"/>{client?'All clients':teamApp?'Team workspace':'Admin dashboard'}</a>
       {!loading && client && <button type="button" className={styles.activityButton} onClick={()=>setActivityOpen(true)} aria-controls="deck-activity-panel" aria-haspopup="dialog" aria-expanded={activityOpen}><UiIcon name="clock"/>Activity</button>}
     </div>
-    <header className={styles.heading}><div><p className={styles.eyebrow}>{client?'Client workspace':'TranterGrey / Client HQ'}</p><h1>{client?client.name:'Client HQ'}</h1>{!client && <p>A home for every client. Everything you need to keep work moving.</p>}</div>
+    <header className={styles.heading}><div><p className={styles.eyebrow}>{client?'Client workspace':'TranterGrey / Client HQ'}</p><h1>{client?.logo_key && <img className={styles.workspaceLogo} src={clientLogoUrl(client.id,client.logo_key)} alt=""/>}{client?client.name:'Client HQ'}</h1>{!client && <p>A home for every client. Everything you need to keep work moving.</p>}</div>
       {!loading && <button onClick={()=>{setName(client?.name || '');client?setSettings(!settings):setAdding(!adding);}}><UiIcon name={client?'edit':'plus'}/>{client?'Client settings':'Add client'}</button>}
     </header>
     {error && <p className={styles.error} role="alert">{error} <button onClick={()=>void run(load)}>Retry</button></p>}
     {(adding || settings) && <form className={styles.editor} onSubmit={e=>{e.preventDefault();void run(async()=>{if(client){await hqRequest('/api/admin/clients',{oldName:client.name,newName:name});setSettings(false);await load();}else{const data=await hqRequest(apiPath,{action:'client',name});location.assign(`${basePath}?client=${data.id}&setup=1`);}});}}>
-      <h2>{client?'Client settings':'Add client'}</h2><label>Client name<input autoFocus required maxLength={120} value={name} onChange={e=>setName(e.target.value)}/></label>
+      <h2>{client?'Client settings':'Add client'}</h2>{client && <ClientLogoSettings client={client} onSaved={logo_key=>setClient(current=>current?{...current,logo_key}:current)}/>}<label>Client name<input autoFocus required maxLength={120} value={name} onChange={e=>setName(e.target.value)}/></label>
       <p>{client?'Renaming updates the shared client name in Deck and Mux.':'This client will be available in Client HQ, Deck, and Mux assignment fields. Choose a Drive folder after creating the workspace.'}</p>
       <div className={styles.actions}><button disabled={busy} type="submit">{busy?'Saving…':client?'Save name':'Create workspace'}</button><button type="button" onClick={()=>{setAdding(false);setSettings(false);}}>Cancel</button></div>
     </form>}

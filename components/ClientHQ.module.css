@@ -137,3 +137,11 @@
 .clientDropTarget{position:absolute;inset:0;display:grid;place-items:center;border:2px dashed #b95160;background:color-mix(in srgb,#b95160 8%,var(--hq-bg));color:var(--hq-muted);font:12px var(--mono);pointer-events:none}
 .clientDragOverlay{display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:200px;height:100%;padding:26px;background:#f5f2ed;color:#252222;border:2px solid #b95160;box-shadow:0 16px 40px #0004;font:24px var(--sans);overflow-wrap:anywhere;cursor:grabbing}
 @media(min-width:900px) and (hover:hover) and (pointer:fine){.sortableClient[role=button] .clientCard>a{cursor:grab}.sortableClient:focus-visible{outline:2px solid #b95160;outline-offset:4px}}
+
+.logoSettings{display:grid;gap:14px;border-bottom:1px solid var(--hq-line);padding-bottom:24px}
+.logoSettings h3,.logoSettings p{margin:0}
+.logoSettings button{justify-self:start}
+.logoPreview,.workspaceLogo,.cardLogo{aspect-ratio:1 / 1;object-fit:contain;flex-shrink:0;background:#fff;border:1px solid var(--hq-line);padding:8px;box-sizing:border-box}
+.logoPreview{width:min(180px,100%);height:auto}
+.workspaceLogo{display:inline-block;width:64px;height:64px;margin-right:16px;vertical-align:middle}
+.cardLogo{width:64px;height:64px}

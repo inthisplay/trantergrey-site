@@ -7,10 +7,11 @@ import { prepareDownload } from '@/lib/watch-download';
 import { VideoModal, type ModalVideo } from './VideoModal';
 import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 
-type VideoData = { title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
+type VideoData = { clientLogoUrl?: string | null; title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
 type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
 export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlayer = false }: { unbranded?: boolean; linkBase?: string; compactPlayer?: boolean }) {
+  const [logoFailed, setLogoFailed] = useState(false);
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
   const [archiveUrl, setArchiveUrl] = useState('');
@@ -141,6 +142,7 @@ export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlay
   </section>;
 
   if (unbranded) return <section className="unbranded-video-page"><div className="unbranded-video-frame">
+    {video?.unbrandedPublicPage && video.clientLogoUrl && !logoFailed && <header className="unbranded-client-header"><img src={video.clientLogoUrl} alt={`${video.client || 'Client'} logo`} onError={()=>setLogoFailed(true)}/></header>}
     {video?.unbrandedPublicPage
       ? <SoloVideoPlayer title={video.title} variants={video.variants} unbranded />
       : <p className="solo-video-unavailable">This video does not have an unbranded page enabled.</p>}

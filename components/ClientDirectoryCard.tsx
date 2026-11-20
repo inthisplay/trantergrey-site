@@ -3,11 +3,12 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { clientPinColor, type ClientPreference } from '@/lib/client-preferences';
 import { columnColorStyle } from '@/lib/deck-colors';
 import { ColorPickerDialog } from './ColorPickerDialog';
+import { clientLogoUrl } from './ClientLogoSettings';
 import { UiIcon } from './UiIcon';
 import styles from './ClientHQ.module.css';
 
 export function ClientDirectoryCard({client,href,preference,canCustomize,onSave,onArchive}:{
- client:{id:string;name:string;open_todos?:number;archived?:number};href:string;preference?:ClientPreference;canCustomize:boolean;
+ client:{logo_key?:string|null;id:string;name:string;open_todos?:number;archived?:number};href:string;preference?:ClientPreference;canCustomize:boolean;
  onArchive:(archived:boolean)=>Promise<void>;
  onSave:(patch:Partial<ClientPreference>)=>Promise<void>;
 }) {
@@ -24,7 +25,7 @@ export function ClientDirectoryCard({client,href,preference,canCustomize,onSave,
  async function save(patch:Partial<ClientPreference>|{archived:boolean}){setSaving(true);setError('');try{if('archived' in patch)await onArchive(patch.archived);else await onSave(patch);setOpen(false);trigger.current?.focus();}catch(e){setError(e instanceof Error?e.message:'Unable to save. Try again.');}finally{setSaving(false);}}
  const color=preference?.color;
  return <article className={styles.clientCard} data-colored={color?true:undefined} data-archived={client.archived?true:undefined} style={color?{'--client-color':color,'--client-ink':columnColorStyle(color)['--deck-column-ink']} as CSSProperties:undefined}>
-  <a href={href}><span className={styles.initial}>{client.name.slice(0,2).toUpperCase()}</span><h2>{client.name}</h2><span>{client.open_todos||0} open to-dos{client.archived?' · Archived':''}</span><UiIcon name="forward"/></a>
+  <a href={href}>{client.logo_key ? <img className={styles.cardLogo} src={clientLogoUrl(client.id,client.logo_key)} alt=""/> : <span className={styles.initial}>{client.name.slice(0,2).toUpperCase()}</span>}<h2>{client.name}</h2><span>{client.open_todos||0} open to-dos{client.archived?' · Archived':''}</span><UiIcon name="forward"/></a>
   <div ref={menu} className={styles.clientCardMenu}>
    {preference?.pinned&&!client.archived&&<span className={styles.clientPin} style={{color:clientPinColor(color)}} role="img" aria-label="Pinned to top" title="Pinned to top"><UiIcon name="pin"/></span>}
    <button ref={trigger} type="button" className={styles.clientMenuTrigger} aria-label={`Options for ${client.name}`} aria-expanded={open} aria-controls={`client-options-${client.id}`} onClick={()=>setOpen(!open)}><UiIcon name="more"/></button>

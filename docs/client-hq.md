@@ -41,3 +41,13 @@ Client HQ previews use the authenticated `client-hq-drive` endpoint with `client
 Card colors use the same full picker as Deck panels: presets, native color selection, hex input, preview, and reset. The selected background is displayed with automatically contrasting text. Existing personal preset colors are preserved by migration 0039.
 
 Desktop users (fine pointer, hover, viewport at least 900px) can drag directory cards using the existing dnd-kit library. Mouse activation requires 8px of movement; touch sensors are not registered. Keyboard users can focus a card wrapper and use Space/arrows/Space or Escape. The dragged card leaves a dashed insertion placeholder; cards never combine. Orders are personal, persisted through `client-preferences` with `{action:"reorder",ids:[...]}`. Pinned/active/archived grouping takes precedence, and dragging is limited to the same group. Filtered-out cards retain their slots. Failed saves restore the previous order with an error. Migration `0040_client_card_order.sql` is also required (local only until release).
+
+## Client logos
+
+Client settings includes an immediately saved logo upload, replacement, and removal control. PNG, JPG, and WebP images up to 5 MB are supported. The shared logo appears in Client HQ, in the workspace heading and directory card, and above the player on enabled unbranded video pages for that client; clients without logos retain their initials. All logo displays, including the settings preview, use a 1:1 white square with padding and contain the full image without cropping or stretching. Logo changes record management activity. Reads and writes use the authenticated `/api/admin/client-logo` endpoint and existing private `PRODUCTION_ARCHIVE` storage. Removing or replacing a logo unlinks the previous object; stored originals are retained, matching the archive's retention behavior.
+
+Migration `0049_client_logos.sql` adds the nullable logo reference to the existing client directory. Apply it before releasing this feature. The Client HQ test suite covers authentication, origin checks, format/size rejection, client isolation, persistence, replacement, and removal.
+
+Unbranded video links serve the current logo through `/api/watch/[slug]/logo`, scoped to the project’s assigned client and only when unbranded sharing is enabled. The private admin endpoint remains authenticated. Missing logos leave the video layout unchanged; branded watch pages and collections do not display client logos.
+
+For imported video pages without a project-level client, logo lookup falls back to saved asset metadata and the current library client assignment. All variants must resolve to the same client; mixed or unassigned groups do not guess a logo.

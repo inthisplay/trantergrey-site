@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 const dir=await mkdtemp(join(tmpdir(),'tg-client-hq-'));
 const handlers={};
-for(const [name,path] of Object.entries({preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
+for(const [name,path] of Object.entries({publicLogo:'functions/api/watch/[slug]/logo.ts',publicWatch:'functions/_lib/mux-public.ts',logo:'functions/api/admin/client-logo.ts',preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
   await build({entryPoints:[path],bundle:true,platform:'node',format:'esm',outfile:join(dir,name+'.mjs')});handlers[name]=await import(pathToFileURL(join(dir,name+'.mjs')));
 }
 after(()=>rm(dir,{recursive:true,force:true}));
@@ -24,6 +24,7 @@ test('Drive thumbnails use edge-compatible redirects and reject unsafe destinati
     assert.equal(await handlers.driveLib.driveThumbnail('token','https://lh3.googleusercontent.com/preview'),null);
   }finally{globalThis.fetch=original;}
 });
+const logoMigration=await readFile('migrations/0049_client_logos.sql','utf8');
 const migration=await readFile('migrations/0026_client_hq.sql','utf8');
 const richNoteMigration=(await readFile('migrations/0028_client_note_rich_text.sql','utf8'))+(await readFile('migrations/0029_client_note_editor_json.sql','utf8'))+(await readFile('migrations/0030_client_todo_completed_at.sql','utf8'))+(await readFile('migrations/0031_client_drive_connection.sql','utf8'))+(await readFile('migrations/0032_client_drive_extra_folders.sql','utf8'))+(await readFile('migrations/0033_client_drive_pins.sql','utf8'))+(await readFile('migrations/0034_client_activity.sql','utf8'));
 test('Drive OAuth encrypts credentials, binds one-time state to a session, checks scope/account/access',async()=>{
@@ -191,7 +192,7 @@ function fixture(){
     CREATE TABLE mux_video_projects(id TEXT,value TEXT);
     CREATE TABLE mux_library_browse_state(id TEXT,refreshed_at TEXT,refresh_id TEXT);
     CREATE TABLE mux_library_browse_assets(asset_id TEXT,client TEXT,refresh_id TEXT);
-  `);db.exec(migration);db.exec(richNoteMigration);
+  `);db.exec(migration);db.exec(richNoteMigration);db.exec(logoMigration);
   const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let values=[];const s={bind(...args){values=args;return s;},async first(){return db.prepare(sql).get(...values)??null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){const r=db.prepare(sql).run(...values);return {meta:{changes:r.changes}};}};return s;},async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
   const request=(path='',body,auth=true)=>new Request('https://local.test/api/admin/'+path,{method:body?'POST':'GET',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(body?{'Content-Type':'application/json',Origin:'https://local.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const hq=(body,path='client-hq',auth=true)=>handlers.hq.onRequest({env,request:request(path,body,auth)});
@@ -480,4 +481,63 @@ test('drag ordering shifts cards without combining them and preserves filtered-o
  const cards=[{id:'a',name:'A'},{id:'b',name:'B'},{id:'c',name:'C',archived:1}];
  const prefs={a:{pinned:false,color:null,sortOrder:2},b:{pinned:false,color:null,sortOrder:1},c:{pinned:true,color:null,sortOrder:0}};
  assert.deepEqual(cards.sort((a,b)=>compare(a,b,prefs)).map(c=>c.id),['b','a','c']);
+});
+
+test('client logos require authentication, validate uploads, persist per client, replace and remove', async()=>{
+  const {db,env,hq}=fixture();
+  const objects=new Map();
+  env.PRODUCTION_ARCHIVE={async put(key,bytes,options){objects.set(key,{bytes,...options});},async get(key){const value=objects.get(key);return value?{body:value.bytes,httpMetadata:value.httpMetadata}:null;}};
+  const id=db.prepare('SELECT id FROM client_directory').get().id;
+  const png=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
+  const call=(method='GET',body,options={})=>handlers.logo.onRequest({env,request:new Request('https://local.test/api/admin/client-logo?client='+(options.id||id),{method,headers:{cookie:options.anonymous?'':'tg_admin=test',origin:options.origin||'https://local.test','content-type':options.type||'image/png'},...(body?{body}:{})})});
+  try {
+    assert.equal((await call('POST',png,{anonymous:true})).status,401);
+    assert.equal((await call('POST',png,{origin:'https://evil.test'})).status,403);
+    assert.equal((await call('POST',png,{id:'missing'})).status,404);
+    assert.equal((await call('POST','<svg/>',{type:'image/svg+xml'})).status,400);
+    assert.equal((await call('POST','not an image')).status,400);
+    assert.equal((await call('POST',new Uint8Array(5*1024*1024+1))).status,413);
+    assert.equal(objects.size,0);
+    assert.equal((await call('GET')).status,404);
+    const saved=await (await call('POST',png)).json();assert.ok(saved.logo_key);
+    const fetched=await call();assert.equal(fetched.headers.get('content-type'),'image/png');assert.equal(fetched.headers.get('cache-control'),'private, no-store');assert.deepEqual(new Uint8Array(await fetched.arrayBuffer()),png);
+    const client=(await (await hq(undefined,'client-hq?id='+id)).json()).client;assert.equal(client.logo_key,saved.logo_key);
+    const other=(await (await hq({action:'client',name:'Other logo client'})).json()).id;
+    assert.equal((await call('GET',undefined,{id:other})).status,404);
+    const replacement=await (await call('POST',png)).json();assert.notEqual(replacement.logo_key,saved.logo_key);
+    assert.equal((await call('DELETE')).status,200);assert.equal((await call()).status,404);
+    assert.equal(db.prepare('SELECT logo_key FROM client_directory WHERE id=?').get(id).logo_key,null);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM client_activity WHERE action LIKE 'client_logo_%'").get().n,3);
+  } finally {db.close();}
+});
+
+test('unbranded video logos are public only through enabled projects and follow the assigned client', async()=>{
+  const {db,env}=fixture();
+  db.exec("ALTER TABLE mux_video_projects ADD COLUMN updated_at TEXT; CREATE TABLE mux_video_collections(value TEXT,updated_at TEXT);");
+  for (const column of ['title TEXT','tags TEXT','status TEXT','thumbnail_time REAL','downloads_enabled INTEGER']) db.exec('ALTER TABLE mux_asset_metadata ADD COLUMN '+column);
+  const project={id:'film',slug:'film',legacySlugs:['old-film'],title:'Film',client:'Existing',unbrandedPublicPage:true,variants:[],collectionIds:[]};
+  const save=()=>db.prepare("INSERT OR REPLACE INTO mux_video_projects(rowid,id,value,updated_at) VALUES(1,'film',?,'now')").run(JSON.stringify(project));save();
+  db.exec("UPDATE client_directory SET logo_key='logos/one'");
+  const objects=new Map([['logos/one','first'],['logos/two','replacement']]);
+  env.PRODUCTION_ARCHIVE={async get(key){return objects.has(key)?{body:objects.get(key),httpMetadata:{contentType:'image/png'}}:null;}};
+  const get=(slug='film')=>handlers.publicLogo.onRequestGet({env,params:{slug}});
+  try {
+    let response=await get();assert.equal(response.status,200);assert.equal(await response.text(),'first');assert.equal(response.headers.get('cache-control'),'no-store');
+    assert.equal((await get('old-film')).status,200);assert.equal((await get('missing')).status,404);
+    const video=await handlers.publicWatch.publicWatchData(env,'film');assert.equal(video.clientLogoUrl,'/api/watch/film/logo');assert.ok(!JSON.stringify(video).includes('logos/one'));
+    project.unbrandedPublicPage=false;save();assert.equal((await get()).status,404);assert.equal((await handlers.publicWatch.publicWatchData(env,'film')).clientLogoUrl,null);
+    project.unbrandedPublicPage=true;project.client='Other client';save();assert.equal((await get()).status,404);
+    project.client='existing';save();assert.equal((await get()).status,200);
+    project.client=null;project.variants=[{assetId:'imported'}];save();
+    db.exec("INSERT INTO mux_library_browse_state(id,refresh_id) VALUES('library','current'); INSERT INTO mux_library_browse_assets(asset_id,client,refresh_id) VALUES('imported','Existing','current'); INSERT INTO mux_library_browse_assets(asset_id,client,refresh_id) VALUES('imported','Wrong stale client','old');");
+    assert.equal((await get()).status,200);
+    project.variants.push({assetId:'unassigned'});save();assert.equal((await get()).status,404);
+    db.exec("INSERT INTO mux_asset_metadata(asset_id,client) VALUES('unassigned','Other client')");assert.equal((await get()).status,404);
+    project.variants.pop();save();
+    db.exec("INSERT INTO mux_asset_metadata(asset_id,client) VALUES('imported','Other client')");assert.equal((await get()).status,404);
+    db.exec("UPDATE mux_asset_metadata SET client='Existing' WHERE asset_id='imported'");assert.equal((await get()).status,200);
+    project.variants=[];project.client='Existing';save();
+    db.exec("UPDATE client_directory SET logo_key='logos/two'");assert.equal(await (await get()).text(),'replacement');
+    db.exec("UPDATE client_directory SET logo_key=NULL");assert.equal((await get()).status,404);assert.equal((await handlers.publicWatch.publicWatchData(env,'film')).clientLogoUrl,null);
+  } finally {db.close();}
 });
