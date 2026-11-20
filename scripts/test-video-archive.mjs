@@ -186,9 +186,9 @@ test('production driver stops on idle or busy, bounds work and reports failure',
  const original=globalThis.fetch;const env={ARCHIVE_WORKER_SECRET:'test',ARCHIVE_ENDPOINT:'https://local.test/worker'};
  try{
   let calls=0;
-  globalThis.fetch=async(url,init)=>{assert.equal(url,env.ARCHIVE_ENDPOINT);assert.equal(init.headers.Authorization,'Bearer test');calls++;return Response.json({worked:true});};
+  globalThis.fetch=async(url,init)=>{assert.equal(url,env.ARCHIVE_ENDPOINT);assert.equal(init.headers.Authorization,'Bearer test');assert.equal(init.redirect,'manual');calls++;return Response.json({worked:true});};
   await modules.driver.default.scheduled(null,env);assert.equal(calls,40);
   for(const result of [{worked:false},{busy:true}]){calls=0;globalThis.fetch=async()=>{calls++;return Response.json(result);};await modules.driver.default.scheduled(null,env);assert.equal(calls,1);}
-  globalThis.fetch=async()=>new Response('',{status:503});await assert.rejects(()=>modules.driver.default.scheduled(null,env),/503/);
+  for(const status of [302,503]){globalThis.fetch=async()=>new Response('',{status});await assert.rejects(()=>modules.driver.default.scheduled(null,env),new RegExp(String(status)));}
  }finally{globalThis.fetch=original;}
 });
