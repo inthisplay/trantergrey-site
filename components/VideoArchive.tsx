@@ -29,6 +29,7 @@ export function VideoArchive({onClose,onImported}:{onClose:()=>void;onImported:(
       const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to load archive.');
       if(current!==sequence.current)return;
       setCatalog(data);setError('');
+      if(client && (data.clientCounts[client]||0)<2){setClient('');setOffset(0);}
       setSelected(previous=>previous?data.rows.find((row:ArchiveRow)=>row.id===previous.id)||previous:null);
       let refreshMux=false;
       for(const row of data.rows as ArchiveRow[])if(row.job?.state==='ready'&&!completed.current.has(row.job.id)){completed.current.add(row.job.id);refreshMux=true;}
@@ -53,7 +54,7 @@ export function VideoArchive({onClose,onImported}:{onClose:()=>void;onImported:(
   return createPortal(<dialog ref={dialog} className={styles.dialog} aria-label="Video archive" onCancel={event=>{event.preventDefault();event.stopPropagation();onClose();}} onKeyDown={event=>event.stopPropagation()} onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <div className={styles.content}>
       <header className={styles.header}><div><p>VIMEO LIBRARY · GOOGLE DRIVE</p><h2>Archive</h2></div><button type="button" autoFocus onClick={onClose} aria-label="Close archive">Close ×</button></header>
-      <div className={styles.tools}><input aria-label="Search archive" placeholder="Search titles, clients, or folders…" value={query} onChange={event=>setQuery(event.target.value)}/><select aria-label="Archive client" value={client} onChange={event=>{setClient(event.target.value);setOffset(0);}}><option value="">All clients</option>{catalog?.clients.map(value=><option key={value}>{value}</option>)}</select><select aria-label="Upload year" value={year} onChange={event=>{setYear(event.target.value);setOffset(0);}}><option value="">All years</option>{catalog?.years.map(value=><option key={value}>{value}</option>)}</select></div>
+      <div className={styles.tools}><input aria-label="Search archive" placeholder="Search titles, clients, or folders…" value={query} onChange={event=>setQuery(event.target.value)}/><select aria-label="Archive client" value={client} onChange={event=>{setClient(event.target.value);setOffset(0);}}><option value="">All clients</option>{catalog?.clients.filter(value=>(catalog.clientCounts[value]||0)>1).map(value=><option key={value}>{value}</option>)}</select><select aria-label="Upload year" value={year} onChange={event=>{setYear(event.target.value);setOffset(0);}}><option value="">All years</option>{catalog?.years.map(value=><option key={value}>{value}</option>)}</select></div>
       <div className={styles.summary}><label><input type="checkbox" checked={unavailable} onChange={event=>{setUnavailable(event.target.checked);setOffset(0);}}/> Show unavailable / needs review</label><button type="button" disabled={busy||catalog?.state?.scan_status==='scanning'} onClick={()=>void action({action:'scan'})}>{catalog?.state?.scan_status==='scanning'?'Checking Drive…':'Refresh archive'}</button></div>
       <div className={styles.editTools}>
         <button type="button" aria-pressed={editing} onClick={()=>{setEditing(!editing);setChecked([]);}}>{editing?'Done editing clients':'Edit clients'}</button>
