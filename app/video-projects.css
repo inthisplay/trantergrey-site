@@ -256,6 +256,7 @@
 /* A shareable client link can deliberately opt out of all TranterGrey chrome. */
 .unbranded-video-page{
   display:grid;
+  grid-template-columns:minmax(0,1fr);
   min-height:100svh;
   box-sizing:border-box;
   place-items:start center;
@@ -264,6 +265,8 @@
 }
 .unbranded-video-frame{
   width:min(100%,1180px);
+  min-width:0;
+  max-width:100%;
 }
 .unbranded-client-header{display:flex;justify-content:center;margin-bottom:clamp(32px,4vw,48px)}
 .unbranded-client-header img{display:block;width:clamp(112px,12vw,160px);aspect-ratio:1 / 1;object-fit:contain;box-sizing:border-box;padding:12px;background:#fff}
@@ -279,9 +282,29 @@
   padding:0;
   overflow:visible;
 }
-.unbranded-video-frame .solo-video-stage{
+/* Resolve size from the available width, never the media's intrinsic dimensions.
+   Percentage heights in an auto-height grid can expand the player on mobile Safari. */
+.unbranded-video-frame .solo-video-player,
+.unbranded-video-frame .solo-video-media-region{min-width:0;max-height:none}
+.unbranded-video-frame .solo-video-media-region>.solo-video-stage{
+  position:relative;
+  max-width:min(100%,calc(var(--media-max-height) * var(--video-aspect-ratio,1.777778)));
+  margin-inline:auto;
+  box-sizing:border-box;
+  min-width:0;
   width:100%;
+  height:auto;
+  max-height:none;
   box-shadow:0 20px 45px rgba(23,25,29,.13),0 5px 15px rgba(23,25,29,.09);
+}
+.unbranded-video-frame .solo-video-media-region>.solo-video-stage>div{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  min-width:0;
+  max-width:100%;
+  max-height:none;
 }
 .unbranded-video-frame .solo-video-actions{
   position:static;
