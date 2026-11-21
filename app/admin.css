@@ -1031,3 +1031,6 @@ textarea.production-inline-title { box-sizing: border-box; min-width: 0; resize:
 .mux-library-thumb-with-actions>.mux-mobile-actions-toggle::after{inset:0}
 .mux-library-thumb-with-actions>.mux-mobile-actions-toggle>span{position:absolute;left:var(--mux-menu-icon-offset,0px);bottom:var(--mux-menu-icon-offset,0px);width:31px;height:31px;box-sizing:border-box;place-content:center;background:rgba(8,7,7,.86);color:#fff}
 .mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle>span{background:rgba(8,7,7,.86);color:#fff}
+
+/* Mobile theme rules must not invert the thumbnail menu icon. */
+@media(max-width:760px){.mux-admin[data-theme] .mux-library-thumb-with-actions>.mux-mobile-actions-toggle>span{background:rgba(8,7,7,.86)!important;color:#fff!important}}
