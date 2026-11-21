@@ -1022,12 +1022,12 @@ textarea.production-inline-title { box-sizing: border-box; min-width: 0; resize:
 .mux-library-thumb-with-actions>.mux-library-hover-actions>.danger:last-child:nth-child(odd){grid-column:1 / -1!important;border-right:0}
 
 /* Expand only the bottom activation strip, not the whole thumbnail. */
-.mux-library-thumb-with-actions>.mux-mobile-actions-toggle{bottom:0;left:0;height:31px}
+.mux-library-thumb-with-actions>.mux-mobile-actions-toggle{bottom:9px;left:9px;height:31px}
 .mux-library-thumb-with-actions>.mux-mobile-actions-toggle:is(:hover,:focus-visible),
 .mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle,
-.mux-library-thumb-with-actions:has(>.mux-library-hover-actions:is(:hover,:focus-within))>.mux-mobile-actions-toggle{width:100%;justify-items:start;padding-left:9px;box-sizing:border-box}
+.mux-library-thumb-with-actions:has(>.mux-library-hover-actions:is(:hover,:focus-within))>.mux-mobile-actions-toggle{bottom:0;left:0;width:100%;justify-items:start;box-sizing:border-box;--mux-menu-icon-offset:9px}
 /* The expanded hit area is invisible; only the compact menu icon is painted. */
 .mux-library-thumb-with-actions>.mux-mobile-actions-toggle{background:transparent!important;padding:0!important}
 .mux-library-thumb-with-actions>.mux-mobile-actions-toggle::after{inset:0}
-.mux-library-thumb-with-actions>.mux-mobile-actions-toggle>span{width:31px;height:31px;box-sizing:border-box;place-content:center;background:rgba(8,7,7,.86)}
-.mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle>span{background:var(--bright)}
+.mux-library-thumb-with-actions>.mux-mobile-actions-toggle>span{position:absolute;left:var(--mux-menu-icon-offset,0px);bottom:var(--mux-menu-icon-offset,0px);width:31px;height:31px;box-sizing:border-box;place-content:center;background:rgba(8,7,7,.86);color:#fff}
+.mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle>span{background:rgba(8,7,7,.86);color:#fff}

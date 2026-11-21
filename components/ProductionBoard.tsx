@@ -5,11 +5,12 @@ import { cardSignal, type CardSignalFields } from '@/lib/card-signal';
 import { ColumnColorDialog } from './ColumnColorDialog';
 import { DeckActivity } from './DeckActivity';
 import activityStyles from './DeckActivityPreview.module.css';
+import mobileDragStyles from './ProductionBoardMobileDrag.module.css';
 import { columnColorStyle } from '@/lib/deck-colors';
 import type { CSSProperties } from 'react';
 import { UiIcon } from '@/components/UiIcon';
 
-import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, MeasuringStrategy, pointerWithin, type CollisionDetection, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -119,6 +120,7 @@ export function ProductionBoard() {
   const [expandedColumnId, setExpandedColumnId] = useState('');
   const [compactBoard, setCompactBoard] = useState(false);
   const [phoneBoard, setPhoneBoard] = useState(false);
+  const [mobileTouchBoard, setMobileTouchBoard] = useState(false);
   const [activeDragCardId, setActiveDragCardId] = useState('');
   const [dropColumnId, setDropColumnId] = useState('');
   const [menuColumnId, setMenuColumnId] = useState('');
@@ -132,6 +134,7 @@ export function ProductionBoard() {
   const [savingReminderClient, setSavingReminderClient] = useState(false);
   const dragOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const mobileSensors = useSensors(useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }), useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const loadBoard = useCallback(() => fetch('/api/admin/production-board', { cache: 'no-store' }).then(async (response) => {
     if (response.status === 401) { location.replace('/login?next=/admin/production'); return null; }
     const payload = await response.json();
@@ -147,16 +150,23 @@ export function ProductionBoard() {
     return () => removeEventListener('popstate', onPopState);
   }, []);
   useEffect(() => {
-    const query = matchMedia('(max-width: 980px)'); const phoneQuery = matchMedia('(max-width: 620px)');
-    const update = () => { setCompactBoard(query.matches); setPhoneBoard(phoneQuery.matches); };
-    update(); query.addEventListener('change', update); phoneQuery.addEventListener('change', update);
-    return () => { query.removeEventListener('change', update); phoneQuery.removeEventListener('change', update); };
+    const query = matchMedia('(max-width: 980px)'); const phoneQuery = matchMedia('(max-width: 620px)'); const touchQuery = matchMedia('(max-width: 980px) and (pointer: coarse)');
+    const update = () => { setCompactBoard(query.matches); setPhoneBoard(phoneQuery.matches); setMobileTouchBoard(touchQuery.matches); };
+    update(); query.addEventListener('change', update); phoneQuery.addEventListener('change', update); touchQuery.addEventListener('change', update);
+    return () => { query.removeEventListener('change', update); phoneQuery.removeEventListener('change', update); touchQuery.removeEventListener('change', update); };
   }, []);
   useEffect(() => { loadBoard().then((payload) => payload && setData(payload)).catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to open the production board.')); }, [loadBoard]);
   useEffect(() => () => { if (dragOpenTimer.current) clearTimeout(dragOpenTimer.current); }, []);
 
   const selectedCard = useMemo(() => data?.cards.find((card) => card.id === cardId) || null, [cardId, data]);
   const activeDragCard = useMemo(() => data?.cards.find((card) => card.id === activeDragCardId) || null, [activeDragCardId, data]);
+  const mobileDrag = mobileTouchBoard && Boolean(activeDragCard);
+  const mobileCollision: CollisionDetection = (args) => {
+    if (!args.pointerCoordinates) return closestCorners(args);
+    const hits = pointerWithin(args);
+    const cards = hits.filter(hit => hit.id !== args.active.id && args.droppableContainers.find(container => container.id === hit.id)?.data.current?.type === 'card');
+    return cards.length ? cards : hits.some(hit => hit.id === args.active.id) ? hits.filter(hit => hit.id === args.active.id) : hits;
+  };
   const resolvedNewColumnId = newCardColumnId === '1' ? (data?.columns.find(column => column.name.toLowerCase() === 'triage') || data?.columns[0])?.sourceId || '' : newCardColumnId;
   const drawerColumnId = selectedCard?.columnSourceId || resolvedNewColumnId;
   useEffect(() => { if (drawerColumnId) setExpandedColumnId(drawerColumnId); }, [cardId, newCardColumnId, drawerColumnId]);
@@ -243,9 +253,10 @@ export function ProductionBoard() {
     finally { setMovingCardId(''); }
   };
   const columnForDropTarget = (event: DragOverEvent | DragEndEvent) => (event.over?.data.current as DropTargetData | undefined)?.columnSourceId || '';
-  const onDragStart = (event: DragStartEvent) => setActiveDragCardId(String(event.active.id));
+  const onDragStart = (event: DragStartEvent) => { setActiveDragCardId(String(event.active.id)); if (mobileTouchBoard) { clearDragOpenTimer(); setMenuColumnId(''); } };
   const onDragOver = (event: DragOverEvent) => {
     const columnSourceId = columnForDropTarget(event); setDropColumnId(columnSourceId);
+    if (mobileDrag) return;
     const column = data?.columns.find((item) => item.sourceId === columnSourceId);
     if (!column || !activeDragCardId) return;
     const drawerOpen = Boolean(selectedCard || newCardColumnId);
@@ -255,7 +266,7 @@ export function ProductionBoard() {
   };
   const onDragEnd = (event: DragEndEvent) => {
     clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId('');
-    if (!data || !event.over) return;
+    if (!data || !event.over || (mobileDrag && event.over.id === event.active.id)) return;
     const card = data.cards.find((item) => item.id === String(event.active.id));
     const columnSourceId = columnForDropTarget(event); if (!card || !columnSourceId) return;
     const destinationCards = data.cards.filter((item) => item.columnSourceId === columnSourceId && item.id !== card.id).sort(byPosition);
@@ -264,7 +275,13 @@ export function ProductionBoard() {
     if (overCardIndex >= 0) {
       const translatedTop = event.active.rect.current.translated?.top ?? event.active.rect.current.initial?.top ?? 0;
       const overMiddle = event.over.rect.top + event.over.rect.height / 2;
-      beforeCardId = translatedTop > overMiddle ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
+      if (mobileDrag && card.columnSourceId === columnSourceId) {
+        const originalCards = data.cards.filter(item => item.columnSourceId === columnSourceId).sort(byPosition);
+        const movingDown = originalCards.findIndex(item => item.id === card.id) < originalCards.findIndex(item => item.id === overCardId);
+        beforeCardId = movingDown ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
+      } else {
+        beforeCardId = translatedTop > overMiddle ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
+      }
     }
     void moveCard(card, columnSourceId, beforeCardId);
   };
@@ -279,17 +296,17 @@ export function ProductionBoard() {
   const gridTemplateColumns = data.columns.map((column) => drawerOpen ? column.sourceId === activeDrawerColumnId ? compactLaneWidth : compactRailWidth : compactBoard ? column.sourceId === activeCompactColumnId ? compactLaneWidth : compactRailWidth : isCollapsible(column) && column.sourceId !== expandedColumnId ? '58px' : 'minmax(0, 1fr)').join(' ');
 
   return <div className={`production-board-layout${drawerOpen ? ' is-drawer-open' : ''}${!drawerOpen ? ` ${activityStyles.layout}` : ''}`}>
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
-      <div className="production-board" style={{ gridTemplateColumns }} aria-label="The Deck">{data.columns.map((column) => {
+    <DndContext sensors={mobileTouchBoard ? mobileSensors : sensors} collisionDetection={mobileDrag ? mobileCollision : closestCorners} measuring={mobileDrag ? { droppable: { strategy: MeasuringStrategy.Always } } : undefined} autoScroll={mobileDrag ? { canScroll: element => element.classList.contains('production-column-scroll'), threshold: { x: 0, y: 0.2 } } : undefined} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
+      <div className={`production-board${mobileTouchBoard ? ` ${mobileDragStyles.touchBoard}` : ''}${mobileDrag ? ` ${mobileDragStyles.dragBoard}` : ''}`} style={{ gridTemplateColumns: mobileDrag ? 'minmax(0, 1fr) minmax(0, 1fr)' : gridTemplateColumns, ...(mobileDrag ? { gridTemplateRows: `repeat(${Math.max(1, data.columns.length - 1)}, minmax(0, 1fr))` } : {}) }} aria-label="The Deck">{data.columns.map((column) => {
         const collapsedForDrawer = drawerOpen && column.sourceId !== activeDrawerColumnId;
-        const collapsedForCompact = !drawerOpen && compactBoard && column.sourceId !== activeCompactColumnId;
-        const expanded = drawerOpen ? column.sourceId === activeDrawerColumnId : compactBoard ? column.sourceId === activeCompactColumnId : column.sourceId === expandedColumnId;
+        const collapsedForCompact = mobileDrag ? column.sourceId !== activeDragCard?.columnSourceId : !drawerOpen && compactBoard && column.sourceId !== activeCompactColumnId;
+        const expanded = mobileDrag ? column.sourceId === activeDragCard?.columnSourceId : drawerOpen ? column.sourceId === activeDrawerColumnId : compactBoard ? column.sourceId === activeCompactColumnId : column.sourceId === expandedColumnId;
         const cards = data.cards.filter((card) => card.columnSourceId === column.sourceId).sort(byPosition);
         return <ProductionColumn column={column} cards={cards} selectedCardId={cardId} collapsedForDrawer={collapsedForDrawer} collapsedForCompact={collapsedForCompact} expanded={expanded} isCollapsible={isCollapsible(column)} isDropTarget={dropColumnId === column.sourceId} menuOpen={menuColumnId === column.sourceId} onSelect={() => selectColumn(column)} onOpenCard={setCardInUrl} onMenu={() => setMenuColumnId((current) => current === column.sourceId ? '' : column.sourceId)} onAction={(action) => { void runColumnAction(column, action); }} key={column.sourceId} />;
       })}</div>
-      <DragOverlay dropAnimation={null}>{activeDragCard && <div className="production-card-drag-overlay"><b>{activeDragCard.title}</b></div>}</DragOverlay>
+      <DragOverlay dropAnimation={null} zIndex={mobileDrag ? 1200 : 999}>{activeDragCard && <div className="production-card-drag-overlay"><b>{activeDragCard.title}</b></div>}</DragOverlay>
     </DndContext>
-    <DeckActivity open={activityOpen} hidden={drawerOpen} onOpen={() => { setCardInUrl(); setActivityOpen(true); }} onClose={() => setActivityOpen(false)} onCard={(id) => { setActivityOpen(false); setReturnToActivity(true); setCardInUrl(id); }} />
+    <DeckActivity open={activityOpen} hidden={drawerOpen || mobileDrag} onOpen={() => { setCardInUrl(); setActivityOpen(true); }} onClose={() => setActivityOpen(false)} onCard={(id) => { setActivityOpen(false); setReturnToActivity(true); setCardInUrl(id); }} />
     {colorColumn && <ColumnColorDialog columnId={colorColumn.sourceId} name={colorColumn.name} color={colorColumn.color} onClose={() => setColorColumn(null)} onSaved={(color) => setData((current) => current && ({ ...current, columns: current.columns.map((column) => column.sourceId === colorColumn.sourceId ? { ...column, color } : column) }))} />}
     {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar">{returnToActivity ? <button type="button" onClick={() => { setCardInUrl(); setReturnToActivity(false); setActivityOpen(true); }}><UiIcon name="back" /> Back to activity</button> : <span>{selectedCard ? 'Production record' : 'New production card'}</span>}<button type="button" onClick={closeCardDrawer} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard key={selectedCard.id} id={selectedCard.id} focusTarget={signalTarget} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} onDeleted={() => { setNewlyCreatedCard(null); setCardInUrl(); void loadBoard().then((payload) => payload && setData(payload)); }} /> : (() => { const column = data.columns.find((item) => item.sourceId === resolvedNewColumnId); return column ? <ProductionNewCard key={column.sourceId + newCardClient} initialClient={(data.clients || []).find(name => name === newCardClient) || ''} column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(draft) => { setNewlyCreatedCard(draft); void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(draft.id); }); }} /> : null; })()}</aside>}
     {clientReminderOpen && <div className="client-reminder-modal" role="dialog" aria-modal="true" aria-labelledby="card-client-reminder-title"><div className="client-reminder-panel"><p>One last detail</p><h2 id="card-client-reminder-title">Leave this new card without a client?</h2><span>Adding a client now keeps this card connected to the right work. You can still close it without one.</span><div className="client-reminder-picker"><ClientPicker value={reminderClient} clients={data.clients || []} onChange={setReminderClient} onClientsChanged={(clients) => setData((current) => current ? { ...current, clients } : current)} placeholder="Search or add a client" disabled={savingReminderClient} /></div><div className="client-reminder-actions"><button type="button" disabled={savingReminderClient} onClick={() => { setClientReminderOpen(false); setNewlyCreatedCard(null); setCardInUrl(); }}>Save without client</button><button className="primary" type="button" disabled={savingReminderClient || !reminderClient.trim()} onClick={() => void saveReminderClient()}>{savingReminderClient ? 'Saving…' : 'Save client'}</button></div></div></div>}
