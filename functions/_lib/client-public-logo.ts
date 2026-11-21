@@ -19,7 +19,7 @@ export async function publicProjectClient(env: AdminEnvironment, project: LogoPr
   return unique.size === 1 ? [...unique.values()][0] : null;
 }
 
-// Only a project explicitly enabled for unbranded sharing can expose its client's logo.
+// The public watch resolver sets eligibility for public playback; legacy enabled pages remain supported.
 export async function clientPublicLogo(env: AdminEnvironment, project: LogoProject) {
   if (project.unbrandedPublicPage !== true || !env.PRODUCTION_ARCHIVE) return null;
   const name = await publicProjectClient(env, project);

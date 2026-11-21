@@ -148,7 +148,7 @@
 
 /* Mux library previews use the same brandable Video.js player as public watch pages. */
 .mux-player-modal-panel .solo-videojs-player,.mux-asset-player .solo-videojs-player{display:block;width:100%;aspect-ratio:16/9;background:#000}
-@media(min-width:761px){.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(10))>:nth-child(2),.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(10))>:nth-child(3){order:2!important;grid-column:span 3!important}}
+
 @media(max-width:620px){body[data-team-app='true'] .mux-player-modal{padding:max(16px,env(safe-area-inset-top)) 12px calc(92px + env(safe-area-inset-bottom));align-items:center}body[data-team-app='true'] .mux-player-modal-panel{width:100%;max-height:calc(100dvh - 124px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto}body[data-team-app='true'] .video-modal{padding:12px 12px calc(92px + env(safe-area-inset-bottom))}body[data-team-app='true'] .video-modal .modal-shell{height:calc(100dvh - 112px - env(safe-area-inset-bottom));max-height:calc(100dvh - 112px - env(safe-area-inset-bottom))}}
 .mux-player-modal-panel{position:relative}.mux-player-modal-panel>.solo-videojs-player{padding:0}.mux-player-modal-panel .tg-player-title{display:none}.mux-player-modal-panel .tg-player-interface{grid-template-rows:1fr}.mux-player-modal-panel .tg-player-transport{grid-row:1}.mux-player-modal-panel>.mux-player-modal-close{position:absolute;z-index:2;top:-29px;right:0;display:grid;width:22px;height:22px;place-items:center;border:0;background:transparent;padding:0;color:rgba(245,242,237,.78);cursor:pointer}.mux-player-modal-panel>.mux-player-modal-close:hover{color:#fff}.mux-player-modal-close svg{width:14px;height:14px;fill:currentColor}.mux-player-modal-panel>.mux-player-ratio-tabs{position:absolute;z-index:2;top:-39px;left:0}
 
@@ -342,23 +342,13 @@
 .mux-mobile-actions-toggle .mux-mobile-menu-bar{display:block!important;width:14px!important;height:2px!important;background:currentColor!important}
 /* Keep the ratio cue in the same lower-left control cluster as quick actions. */
 .mux-library-thumb-with-actions .mux-library-ratio-count{z-index:13;bottom:9px;left:48px}
-.mux-library-thumb-with-actions>.mux-library-hover-actions{position:absolute!important;z-index:20;top:100%!important;right:auto!important;bottom:auto!important;left:0!important;display:grid!important;grid-template-columns:1fr!important;width:min(230px,100%);max-height:none;box-sizing:border-box;gap:0;padding:0!important;overflow:hidden;background:rgba(5,4,4,.94)!important;box-shadow:0 16px 30px rgba(0,0,0,.5),0 3px 8px rgba(0,0,0,.32);opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-4px);transition:opacity .16s ease,visibility .16s step-end,transform .16s ease;backdrop-filter:blur(5px)}
+.mux-library-thumb-with-actions>.mux-library-hover-actions{position:absolute!important;z-index:20;top:100%!important;right:auto!important;bottom:auto!important;left:0!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;width:100%;max-height:none;box-sizing:border-box;gap:0;padding:0!important;overflow:hidden;background:rgba(5,4,4,.94)!important;box-shadow:0 16px 30px rgba(0,0,0,.5),0 3px 8px rgba(0,0,0,.32);opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-4px);transition:opacity .16s ease,visibility .16s step-end,transform .16s ease;backdrop-filter:blur(5px)}
 .mux-library-thumb-with-actions>.mux-library-hover-actions>*{order:initial!important;grid-column:auto!important}
 .mux-library-thumb-with-actions>.mux-library-hover-actions a,.mux-library-thumb-with-actions>.mux-library-hover-actions button{min-height:36px;border-width:0 0 1px;border-color:rgba(255,255,255,.2);padding:8px 12px;font-size:9px;letter-spacing:.06em}
 .mux-library-thumb-with-actions>.mux-library-hover-actions>:last-child{border-bottom:0}
-/* Override the legacy multi-column action layout inside the compact dropdown. */
-.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(5)),.mux-library-thumb-with-actions>.mux-collection-hover-actions{grid-template-columns:1fr!important;gap:0!important}
-.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(5))>*,.mux-library-thumb-with-actions>.mux-collection-hover-actions>*{grid-column:1!important}
-/* Lead with the actions used most often; secondary administration stays below. */
-.mux-library-thumb-with-actions>.mux-library-hover-actions>*{order:10!important}
-.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions)>:nth-child(1){order:1!important}
-.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions)>:nth-child(3){order:2!important}
-.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions)>:nth-child(6){order:3!important}
-.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions)>:nth-child(4){order:4!important}
-.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions)>:nth-child(5){order:5!important}
-.mux-library-thumb-with-actions>.mux-collection-hover-actions>:nth-child(2){order:1!important}
-.mux-library-thumb-with-actions>.mux-collection-hover-actions>:nth-child(8){order:2!important}
-.mux-library-thumb-with-actions>.mux-collection-hover-actions>:nth-child(3){order:3!important}
+/* Keep related quick actions paired across the full thumbnail width. */
+.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(5)),.mux-library-thumb-with-actions>.mux-collection-hover-actions{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:0!important}
+.mux-library-thumb-with-actions>.mux-library-hover-actions:not(.mux-collection-hover-actions):has(> :nth-child(5))>*,.mux-library-thumb-with-actions>.mux-collection-hover-actions>*{grid-column:auto!important}
 .mux-library-thumb-with-actions:hover>.mux-library-hover-actions,.mux-library-thumb-with-actions:focus-within>.mux-library-hover-actions{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-4px)}
 .mux-library-thumb-with-actions:has(.mux-mobile-actions-toggle:is(:hover,:focus-visible))>.mux-library-hover-actions,.mux-library-thumb-with-actions:has(.mux-library-hover-actions:hover)>.mux-library-hover-actions,.mux-library-thumb-with-actions:has(.mux-library-hover-actions :focus-visible)>.mux-library-hover-actions,.mux-library-thumb-with-actions.mobile-actions-open>.mux-library-hover-actions{opacity:1;visibility:visible;pointer-events:auto;transform:translateY(0);transition-delay:0s}
 .mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle{background:var(--bright)}
@@ -372,7 +362,7 @@
 .mux-admin[data-theme='light'] .mux-mobile-actions-toggle{background:rgba(8,7,7,.86);color:#fff}
 .mux-admin[data-theme='light'] .mux-library-thumb-with-actions>.mux-library-hover-actions{background:rgba(255,255,255,.96)!important}
 .mux-admin[data-theme='light'] .mux-library-thumb-with-actions>.mux-library-hover-actions a,.mux-admin[data-theme='light'] .mux-library-thumb-with-actions>.mux-library-hover-actions button{border-color:rgba(23,19,21,.16)}
-.mux-library-hover-actions:not(.mux-collection-hover-actions)>button:nth-child(4){order:11!important}
+
 .mux-admin[data-theme='light'] .mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle{background:var(--bright);color:#fff}
 @media(hover:hover) and (min-width:761px) and (max-width:1500px){.mux-library-flow-cell article:has(.mux-library-hover-actions):hover .mux-library-thumb-with-actions,.mux-library-flow-cell article:has(.mux-library-hover-actions):focus-within .mux-library-thumb-with-actions{aspect-ratio:16/9}}
 @media(max-width:760px){.mux-library-thumb-with-actions{display:block;aspect-ratio:16/9}.mux-mobile-actions-toggle{top:auto;right:auto;bottom:9px;left:9px;width:31px;height:31px;aspect-ratio:auto}.mux-library-thumb-with-actions>.mux-library-hover-actions a,.mux-library-thumb-with-actions>.mux-library-hover-actions button{min-height:40px;padding:9px 12px;font-size:8px}}
@@ -1023,3 +1013,21 @@ textarea.production-inline-title { box-sizing: border-box; min-width: 0; resize:
 .card-signal-editor{padding:0;border:0;margin:8px 0 18px}.card-signal-editor summary,.comment-tag-options summary{cursor:pointer;font:500 12px/1.5 var(--sans);color:#726c66}.comment-tag-options{flex-basis:100%;font:12px/1.5 var(--sans);padding:8px 0}.comment-tag-options label{display:block}.comment-tag-options input:not([type=checkbox]){display:block;width:100%;padding:8px;border:1px solid #ccc;border-radius:4px}.comment-tag-options input[type=checkbox]{width:auto;margin-right:6px}.comment-tag-options details{margin-top:6px}
 
 .comment-date-prompt{position:relative;display:inline-block;margin:0 6px 6px 0}.comment-date-prompt>summary{padding:4px 8px;border-radius:4px;background:#dcecef;color:#244f59;list-style:none}.comment-date-popover{position:absolute;bottom:calc(100% + 8px);left:0;z-index:20;display:flex;flex-wrap:wrap;gap:6px;width:280px;max-width:70vw;padding:12px;border:1px solid #d4d0ca;border-radius:8px;background:#fff;box-shadow:0 4px 20px #0002}.comment-date-popover strong,.comment-date-popover small{display:block;width:100%}.comment-date-popover button{padding:6px 8px;font-size:11px}.comment-date-popover button[aria-pressed=true]{background:#dcecef}
+
+/* Thumbnail dropdowns only; playback canvas styles remain isolated. */
+.mux-library-thumb-with-actions>.mux-library-hover-actions a,.mux-library-thumb-with-actions>.mux-library-hover-actions button{min-height:44px;font-size:12px;letter-spacing:.02em;padding:10px 12px;gap:9px}
+.mux-library-thumb-with-actions>.mux-library-hover-actions .mux-quick-action-icon{width:17px;height:17px}
+.mux-library-thumb-with-actions>.mux-library-hover-actions>*{order:initial!important}
+.mux-library-thumb-with-actions>.mux-library-hover-actions>:nth-child(odd){border-right:1px solid rgba(128,128,128,.25)}
+.mux-library-thumb-with-actions>.mux-library-hover-actions>.danger:last-child:nth-child(odd){grid-column:1 / -1!important;border-right:0}
+
+/* Expand only the bottom activation strip, not the whole thumbnail. */
+.mux-library-thumb-with-actions>.mux-mobile-actions-toggle{bottom:0;left:0;height:31px}
+.mux-library-thumb-with-actions>.mux-mobile-actions-toggle:is(:hover,:focus-visible),
+.mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle,
+.mux-library-thumb-with-actions:has(>.mux-library-hover-actions:is(:hover,:focus-within))>.mux-mobile-actions-toggle{width:100%;justify-items:start;padding-left:9px;box-sizing:border-box}
+/* The expanded hit area is invisible; only the compact menu icon is painted. */
+.mux-library-thumb-with-actions>.mux-mobile-actions-toggle{background:transparent!important;padding:0!important}
+.mux-library-thumb-with-actions>.mux-mobile-actions-toggle::after{inset:0}
+.mux-library-thumb-with-actions>.mux-mobile-actions-toggle>span{width:31px;height:31px;box-sizing:border-box;place-content:center;background:rgba(8,7,7,.86)}
+.mux-library-thumb-with-actions.mobile-actions-open>.mux-mobile-actions-toggle>span{background:var(--bright)}
