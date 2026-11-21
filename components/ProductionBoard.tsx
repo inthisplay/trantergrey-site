@@ -5,6 +5,7 @@ import { cardSignal, type CardSignalFields } from '@/lib/card-signal';
 import { ColumnColorDialog } from './ColumnColorDialog';
 import { DeckActivity } from './DeckActivity';
 import activityStyles from './DeckActivityPreview.module.css';
+import { useDeckReturnAnimation } from './useDeckReturnAnimation';
 import mobileDragStyles from './ProductionBoardMobileDrag.module.css';
 import { columnColorStyle } from '@/lib/deck-colors';
 import type { CSSProperties } from 'react';
@@ -112,6 +113,7 @@ function ProductionNewCard({ column, columns, clients, assignees, initialClient 
 }
 
 export function ProductionBoard() {
+  const { boardRef, prepareReturn } = useDeckReturnAnimation();
   const [data, setData] = useState<BoardData | null>(null);
   const [error, setError] = useState('');
   const [cardId, setCardId] = useState('');
@@ -266,6 +268,7 @@ export function ProductionBoard() {
     dragOpenTimer.current = setTimeout(() => { setExpandedColumnId(column.sourceId); dragOpenTimer.current = null; }, 550);
   };
   const onDragEnd = (event: DragEndEvent) => {
+    prepareReturn(mobileDrag);
     clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId('');
     if (!data || !event.over || (mobileDrag && event.over.id === event.active.id)) return;
     const card = data.cards.find((item) => item.id === String(event.active.id));
@@ -297,8 +300,8 @@ export function ProductionBoard() {
   const gridTemplateColumns = data.columns.map((column) => drawerOpen ? column.sourceId === activeDrawerColumnId ? compactLaneWidth : compactRailWidth : compactBoard ? column.sourceId === activeCompactColumnId ? compactLaneWidth : compactRailWidth : isCollapsible(column) && column.sourceId !== expandedColumnId ? '58px' : 'minmax(0, 1fr)').join(' ');
 
   return <div className={`production-board-layout${drawerOpen ? ' is-drawer-open' : ''}${!drawerOpen ? ` ${activityStyles.layout}` : ''}`}>
-    <DndContext sensors={mobileTouchBoard ? mobileSensors : sensors} collisionDetection={mobileDrag ? mobileCollision : closestCorners} measuring={mobileDrag ? { droppable: { strategy: MeasuringStrategy.Always } } : undefined} autoScroll={mobileDrag ? { canScroll: element => element.classList.contains('production-column-scroll'), threshold: { x: 0, y: 0.2 } } : undefined} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
-      <div className={`production-board${mobileTouchBoard ? ` ${mobileDragStyles.touchBoard}` : ''}${mobileDrag ? ` ${mobileDragStyles.dragBoard}` : ''}`} style={{ gridTemplateColumns: mobileDrag ? 'calc(100vw / 3 - 16px) calc(100vw - 32px)' : gridTemplateColumns, ...(mobileDrag ? { gridTemplateRows: `repeat(${Math.max(1, data.columns.length - 1)}, minmax(0, 1fr))` } : {}) }} aria-label="The Deck">{data.columns.map((column) => {
+    <DndContext sensors={mobileTouchBoard ? mobileSensors : sensors} collisionDetection={mobileDrag ? mobileCollision : closestCorners} measuring={mobileDrag ? { droppable: { strategy: MeasuringStrategy.Always } } : undefined} autoScroll={mobileDrag ? { canScroll: element => element.classList.contains('production-column-scroll'), threshold: { x: 0, y: 0.2 } } : undefined} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { prepareReturn(mobileDrag); clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
+      <div ref={boardRef} className={`production-board${mobileTouchBoard ? ` ${mobileDragStyles.touchBoard}` : ''}${mobileDrag ? ` ${mobileDragStyles.dragBoard}` : ''}`} style={{ gridTemplateColumns: mobileDrag ? 'calc(100vw / 3 - 16px) calc(100vw - 32px)' : gridTemplateColumns, ...(mobileDrag ? { gridTemplateRows: `repeat(${Math.max(1, data.columns.length - 1)}, minmax(0, 1fr))` } : {}) }} aria-label="The Deck">{data.columns.map((column) => {
         const collapsedForDrawer = drawerOpen && column.sourceId !== activeDrawerColumnId;
         const collapsedForCompact = mobileDrag ? column.sourceId !== activeDragCard?.columnSourceId : !drawerOpen && compactBoard && column.sourceId !== activeCompactColumnId;
         const expanded = mobileDrag ? column.sourceId === activeDragCard?.columnSourceId : drawerOpen ? column.sourceId === activeDrawerColumnId : compactBoard ? column.sourceId === activeCompactColumnId : column.sourceId === expandedColumnId;
