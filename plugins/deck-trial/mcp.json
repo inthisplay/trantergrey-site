@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "deck-trial": {
+      "type": "streamable-http",
+      "url": "https://trantergrey-deck-mcp-trial.t-jackson.workers.dev/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": { "type": "oauth", "client": { "mode": "dcr" }, "baseScopes": ["tg:personal"] }
+        }
+      }
+    }
+  }
+}

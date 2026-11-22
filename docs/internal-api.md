@@ -14,6 +14,7 @@ uses a bearer credential with a scoped integration identity. Responses use
 - `GET /cards?query=&client=&columnId=&updatedAfter=&cursor=&limit=`
 - `GET /cards/:cardId`
 - `GET /cards/:cardId/activity`
+- `POST /cards` (create with `cards:create`; see below)
 - `POST /cards/:cardId/move`
 - `POST /cards/:cardId/comments`
 
@@ -45,6 +46,7 @@ Current scopes:
 - `videos:read`
 - `cards:read`
 - `cards:write` (move cards and add plain-text comments)
+- `cards:create` (create cards only; existing scoped credentials do not gain it automatically)
 - `clients:read` (client directory, workspace notes/to-dos, and linked work)
 - `clients:write` (create clients; create, edit, complete, reopen, and delete notes/to-dos)
 - `associations:write`
@@ -55,13 +57,28 @@ credential before distributing MCP access.
 
 ## MCP integration
 
-An MCP server should run outside Pages and use one scoped integration
-credential. Its initial tools can map directly to `GET /videos`, `GET /cards`,
-`GET /cards/:cardId/activity`, `POST /cards/:cardId/move`,
-`POST /cards/:cardId/comments`, and `POST /cards/:cardId/videos`. Store the last
-successful `createdAfter` timestamp or API cursor in the MCP service, not in
-the site. Proposed matches should remain a human-approval step before the
-association request is made.
+The owner-and-invited-teammate MCP server in `workers/deck-mcp` runs separately from
+Pages and currently exposes 23 tools across Deck, videos, Client HQ and move
+reporting. It reuses scoped route handlers and shared commands in-process under
+an authenticated integration actor, with a separate OAuth store and persistent
+refresh-token renewal. See [the tool inventory](deck-mcp-tools.md) for current
+capabilities, authentication and known gaps; `docs/deck-mcp-trial.md` is historical.
+External integrations use scoped API credentials, not the MCP owner's invitation
+code. Proposed video/card matches require user verification before association.
+
+Project maintenance rules are in [AGENTS.md](../AGENTS.md). New business features
+must assess UI, API and MCP support together, reuse shared commands, update the
+contracts, and verify each affected deployment separately.
+
+### Create a card
+
+`POST /cards` requires `cards:create` and a JSON object containing `title`,
+`columnSourceId` (an active column from `/boards/production`), `requestId`
+(a fresh UUID), and optional `client` and plain-text `notes`. Returns 201 for
+a new card or 200 for an identical retry, including the card ID and URL.
+Always retry a failed request with the same ID and input. Reusing an ID with
+different input returns 409. Creation and its integration audit record are atomic.
+The personal MCP Worker calls the same command directly and is deployed independently of this Pages endpoint.
 
 ## Client HQ
 
@@ -90,3 +107,14 @@ The installed team PWA exposes this workspace at `/app/clients` through **C.HQ**
 Its notes and to-dos use the internal API; Drive uses the existing authenticated
 admin endpoints. Client data is never cached by the service worker and requires
 an online connection. The existing admin route remains `/admin/clients`.
+
+
+## Personal MCP adapter
+
+The standalone Worker now exposes 23 tools for the owner and invited teammates; see [the full tool inventory](deck-mcp-tools.md). Existing scoped route handlers are reused in-process via an authenticated request-scoped integration actor. HTTP callers retain normal bearer/session checks. MCP-specific client item commands add partial updates, optimistic concurrency and a durable retry ledger (migration 0053). Calendar reporting reads structured local edit history. These Worker changes do not deploy new main-site REST endpoints automatically.
+
+## Owner-only AI connection management
+
+`GET /api/admin/mcp-connections` lists team directory choices, the latest 200 invitations and latest 100 owner connections. `POST` supports `invite` (directory email and fresh UUID requestId), `revoke-invitation` (id), and `revoke-owner-connection` (id). All requests require the verified owner website session; writes also require same-origin requests. This intentionally has no MCP tool or scoped integration-token equivalent: an AI connection cannot issue invitations or administer access.
+
+Invitation creation returns its plaintext code once. Only a digest is stored; an unused code expires after seven days and can be redeemed once. Connected grants renew until revoked. Revocation blocks access and renewal immediately. Labels attribute actions to the selected teammate but are not proof of the recipient’s ChatGPT identity. Pages and the Worker share the MCP_AUTH binding and `workers/deck-mcp/auth-schema.sql`.

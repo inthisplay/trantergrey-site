@@ -17,7 +17,7 @@ export async function clientHQResponse({ request, env }: Context, actorName?: st
       const pageOffset=(key:string)=>Math.max(0,Math.min(100000,Number.parseInt(url.searchParams.get(key) || '0',10) || 0));
       const cardsOffset=pageOffset('cardsOffset'),videosOffset=pageOffset('videosOffset');
       const [cards,videos]=await Promise.all([
-        env.TG_DATA.prepare(`SELECT p.id,COALESCE(o.title,p.title) title FROM production_cards p JOIN production_card_overrides o ON o.card_source_id=p.source_id WHERE o.client=? COLLATE NOCASE ORDER BY p.id LIMIT 6 OFFSET ?`).bind(client.name,cardsOffset).all(),
+        env.TG_DATA.prepare(`SELECT p.id,COALESCE(o.title,p.title) title FROM production_cards p JOIN production_card_overrides o ON o.card_source_id=p.source_id WHERE o.deleted_at IS NULL AND o.client=? COLLATE NOCASE ORDER BY p.id LIMIT 6 OFFSET ?`).bind(client.name,cardsOffset).all(),
         env.TG_DATA.prepare(`SELECT asset_id id,COALESCE(title,asset_id) title FROM mux_asset_metadata WHERE client=? COLLATE NOCASE
           UNION ALL SELECT b.asset_id id,b.title FROM mux_library_browse_assets b LEFT JOIN mux_asset_metadata m ON m.asset_id=b.asset_id
           WHERE b.refresh_id=(SELECT refresh_id FROM mux_library_browse_state WHERE id='library') AND b.client=? COLLATE NOCASE AND m.client IS NULL

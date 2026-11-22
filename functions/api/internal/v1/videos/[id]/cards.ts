@@ -9,6 +9,6 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
   const links = await env.TG_DATA.prepare(`SELECT l.card_id AS cardId, l.linked_at AS linkedAt, p.source_id AS sourceId,
     COALESCE(o.title, p.title) AS title, COALESCE(o.client, '') AS client, COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId
     FROM production_card_video_links l JOIN production_cards p ON p.id = l.card_id
-    LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE l.asset_id = ? ORDER BY l.linked_at DESC`).bind(params.id).all();
+    LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE l.asset_id = ? AND o.deleted_at IS NULL ORDER BY l.linked_at DESC`).bind(params.id).all();
   return apiData(links.results);
 }

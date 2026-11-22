@@ -18,7 +18,7 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
       env.TG_DATA.prepare('SELECT asset_id AS assetId, COUNT(*) AS count FROM production_card_video_links GROUP BY asset_id').all<{ assetId: string; count: number }>(),
     ]);
     const linkCount = new Map(linkRows.results.map((row) => [row.assetId, row.count]));
-    const videos = library.assets.filter((asset) => {
+    const videos = [...library.assets].sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || a.id.localeCompare(b.id)).filter((asset) => {
       const haystack = [asset.title, asset.client || '', ...asset.localTags].join(' ').toLocaleLowerCase();
       const isLinked = (linkCount.get(asset.id) || 0) > 0;
       return (!query || haystack.includes(query)) && (!client || (asset.client || '').toLocaleLowerCase().includes(client))

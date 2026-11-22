@@ -3,7 +3,15 @@ import { adminSession, sameValue, type AdminEnvironment } from './admin';
 export type ApiActor = { type: 'user' | 'integration'; id: string; name: string; email: string | null; scopes: Set<string> };
 type Credential = { id: string; name: string; scopes_json: string };
 
-const allScopes = new Set(['videos:read', 'cards:read', 'cards:write', 'associations:write', 'clients:read', 'clients:write']);
+const allScopes = new Set(['videos:read', 'cards:read', 'cards:write', 'cards:create', 'associations:write', 'clients:read', 'clients:write']);
+
+// In-process capability: never populated from HTTP headers or request bodies.
+// Only trusted server code that has already authenticated a caller may use this.
+const trustedActors = new WeakMap<Request, ApiActor>();
+export async function withApiActor<T>(request: Request, actor: ApiActor, run: () => Promise<T>): Promise<T> {
+  trustedActors.set(request, actor);
+  try { return await run(); } finally { trustedActors.delete(request); }
+}
 
 function bearer(request: Request) {
   return request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || '';
@@ -21,6 +29,8 @@ function scopes(value: string) {
 }
 
 export async function apiActor(request: Request, env: AdminEnvironment): Promise<ApiActor | null> {
+  const trusted = trustedActors.get(request);
+  if (trusted) return trusted;
   const session = await adminSession(request, env);
   if (session) return { type: 'user', id: session.email || session.name, name: session.name, email: session.email, scopes: allScopes };
 

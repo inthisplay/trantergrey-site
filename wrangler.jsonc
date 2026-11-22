@@ -8,6 +8,11 @@
       "binding": "TG_DATA",
       "database_name": "trantergrey-site-data",
       "database_id": "a7a66fec-71a4-464a-9c14-104d2e820c17"
+    },
+    {
+      "binding": "MCP_AUTH",
+      "database_name": "trantergrey-deck-mcp-trial-auth",
+      "database_id": "964917e4-e007-4b5f-9d8c-c1d2c202795d"
     }
   ],
   "r2_buckets": [
@@ -23,6 +28,11 @@
           "binding": "TG_DATA",
           "database_name": "trantergrey-site-data",
           "database_id": "a7a66fec-71a4-464a-9c14-104d2e820c17"
+        },
+        {
+          "binding": "MCP_AUTH",
+          "database_name": "trantergrey-deck-mcp-trial-auth",
+          "database_id": "964917e4-e007-4b5f-9d8c-c1d2c202795d"
         }
       ],
       "r2_buckets": [
