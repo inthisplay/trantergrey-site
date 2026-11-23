@@ -1,4 +1,4 @@
-import { adminResponse, type AdminEnvironment } from '../../../_lib/admin';
+import { adminResponse, adminSession, type AdminEnvironment } from '../../../_lib/admin';
 import { registerClient } from '../../../_lib/client-directory';
 
 type Context = { request: Request; env: AdminEnvironment };
@@ -19,13 +19,14 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
   if (assignees.some((person) => person.length > 120) || !/^\d{4}-\d{2}-\d{2}$/.test(dueOn) && dueOn !== '' || notes.length > 100000) return Response.json({ error: 'Check the assignees, due date, and notes.' }, { status: 400 });
   const column = await env.TG_DATA.prepare('SELECT source_id FROM production_columns WHERE source_id = ?').bind(columnSourceId).first();
   if (!column) return Response.json({ error: 'Production column not found.' }, { status: 404 });
+  const actor = (await adminSession(request, env))?.name || 'Admin';
   const now = new Date().toISOString(); const sourceId = `local-${crypto.randomUUID()}`; const id = `local-card-${crypto.randomUUID()}`;
   const last = await env.TG_DATA.prepare(`SELECT MAX(COALESCE(o.position, p.position)) AS position FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE COALESCE(o.column_source_id, p.column_source_id) = ?`).bind(columnSourceId).first<{ position: number | null }>();
   const position = (last?.position ?? 0) + 1000;
   const notesHtml = notes ? escapeHtml(notes).replace(/\r?\n/g, '<br>') : null;
   await env.TG_DATA.batch([
     env.TG_DATA.prepare(`INSERT INTO production_cards (id, source_id, column_source_id, position, title, description_html, archived, assignees_json, created_at, updated_at, source_json, imported_at)
-      VALUES (?, ?, ?, ?, ?, '', 0, '[]', ?, ?, ?, ?)`).bind(id, sourceId, columnSourceId, position, title, now, now, JSON.stringify({ local: true }), now),
+      VALUES (?, ?, ?, ?, ?, '', 0, '[]', ?, ?, ?, ?)`).bind(id, sourceId, columnSourceId, position, title, now, now, JSON.stringify({ local: true, createdBy: actor }), now),
     env.TG_DATA.prepare(`INSERT INTO production_card_overrides (card_source_id, title, notes_html, client, assignees_json, due_on, column_source_id, archived, edited_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`)
       .bind(sourceId, title, notesHtml, client, JSON.stringify(assignees), dueOn, columnSourceId, now),

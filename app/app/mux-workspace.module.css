@@ -27,3 +27,14 @@
     min-height: 48px;
   }
 }
+
+/* Keep the shared admin upload zone in flow in the team app's shorter header. */
+.workspace:global(.mux-admin) :global(.mux-upload-zone) {
+  position: relative;
+  inset: auto;
+  min-height: 116px;
+  margin: 24px 0;
+}
+.workspace:global(.mux-admin) :global(.mux-library-toolbar) {
+  margin-top: 0;
+}

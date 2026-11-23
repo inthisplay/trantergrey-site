@@ -15,6 +15,14 @@ function nextQuality(requested: Quality, max: string | null) { const values = av
 function parse(value: unknown): Quality { if (typeof value === 'string' && qualities.includes(value as Quality)) return value as Quality; throw new Error('That download quality is not available.'); }
 function filename(title: string, quality: Quality) { return `${title.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'trantergrey-video'}-${quality}.mp4`; }
 
+function renditionFor(asset: Awaited<ReturnType<typeof getMuxLibraryAsset>>, target: string, requested: Quality) {
+  const current = asset.staticRenditions.find((item) => item.resolution === target || item.name === `${target}.mp4`);
+  if (current || requested !== 'highest') return current;
+  // `mp4_support` was Mux's former rendition system. Its files use names such
+  // as high.mp4 instead of carrying the resolution metadata used by the newer API.
+  return ['high.mp4', 'capped-1080p.mp4', 'medium.mp4', 'low.mp4'].map((name) => asset.staticRenditions.find((item) => item.name === name)).find(Boolean);
+}
+
 async function publicAsset(env: AdminEnvironment, id: string) {
   if (!/^[A-Za-z0-9]+$/.test(id)) throw new Error('A valid video ID is required.');
   const metadata = await readMuxMetadata(env); if (metadata[id]?.downloadsEnabled === false) throw new Error('Downloads are disabled for this video.');
@@ -24,7 +32,7 @@ async function publicAsset(env: AdminEnvironment, id: string) {
 export async function onRequestGet({ request, env }: Context) {
   try {
     const url = new URL(request.url); const asset = await publicAsset(env, url.searchParams.get('assetId') || ''); const quality = parse(url.searchParams.get('quality')); const target = effective(quality, asset.maxResolution);
-    const rendition = asset.staticRenditions.find((item) => item.resolution === target || item.name === `${target}.mp4`);
+    const rendition = renditionFor(asset, target, quality);
     if (rendition?.status === 'ready' && rendition.url) return Response.json({ status: 'ready', quality, downloadUrl: `${rendition.url}?download=${encodeURIComponent(filename(asset.title, quality))}` });
     if (rendition && ['errored', 'skipped'].includes(rendition.status)) return Response.json({ status: rendition.status, quality, nextAvailableQuality: nextQuality(quality, asset.maxResolution) });
     return Response.json({ status: rendition?.status || 'missing', quality });
@@ -36,7 +44,7 @@ export async function onRequestPost({ request, env }: Context) {
     const body = await request.json() as { assetId?: unknown; quality?: unknown }; if (typeof body.assetId !== 'string') throw new Error('A valid video ID is required.');
     const quality = parse(body.quality); const asset = await publicAsset(env, body.assetId); const options = available(asset.maxResolution);
     if (!options.includes(quality)) { const next = nextQuality(quality, asset.maxResolution); return Response.json({ error: `${quality} is not available for this video.${next ? ` Try ${next} instead.` : ''}`, nextAvailableQuality: next }, { status: 409 }); }
-    const target = effective(quality, asset.maxResolution); const existing = asset.staticRenditions.find((item) => item.resolution === target || item.name === `${target}.mp4`);
+    const target = effective(quality, asset.maxResolution); const existing = renditionFor(asset, target, quality);
     if (!existing || !['ready', 'preparing', 'processing'].includes(existing.status)) await createMuxStaticRendition(env, body.assetId, target);
     return Response.json({ ok: true, quality });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not prepare the download.' }, { status: 400 }); }

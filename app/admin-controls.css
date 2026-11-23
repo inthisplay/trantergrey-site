@@ -1,0 +1,35 @@
+/* Low-specificity defaults keep unclassified admin controls on-brand.
+   Component styles loaded after this file retain their own layout and states. */
+:where(.admin-hub, .admin-detail, .mux-asset-page, body[data-team-app='true']) button {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  padding: 10px 14px;
+  font: 500 10px/1.4 var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* Vector controls inherit the surrounding theme; never use an emoji font. */
+.ui-icon{display:inline-block;width:16px;height:16px;flex:none;vertical-align:middle;fill:currentColor}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.production-comment-composer-bar .production-comment-tools{flex-wrap:wrap;min-width:0}
+:where(.admin-hub, .admin-detail, .mux-asset-page, body[data-team-app='true']) button:where(:hover:not(:disabled)) {
+  border-color: var(--bright);
+  color: var(--bright);
+}
+:where(.admin-hub, .admin-detail, .mux-asset-page, body[data-team-app='true']) button:where(:focus-visible) {
+  outline: 2px solid var(--bright);
+  outline-offset: 3px;
+}
+:where(.admin-hub, .admin-detail, .mux-asset-page, body[data-team-app='true']) button:where(:disabled) {
+  opacity: .5;
+  cursor: default;
+}
+:where(.admin-hub, .admin-detail, .mux-asset-page, body[data-team-app='true']) input:where([type='checkbox'], [type='radio']) {
+  accent-color: var(--bright);
+}

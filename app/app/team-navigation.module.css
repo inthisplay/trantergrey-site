@@ -1,3 +1,9 @@
 .aboveContent {
   z-index: 100;
 }
+
+.aboveContent a {
+  min-width: 0;
+  flex: 1;
+  max-width: 160px;
+}

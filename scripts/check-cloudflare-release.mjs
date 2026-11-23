@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const requiredFiles = [
   'out/login.html',
@@ -13,6 +13,12 @@ const requiredFiles = [
   'out/app.html',
   'out/app/mux.html',
   'out/app/deck.html',
+  'out/app/clients.html',
+  'out/app/rolodex.html',
+  'out/admin/rolodex.html',
+  'functions/api/admin/rolodex.ts',
+  'migrations/0037_rolodex.sql',
+  'functions/api/internal/v1/client-hq.ts',
   'out/app/watch.html',
   'out/app/videos.html',
   'out/app/kanban.html',
@@ -168,7 +174,7 @@ if (!adminEnvironment.includes('MUX_TOKEN_ID?: string') || !adminEnvironment.inc
 if (/hasAdminSession[\s\S]{0,200}!env\.ADMIN_PASSWORD/.test(adminEnvironment) || /adminCookie[\s\S]{0,200}!env\.ADMIN_PASSWORD/.test(adminEnvironment)) throw new Error('Google-created admin sessions must not depend on ADMIN_PASSWORD.');
 
 const adminLogin = readFileSync('components/AdminLogin.tsx', 'utf8');
-if (!adminLogin.includes("fetch('/api/auth/config'") || !adminLogin.includes('passwordEnabled &&')) throw new Error('The password fallback must only appear when it is configured.');
+if (!adminLogin.includes('/api/auth/google?next=') || /type="password"|action="\/api\/admin\/login"/.test(adminLogin)) throw new Error('The login page must offer Google sign-in without an owner-password form.');
 
 const muxMigration = readFileSync('migrations/0005_mux_library.sql', 'utf8');
 for (const table of ['mux_asset_metadata', 'mux_video_projects', 'mux_video_collections']) {
@@ -181,5 +187,11 @@ for (const table of ['production_card_video_links', 'production_card_activity', 
 }
 const internalApi = readFileSync('functions/_lib/internal-api.ts', 'utf8');
 if (!internalApi.includes('requireApiScope') || !internalApi.includes('api_integration_credentials')) throw new Error('Internal API authentication is incomplete.');
+
+const pdfVersion = JSON.parse(readFileSync('node_modules/pdfjs-dist/package.json', 'utf8')).version;
+for (const asset of ['cmaps/Adobe-Japan1-UCS2.bcmap', 'standard_fonts/LiberationSans-Regular.ttf', 'wasm/openjpeg.wasm']) {
+  if (!existsSync(`out/vendor/pdfjs/${pdfVersion}/${asset}`)) throw new Error(`PDF preview asset missing: ${asset}`);
+}
+if (!readdirSync('out/_next/static/media').some(name => name.startsWith('pdf.worker.min.') && name.endsWith('.mjs'))) throw new Error('PDF preview worker is missing.');
 
 console.log('Cloudflare release checks passed.');

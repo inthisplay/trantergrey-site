@@ -42,6 +42,8 @@ function AdminMenu() {
       <a href="/admin">Admin dashboard</a>
       <a href="/admin/mux">Mux library</a>
       <a href="/admin/production">The Deck</a>
+      <a href="/admin/rolodex">The Rolodex</a>
+      <a href="/admin/clients">Client HQ</a>
     </div>
   </div>;
 }

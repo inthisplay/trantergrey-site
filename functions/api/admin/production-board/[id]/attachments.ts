@@ -1,3 +1,4 @@
+import { prepareMediaPreviews } from '../../../../_lib/media-previews';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../../_lib/admin';
 
 type Context = { request: Request; env: AdminEnvironment; params: { id: string } };
@@ -32,5 +33,6 @@ export async function onRequestPost({ request, env, params }: Context): Promise<
   const sourceUrl = `/api/admin/production-board/attachments/${encodeURIComponent(sourceId)}`;
   await env.TG_DATA.prepare(`INSERT INTO production_attachments (source_id, card_source_id, comment_source_id, filename, content_type, byte_size, r2_key, source_url, status, source_json, imported_at)
     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'stored', ?, ?)`).bind(sourceId, card.source_id, filename, contentType, Math.round(size), r2Key, sourceUrl, JSON.stringify({ uploadedBy: session.name, uploadedByEmail: session.email, uploadedAt: now }), now).run();
+  await prepareMediaPreviews(env, r2Key, contentType);
   return Response.json({ attachment: { sourceId, filename, contentType, byteSize: Math.round(size), url: sourceUrl } }, { status: 201 });
 }

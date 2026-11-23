@@ -1,0 +1,116 @@
+# TranterGrey personal MCP — 23 tools
+
+This is the implemented tool inventory, not a platform tool-count limit. It exposes the existing scoped API plus focused commands for client items and calendar reporting. Admin-only destructive video operations, uploads, and identity administration are not exposed.
+
+## Deck — 9 tools
+
+| Tool | What it does |
+| --- | --- |
+| `list_deck_columns` | Lists active column names and IDs. |
+| `create_deck_card` | Creates a card with client, column and plain-text notes; durable requestId prevents retry duplicates. |
+| `search_deck_cards` | Searches by title/client, column or modified-after timestamp; paginated; excludes deleted cards. |
+| `get_deck_card` | Reads notes, assignees, due date, current column and video links. |
+| `get_deck_card_activity` | Reads edits, link events, imported events and comment metadata. |
+| `move_deck_card` | Moves a card to a column, optionally before another card. |
+| `add_deck_comment` | Adds a plain-text comment; not automatically retry-safe. |
+| `link_video_to_card` | Links an existing asset after a requested/verified match; duplicate links are prevented. |
+| `report_deck_moves` | Counts recorded transitions into a column within a calendar date range, with move count and unique-card count. |
+
+Reporting defaults to this calendar month in America/New_York. Explicit ranges are start-inclusive/end-exclusive local dates; IANA time zones are supported. Current column is not used to infer historical movement. Reorders and initial creation are excluded; cards later deleted remain in historical counts. Coverage is limited to local edit records with structured before/after column IDs. Imported history may not record comparable transitions. Earliest local edit and malformed-record count accompany the answer. Titles shown are current titles. Detail pagination does not affect totals.
+
+Example: “How many Deck cards moved to Done this month?” Resolve Done with `list_deck_columns`, then call `report_deck_moves`; report uniqueCardCount, with moveCount if different and the coverage caveat.
+
+## Videos — 5 tools
+
+| Tool | What it does |
+| --- | --- |
+| `search_videos` | Filters title/tags/client, status, upload date and whether linked; paginated, newest upload first. |
+| `get_video` | Reads full asset metadata, project, uploader provenance and associations. |
+| `list_video_cards` | Lists linked non-deleted cards. |
+| `get_video_workspace` | Reads collections, projects, variants and ungrouped assets. |
+| `get_video_share_link` | Produces branded/unbranded watch URLs only for already-public playback. |
+
+“Latest” means Mux creation/upload time, not historical production date or approval. The tool never enables public playback. Client abbreviations such as VGA must be resolved from actual results rather than invented aliases. Mux credentials stay only in Worker secrets. Search uses the shared catalog cache; public-link checks fetch the asset from Mux.
+
+## Client HQ — 9 tools
+
+| Tool | What it does |
+| --- | --- |
+| `list_clients` | Lists clients, IDs, archived status and open to-do counts. |
+| `get_client_workspace` | Reads to-dos, notes, update timestamps, valid assignees and folder references. |
+| `get_client_related` | Lists associated cards/videos with offset pagination. |
+| `create_client` | Creates a Client HQ workspace. |
+| `set_client_archived` | Archives or restores a client. |
+| `create_client_item` | Creates a to-do or plain-text note with optional assignee/due date; durable requestId. |
+| `update_client_item` | Changes only specified fields, retaining others; explicit body replacement becomes plain text. |
+| `set_client_todo_completed` | Completes/reopens a to-do without losing its other fields. |
+| `delete_client_item` | Permanently deletes an explicitly selected note or to-do. |
+
+Item updates/deletes require the exact `expectedUpdatedAt` from a fresh workspace read. A concurrent modification rejects the operation. Item creation and its retry ledger/audit commit atomically. A retry after deletion cannot recreate the item. Empty dueOn/assignee explicitly clears those fields. Dates are validated as real calendar dates; assignments use existing team nicknames.
+
+## Authorization and deployment
+
+The OAuth scope is `tg:personal`. Old `deck:create` tokens, codes and pending consent transactions cannot gain expanded access. Reconnect after refreshing tool metadata; recreate the custom connection if it retains old scopes. Server instructions and the consent page describe the expanded capabilities. Read/write/destructive/idempotent hints are present on every tool.
+
+The owner can issue teammate invitations from Admin Access. There is no trial deadline; one-hour access tokens renew through persistent, rotating refresh tokens. Reconnect once when upgrading from the old access-token-only connection. There are no per-client restrictions or verified Google/ChatGPT identities; each invitation grants all 23 tools with its own attribution and revocation.
+
+Read handlers and established card commands are reused in-process under a scoped integration actor. `withApiActor` binds identity to one exact Request in a WeakMap, clears it in finally, and is never populated from incoming HTTP data. No admin cookie or broad API token is synthesized. External REST callers still pass the normal authentication checks. API errors at 5xx are redacted at the MCP boundary.
+
+Apply `migrations/0053_mcp_item_requests.sql` to TG_DATA before this Worker version. The existing card ledger migration 0052 and separate MCP_AUTH OAuth schema remain prerequisites. Add MUX_TOKEN_ID and MUX_TOKEN_SECRET as Worker secrets. Deploy the standalone Worker for tool changes. Invitation management also requires deploying Pages with its MCP_AUTH binding; changing bundled internal handlers does not deploy the main website.
+
+## Not included yet
+
+- Editing card titles/assignees/due dates, archiving/deleting cards, full comment bodies, attachments and card checklist steps.
+- Uploading/editing/deleting videos or enabling public playback.
+- External calendar event creation, calendar synchronization, or general business analytics beyond recorded card moves.
+- Automated video/card verification requests, notifications, PWA push subscriptions, and background monitoring.
+- Per-user Google sign-in and team permissions.
+
+## Verification
+
+`node scripts/test-deck-mcp.mjs`, `npx tsc --noEmit`, `npm run check:cloudflare-release`, and Worker dry-run build. Tests exercise the real MCP SDK against isolated SQLite; no production writes are needed to validate mutation behavior. Production smoke checks should authenticate and use read-only tools.
+
+## Deployment record — November 21, 2026
+
+Worker version `ad2d6e57-0223-4137-95dc-03125286fcb3` deployed to the existing trial endpoint. Migration 0053 applied to the site D1 database; Mux credentials configured as Worker secrets. Thirteen automated tests passed, TypeScript passed, Cloudflare website release checks passed, and authenticated production smoke passed for all 13 read tools. Business mutations were tested only against isolated fixtures; the live smoke did not create cards/comments/items or modify video associations. The main Pages website was not deployed.
+
+
+## Persistent authentication — v0.3
+
+The November 28 deadline is removed from code and Worker configuration. The existing owner code remains the initial sign-in mechanism. `authorization_code` and `refresh_token` grants are advertised; successful code exchange issues both tokens. OAuth clients and connection grants persist until revoked. Access tokens remain valid for one hour; refresh tokens do not have a calendar or inactivity expiry.
+
+Refresh tokens are stored only as SHA-256 digests, bound to one OAuth client, resource, scope and connection family, and rotated atomically. A used refresh token cannot mint another token; reuse revokes the connection family. Storage failure rolls back the rotation so the original refresh token remains usable. Access checks verify both expiry and the active connection family, so revocation takes effect immediately. Old access tokens without refresh support retain only their original short lifetime; they cannot be upgraded without a fresh consent flow.
+
+The `/revoke` endpoint accepts a form POST with `token` and `client_id`. Either a current access token or a refresh token revokes the whole connection. Unknown tokens receive a success response without revealing state. The daily cleanup deletes expired records and orphaned refresh/access records belonging to revoked families.
+
+Owner emergency revocation (does not delete cards or other business records):
+
+```sh
+npx wrangler d1 execute MCP_AUTH --remote --config workers/deck-mcp/wrangler.jsonc --command "DELETE FROM oauth_records WHERE kind IN ('session','token','code','pending')"
+```
+
+To stop new connections too, remove/rotate the owner invitation secret `TEST_ACCESS_CODE`. Rotating it alone does not revoke existing grants. Keep the legacy secret name and endpoint URL for compatibility; they no longer imply an expiring trial.
+
+Validation: 17 automated tests, including refresh after 400 simulated days, rotation, scope/client/resource binding, replay revocation, connection isolation and atomic rollback. `scripts/check-deck-mcp-live.mjs` additionally exchanges and rotates a production refresh token, exercises read tools, then revokes its own smoke connection and verifies access is denied.
+
+Deployed v0.3 Worker version `f08ba71e-00e0-473b-8d75-d00390d5fb9c` on November 21, 2026. Production verification passed for refresh issuance/rotation, all read tools, and immediate revocation. TypeScript and the Worker build passed. No database migration was needed for persistent OAuth.
+
+## Teammate invitations — v0.4
+
+Admin Access includes owner-only AI connection management: choose a directory member, generate and copy a code, copy a separate setup prompt, inspect connection status/last use, and revoke access. No email or messaging service is involved. The code is shown once, stored only as a digest, valid for seven days before redemption, and single-use. Once redeemed, its connection persists with rotating refresh tokens until revoked. Anyone holding the unused code can connect as its named recipient, so the label is attribution rather than verified identity.
+
+The original owner code and connections remain valid. Teammate actions use a separate invitation actor; creation retry IDs are isolated by that actor. Revocation blocks outstanding authorization codes, access tokens, and refresh tokens for that invitation without affecting other connections. Apply the additive `mcp_invitations` table from `workers/deck-mcp/auth-schema.sql` before deploying both services. The owner API deliberately is not exposed through MCP.
+
+Validation: 20 isolated tests cover owner-only management, single-use redemption, expiry, named audit attribution, renewal and revocation isolation. TypeScript, website release checks, browser copy controls, and Worker dry-run pass.
+
+Deployed v0.4 Worker `f41a3175-b874-4690-b017-66c13fa57a79` and production Pages `c06a0d19` on November 21, 2026. The additive invitation schema is applied. Production OAuth renewal, all 13 read tools, and smoke-session revocation passed; no live business records were changed. Anonymous management API access returns 401 and Admin Access redirects to login.
+
+The copied setup prompt includes a stepwise walkthrough, exact OAuth settings, code lifecycle and permissions, all 23 tool names and limits, symptom-specific troubleshooting, and a redacted escalation checklist. ChatGPT UI/eligibility guidance links to official sources and requires verification when uncertain; it does not promise plan availability or automatic installation. The prompt contains no invitation secret.
+
+## Shared commands and monitoring — v0.5
+
+All 23 tools and full teammate permissions remain intact. Client item mutations now live in `functions/_lib/client-items.ts`, shared with admin and internal HTTP handlers. HTTP clients must provide a create requestId or edit/delete expectedUpdatedAt; the website supplies them. Existing MCP inputs, retry records and connections remain compatible. Rich-text website notes survive partial MCP edits. Explicit MCP body replacement remains plain text.
+
+Migration 0054 in TG_DATA enables shared rate limits and sanitized error history. Admin Access → Connection health shows recent API/MCP failures and rate-limit events. Limits, retention, privacy boundaries and HTTP migration details are documented in `docs/internal-api.md`. Deploy both Pages and the Worker; no reauthorization or permission changes are required. Monitoring does not send notifications or continuously probe uptime.
+
+Deployed November 22, 2026: Worker `3ec42532-f14f-441e-ae8f-cef7bc88cc03`, production Pages `4ab02b2d`, and TG_DATA migration 0054. All 26 MCP/integration tests and 26 Client HQ tests passed, along with TypeScript, website release checks, Worker dry-run and health-panel browser checks. Production OAuth renewal, all 13 read tools, and smoke-connection revocation passed. Anonymous API/health access is denied; no production business mutations were used for testing.

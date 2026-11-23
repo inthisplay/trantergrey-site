@@ -3,7 +3,15 @@ import { adminSession, sameValue, type AdminEnvironment } from './admin';
 export type ApiActor = { type: 'user' | 'integration'; id: string; name: string; email: string | null; scopes: Set<string> };
 type Credential = { id: string; name: string; scopes_json: string };
 
-const allScopes = new Set(['videos:read', 'cards:read', 'cards:write', 'associations:write']);
+const allScopes = new Set(['videos:read', 'cards:read', 'cards:write', 'cards:create', 'associations:write', 'clients:read', 'clients:write']);
+
+// In-process capability: never populated from HTTP headers or request bodies.
+// Only trusted server code that has already authenticated a caller may use this.
+const trustedActors = new WeakMap<Request, ApiActor>();
+export async function withApiActor<T>(request: Request, actor: ApiActor, run: () => Promise<T>): Promise<T> {
+  trustedActors.set(request, actor);
+  try { return await run(); } finally { trustedActors.delete(request); }
+}
 
 function bearer(request: Request) {
   return request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || '';
@@ -21,6 +29,8 @@ function scopes(value: string) {
 }
 
 export async function apiActor(request: Request, env: AdminEnvironment): Promise<ApiActor | null> {
+  const trusted = trustedActors.get(request);
+  if (trusted) return trusted;
   const session = await adminSession(request, env);
   if (session) return { type: 'user', id: session.email || session.name, name: session.name, email: session.email, scopes: allScopes };
 
@@ -34,7 +44,7 @@ export async function apiActor(request: Request, env: AdminEnvironment): Promise
   const credential = await env.TG_DATA.prepare('SELECT id, name, scopes_json FROM api_integration_credentials WHERE id = ? AND secret_hash = ? AND revoked_at IS NULL')
     .bind(match[1], await hash(value)).first<Credential>();
   if (!credential) return null;
-  void env.TG_DATA.prepare('UPDATE api_integration_credentials SET last_used_at = ? WHERE id = ?').bind(new Date().toISOString(), credential.id).run();
+  await env.TG_DATA.prepare('UPDATE api_integration_credentials SET last_used_at = ? WHERE id = ?').bind(new Date().toISOString(), credential.id).run();
   return { type: 'integration', id: credential.id, name: credential.name, email: null, scopes: scopes(credential.scopes_json) };
 }
 

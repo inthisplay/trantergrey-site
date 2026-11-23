@@ -1,0 +1,22 @@
+/* Ratio-group layout ONLY: this class exists while multiple ratios are shown
+   together. Selecting one ratio switches to .single-video-layout and the shared
+   solo containment contract. Keep all group responsive rules under this root;
+   never use bare .solo-video-player/.solo-video-stage selectors in this file. */
+.ratio-group-layout .ratio-group-canvas{
+  position:relative;
+  flex:0 0 auto;
+  min-width:0;
+  min-height:0;
+  max-width:100%;
+  max-height:100%;
+}
+.ratio-group-layout .ratio-group-tile{
+  position:absolute;
+  min-width:0;
+  min-height:0;
+  margin:0;
+}
+.ratio-group-layout .ratio-group-canvas .tg-player-transport{display:flex}
+.ratio-group-layout .ratio-group-canvas .tg-player-interface{padding:9px;opacity:0}
+.ratio-group-layout .ratio-group-canvas .tg-player-interface:not(.started),
+.ratio-group-layout .ratio-group-canvas .solo-videojs-player:hover .tg-player-interface{opacity:1}

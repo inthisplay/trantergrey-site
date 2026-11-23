@@ -1,8 +1,11 @@
 'use client';
 
+import { UiIcon } from '@/components/UiIcon';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Rendition = { name: string | null; status: string; url: string | null };
+type ReplacementProgress = { fileName: string; progress: number; stage: 'uploading' | 'processing' | 'swapping' };
 
 async function postJson(url: string, body: object) {
   const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -11,9 +14,12 @@ async function postJson(url: string, body: object) {
   return payload as unknown;
 }
 
-function triggerDownload(url: string) {
+function triggerDownload(url: string, title: string) {
+  const target = new URL(url);
+  const filename = title.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'trantergrey-video';
+  target.searchParams.set('download', `${filename}.mp4`);
   const anchor = document.createElement('a');
-  anchor.href = url;
+  anchor.href = target.toString();
   anchor.download = '';
   document.body.appendChild(anchor);
   anchor.click();
@@ -24,8 +30,9 @@ function muxThumbnailUrl(playbackId: string, time: number) {
   return `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${time}&width=960`;
 }
 
-export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRenditions, projectId, projectSlug, unbrandedPublicPage, duration, thumbnailTime, thumbnailUrl, downloadsEnabled }: {
+export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, staticRenditions, projectId, projectSlug, unbrandedPublicPage, duration, thumbnailTime, thumbnailUrl, downloadsEnabled }: {
   assetId: string;
+  title: string;
   playbackId: string | null;
   playbackPolicy: string | null;
   staticRenditions: Rendition[];
@@ -40,17 +47,19 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
   const replaceInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [replacementProgress, setReplacementProgress] = useState<ReplacementProgress | null>(null);
   const [downloadRequested, setDownloadRequested] = useState(false);
   const [renditions, setRenditions] = useState(staticRenditions);
   const [selectedThumbnailTime, setSelectedThumbnailTime] = useState(thumbnailTime);
   const [savedThumbnail, setSavedThumbnail] = useState(thumbnailUrl);
   const [publicDownloadsEnabled, setPublicDownloadsEnabled] = useState(downloadsEnabled);
-  const [unbrandedPage, setUnbrandedPage] = useState(unbrandedPublicPage);
+  const pageSlug = projectSlug;
+  const unbrandedPage = Boolean(playbackId && playbackPolicy === 'public');
   const readyDownload = renditions.find((rendition) => rendition.status === 'ready' && rendition.url);
   const pendingDownload = renditions.some((rendition) => ['preparing', 'processing'].includes(rendition.status));
   const publicPlayback = playbackPolicy === 'public' && Boolean(playbackId);
-  const sharePath = `/watch/${projectSlug || assetId}`;
-  const unbrandedPath = `/watch/u/${projectSlug || assetId}`;
+  const sharePath = `/watch/${pageSlug || assetId}`;
+  const unbrandedPath = `/watch/u/${pageSlug || assetId}`;
   const [publicUrl, setPublicUrl] = useState(sharePath);
   const [unbrandedUrl, setUnbrandedUrl] = useState(unbrandedPath);
   const previewThumbnail = useMemo(() => playbackId ? muxThumbnailUrl(playbackId, selectedThumbnailTime) : savedThumbnail, [playbackId, savedThumbnail, selectedThumbnailTime]);
@@ -78,7 +87,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
         if (ready?.url) {
           setDownloadRequested(false);
           setMessage('Download ready.');
-          triggerDownload(ready.url);
+          triggerDownload(ready.url, title);
           window.location.reload();
           return;
         }
@@ -110,7 +119,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
 
   const download = async () => {
     if (readyDownload?.url) {
-      triggerDownload(readyDownload.url);
+      triggerDownload(readyDownload.url, title);
       return;
     }
     if (!pendingDownload) {
@@ -161,31 +170,26 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     const updated = await run('public-downloads', () => postJson('/api/admin/mux-assets/metadata', { assetId, downloadsEnabled: next }), next ? 'Public downloads enabled.' : 'Public downloads disabled.');
     if (updated) setPublicDownloadsEnabled(next);
   };
-  const toggleUnbrandedPage = async () => {
-    if (!projectId) return;
-    const next = !unbrandedPage;
-    const updated = await run('unbranded-page', () => fetch('/api/admin/video-projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, unbrandedPublicPage: next }) }).then(async (response) => {
-      const payload = await response.json().catch(() => null) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || 'Could not update the public page.');
-      return payload;
-    }), next ? 'Unbranded public page enabled.' : 'Branded public page restored.');
-    if (updated) setUnbrandedPage(next);
-  };
   const replaceVideo = async (file: File | undefined) => {
     if (!file) return;
     if (!window.confirm('Replace this Mux video with the selected file? The shareable page will stay the same and the current Mux asset will be permanently deleted after the replacement is ready.')) return;
     setBusy('replace');
     setMessage(null);
+    setReplacementProgress({ fileName: file.name, progress: 0, stage: 'uploading' });
     try {
       const uploadResponse = await postJson('/api/admin/mux-uploads', { title: file.name.replace(/\.[^.]+$/, '') }) as { url?: string; id?: string };
       if (!uploadResponse.url || !uploadResponse.id) throw new Error('Mux did not create an upload destination.');
       await new Promise<void>((resolve, reject) => {
         const request = new XMLHttpRequest();
         request.open('PUT', uploadResponse.url!);
+        request.upload.onprogress = (event) => {
+          if (event.lengthComputable) setReplacementProgress((current) => current ? { ...current, progress: Math.round((event.loaded / event.total) * 100) } : current);
+        };
         request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error('The replacement file could not be uploaded.'));
         request.onerror = () => reject(new Error('The replacement file could not be uploaded.'));
         request.send(file);
       });
+      setReplacementProgress((current) => current ? { ...current, progress: 100, stage: 'processing' } : current);
       let replacementAssetId: string | null = null;
       for (let attempt = 0; attempt < 45 && !replacementAssetId; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
@@ -195,6 +199,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
         replacementAssetId = payload?.ready ? payload.assetId ?? null : null;
       }
       if (!replacementAssetId) throw new Error('Mux is still preparing the replacement. Please try again in a moment.');
+      setReplacementProgress((current) => current ? { ...current, stage: 'swapping' } : current);
       for (let attempt = 0; attempt < 45; attempt += 1) {
         try {
           await postJson('/api/admin/mux-assets/replace', { assetId, replacementAssetId });
@@ -209,15 +214,16 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
       setMessage(error instanceof Error ? error.message : 'The video could not be replaced.');
     } finally {
       setBusy(null);
+      setReplacementProgress(null);
     }
   };
 
   return <div className="mux-asset-actions">
     <header><span>Video settings</span><strong>Mux controls</strong></header>
     <section className="mux-share-action"><small>Public link</small><p>Every video has a page ready to paste into an email or message.</p>
-      <input aria-label="Public video URL" readOnly value={publicUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={() => void copyLink(publicUrl, 'Public link')}>Copy URL</button><a href={sharePath} target="_blank" rel="noreferrer">Open ↗</a></div>
+      <input aria-label="Public video URL" readOnly value={publicUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={() => void copyLink(publicUrl, 'Public link')}>Copy URL</button><a href={sharePath} target="_blank" rel="noreferrer">Open <UiIcon name="external" /></a></div>
     </section>
-    <section className="mux-replace-action"><small>Replace video</small><p>Upload a revision without changing the shareable page. The superseded Mux asset is deleted when the swap finishes.</p><input ref={replaceInput} className="visually-hidden" type="file" accept="video/*,.mov,.mp4,.m4v,.webm,.avi,.mkv" onChange={(event) => { void replaceVideo(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /><button className="primary" type="button" onClick={() => replaceInput.current?.click()} disabled={Boolean(busy)}>{busy === 'replace' ? 'Replacing…' : 'Replace video'}</button></section>
+    <section className="mux-replace-action"><small>Replace video</small><p>Upload a revision without changing the shareable page. The superseded Mux asset is deleted when the swap finishes.</p><input ref={replaceInput} className="visually-hidden" type="file" accept="video/*,.mov,.mp4,.m4v,.webm,.avi,.mkv" onChange={(event) => { void replaceVideo(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /><button className="primary" type="button" onClick={() => replaceInput.current?.click()} disabled={Boolean(busy)}>{busy === 'replace' ? 'Replacing…' : 'Replace video'}</button>{replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? 'Mux is processing' : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><i><i style={{ width: `${replacementProgress.progress}%` }} /></i>{replacementProgress.stage !== 'uploading' && <span className="mux-replacement-spinner" aria-hidden="true" />}</div>}</section>
     <section className="mux-thumbnail-action"><small>Thumbnail</small><p>Choose the frame used throughout the video library.</p>
       {previewThumbnail && <img src={previewThumbnail} alt="Selected thumbnail frame" />}
       <div className="mux-thumbnail-time"><input aria-label="Thumbnail frame time" type="range" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /><label><input type="number" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /> sec</label></div>
@@ -225,7 +231,7 @@ export function MuxAssetActions({ assetId, playbackId, playbackPolicy, staticRen
     </section>
     <section><small>Download</small><p>Mux prepares the MP4 only when someone asks for it.</p><button className="primary" type="button" onClick={download} disabled={Boolean(busy) || downloadRequested}>{downloadRequested || busy === 'download' ? 'Preparing…' : 'Download'}</button></section>
     <section><small>Public download</small><p>{publicDownloadsEnabled ? 'Visitors can request an MP4 from the public video page.' : 'The download button is hidden on the public video page.'}</p><button type="button" onClick={togglePublicDownloads} disabled={Boolean(busy)}>{busy === 'public-downloads' ? 'Updating…' : publicDownloadsEnabled ? 'Disable downloads' : 'Enable downloads'}</button></section>
-    {projectId && <section className="mux-share-action"><small>Unbranded page</small><p>{unbrandedPage ? 'A separate light-grey video page is enabled. The standard public link above always stays branded.' : 'Enable a separate client-ready video page with share and embed controls.'}</p>{unbrandedPage && <><input aria-label="Unbranded video URL" readOnly value={unbrandedUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={() => void copyLink(unbrandedUrl, 'Unbranded link')}>Copy unbranded link</button><a href={unbrandedPath} target="_blank" rel="noreferrer">Open ↗</a></div></>}<button type="button" onClick={toggleUnbrandedPage} disabled={Boolean(busy)}>{busy === 'unbranded-page' ? 'Updating…' : unbrandedPage ? 'Disable unbranded page' : 'Enable unbranded page'}</button></section>}
+    <section className="mux-share-action"><small>Unbranded page</small><p>{unbrandedPage ? 'Available automatically for public videos. The regular URL stays branded.' : 'An unbranded URL becomes available when this video has public playback access.'}</p>{unbrandedPage && <><input aria-label="Unbranded video URL" readOnly value={unbrandedUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={() => void copyLink(unbrandedUrl, 'Unbranded link')}>Copy unbranded link</button><a href={unbrandedPath} target="_blank" rel="noreferrer">Open <UiIcon name="external" /></a></div></>}</section>
     <section><small>Playback</small><p>{publicPlayback ? 'This video has a public Mux playback ID.' : 'Its public page exists, but playback is currently unavailable.'}</p><button type="button" onClick={togglePlayback} disabled={Boolean(busy)}>{busy === 'playback' ? 'Updating…' : publicPlayback ? 'Disable public playback' : 'Enable public playback'}</button></section>
     <section className="danger"><small>Danger zone</small><p>Deletion permanently removes the asset from Mux.</p><button type="button" onClick={deleteVideo} disabled={Boolean(busy)}>{busy === 'delete' ? 'Deleting…' : 'Delete from Mux'}</button></section>
     {message && <p className="mux-action-message" role="status">{message}</p>}

@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "trantergrey-deck-mcp-trial",
+  "main": "index.ts",
+  "compatibility_date": "2026-11-21",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "MCP_ORIGIN": "https://trantergrey-deck-mcp-trial.t-jackson.workers.dev",
+    "DECK_ORIGIN": "https://trantergrey.com"
+  },
+  "d1_databases": [
+    { "binding": "TG_DATA", "database_name": "trantergrey-site-data", "database_id": "a7a66fec-71a4-464a-9c14-104d2e820c17" },
+    { "binding": "MCP_AUTH", "database_name": "trantergrey-deck-mcp-trial-auth", "database_id": "964917e4-e007-4b5f-9d8c-c1d2c202795d" }
+  ],
+  "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false, "head_sampling_rate": 1 }, "traces": { "enabled": true, "head_sampling_rate": 0.01 } },
+  "triggers": { "crons": ["17 5 * * *"] }
+}

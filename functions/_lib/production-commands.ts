@@ -1,3 +1,5 @@
+import { hasCommentQuestion } from '../../lib/comment-question';
+import { mergedFilmingDatesSql } from './filming-dates';
 import type { AdminEnvironment } from './admin';
 
 export function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
@@ -39,11 +41,15 @@ export async function moveProductionCard(env: AdminEnvironment, cardId: string, 
   return { moved: true, columnSourceId: input.columnSourceId, position, card: updatedCard, counts: Object.fromEntries(countRows.results.map((row) => [row.columnSourceId, row.cardCount])) };
 }
 
-export async function addProductionComment(env: AdminEnvironment, cardId: string, input: { bodyHtml: string; bodyJson: string }, actor: { name: string; email: string | null }) {
+export async function addProductionComment(env: AdminEnvironment, cardId: string, input: { bodyHtml: string; bodyJson: string; signal?: { attention?: string; filmingOn?: string; filmingDates?: string[]; dueOn?: string } }, actor: { name: string; email: string | null }) {
   if (!input.bodyHtml.replace(/<[^>]*>/g, '').trim() || input.bodyJson.length > 10_000) throw new Error('Enter a comment under 10,000 characters.');
   const card = await env.TG_DATA.prepare('SELECT source_id FROM production_cards WHERE id = ?').bind(cardId).first<{ source_id: string }>();
   if (!card) throw new Error('Production card not found.');
-  const localComment = { id: crypto.randomUUID(), bodyHtml: input.bodyHtml, bodyJson: input.bodyJson, authorName: actor.name, authorEmail: actor.email, createdAt: new Date().toISOString() };
-  await env.TG_DATA.prepare('INSERT INTO production_local_comments (id, card_source_id, body_html, body_json, author_name, author_email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(localComment.id, card.source_id, localComment.bodyHtml, localComment.bodyJson, localComment.authorName, localComment.authorEmail, localComment.createdAt).run();
+  const localComment = { id: crypto.randomUUID(), bodyHtml: input.bodyHtml, bodyJson: input.bodyJson, authorName: actor.name, authorEmail: actor.email, createdAt: new Date().toISOString(), isQuestion: hasCommentQuestion(input.bodyHtml) ? 1 : 0, questionResolvedAt: null };
+  const insert = env.TG_DATA.prepare('INSERT INTO production_local_comments (id, card_source_id, body_html, body_json, author_name, author_email, created_at, is_question) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(localComment.id, card.source_id, localComment.bodyHtml, localComment.bodyJson, localComment.authorName, localComment.authorEmail, localComment.createdAt, localComment.isQuestion);
+  if (input.signal) {
+    const signal = input.signal;
+    await env.TG_DATA.batch([insert, ...(signal.dueOn ? [env.TG_DATA.prepare(`INSERT INTO production_card_overrides(card_source_id,due_on,edited_at) VALUES(?,?,?) ON CONFLICT(card_source_id) DO UPDATE SET due_on=excluded.due_on,edited_at=excluded.edited_at`).bind(card.source_id, signal.dueOn, localComment.createdAt)] : []), env.TG_DATA.prepare(`INSERT INTO production_card_signals(card_source_id,attention,filming_on) VALUES(?,?,?) ON CONFLICT(card_source_id) DO UPDATE SET attention=CASE WHEN ? THEN excluded.attention ELSE production_card_signals.attention END,filming_on=CASE WHEN ? THEN ${mergedFilmingDatesSql} ELSE production_card_signals.filming_on END`).bind(card.source_id, signal.attention || '', JSON.stringify(signal.filmingDates || (signal.filmingOn ? [signal.filmingOn] : [])), signal.attention !== undefined ? 1 : 0, (signal.filmingDates !== undefined || signal.filmingOn !== undefined) ? 1 : 0)]);
+  } else await insert.run();
   return localComment;
 }

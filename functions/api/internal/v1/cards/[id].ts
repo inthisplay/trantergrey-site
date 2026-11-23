@@ -10,7 +10,7 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     COALESCE(o.assignees_json, p.assignees_json, '[]') AS assigneesJson, COALESCE(o.due_on, p.due_on) AS dueOn,
     COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId, COALESCE(o.archived, p.archived) AS archived,
     COALESCE(o.edited_at, p.updated_at, p.created_at) AS updatedAt, p.created_at AS createdAt
-    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ?`).bind(params.id).first();
+    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ? AND o.deleted_at IS NULL`).bind(params.id).first();
   if (!card) return apiError('card_not_found', 'Card not found.', 404);
   const [links, column] = await Promise.all([
     env.TG_DATA.prepare('SELECT asset_id AS assetId, linked_at AS linkedAt, source_uploaded_at AS sourceUploadedAt, uploader_name AS uploaderName, uploader_email AS uploaderEmail FROM production_card_video_links WHERE card_id = ? ORDER BY linked_at DESC').bind(params.id).all(),

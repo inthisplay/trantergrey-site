@@ -1,4 +1,5 @@
 import type { AdminEnvironment } from './_lib/admin';
+import { integrationRequest } from './_lib/integration-request';
 import { watchPreview } from './_lib/watch-preview';
 
 type RewriteElement = {
@@ -19,7 +20,7 @@ export async function onRequest({ request, env, next }: Context) {
   const url = new URL(request.url);
   let response: Response;
   try {
-    response = await next();
+    response = ['/api/admin/client-hq','/api/admin/mcp-connections','/api/admin/integration-health'].includes(url.pathname) ? await integrationRequest({ request, env, next }) : await next();
   } catch (error) {
     if (!url.pathname.startsWith('/api/')) throw error;
     const reference = crypto.randomUUID();

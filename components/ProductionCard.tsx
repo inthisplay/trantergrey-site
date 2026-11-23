@@ -1,15 +1,25 @@
 'use client';
 
+import { suggestCommentDates } from '@/lib/comment-signal';
+import { filmingDates } from '@/lib/filming-dates';
+import { NotesDatePrompts } from './NotesDatePrompts';
+import { CardSignalEditor } from './CardSignalEditor';
+import { uiIconMarkup } from '@/lib/ui-icons';
+import { UiIcon } from '@/components/UiIcon';
+
 import { useEffect, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, MouseEvent } from 'react';
 import type { Descendant } from 'slate';
 import { ProductionCommentEditor } from './ProductionCommentEditor';
 import { ProductionNotesEditor } from './ProductionNotesEditor';
 import { ClientPicker } from './ClientPicker';
 import { TeamMemberPicker } from './TeamMemberPicker';
+import { CardMediaGallery } from './CardMediaGallery';
+import { CommentMediaContent } from './CommentMediaContent';
+import { ProductionCardTitle } from './ProductionCardTitle';
 
 type Column = { sourceId: string; name: string };
-type LocalComment = { id: string; bodyHtml: string; bodyJson?: string; authorName: string; authorEmail?: string | null; createdAt: string; deletedAt?: string | null; deletedByName?: string | null };
+type LocalComment = { id: string; isQuestion?: number; questionResolvedAt?: string | null; bodyHtml: string; bodyJson?: string; authorName: string; authorEmail?: string | null; createdAt: string; deletedAt?: string | null; deletedByName?: string | null };
 type Detail = {
   card: Record<string, unknown>;
   steps: Array<Record<string, unknown>>;
@@ -42,15 +52,35 @@ const sourceCommentAuthor = (value: unknown) => {
   try { const parsed = JSON.parse(text(value)); return typeof parsed?.name === 'string' ? parsed.name : 'Unknown'; }
   catch { return 'Unknown'; }
 };
-const hasCommentContent = (value: Descendant[] | null) => Boolean(value?.some((node) => 'type' in node && (node.type === 'mux-asset' || node.type === 'attachment') || ('children' in node && node.children.some((child) => 'text' in child && child.text.trim()))));
+const hasCommentContent = (value: Descendant[] | null) => Boolean(value?.some((node) => 'type' in node && (node.type === 'mux-asset' || node.type === 'attachment' || node.type === 'comment-media') || ('children' in node && node.children.some((child) => 'text' in child && child.text.trim()))));
+// Presentation only: keep saved comment HTML and link destinations intact.
+const compactCommentLinks = (html: string) => {
+  if (typeof document === 'undefined') return html;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  template.content.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
+    const label = (link.textContent || '').trim();
+    if (label.length <= 35 || !/^(?:https?:\/\/|www\.)\S+$/i.test(label) || link.querySelector('img, video, svg')) return;
+    link.textContent = `${label.slice(0, 35)}…`;
+    link.title = link.getAttribute('href') || label;
+    link.setAttribute('aria-label', label);
+  });
+  return template.innerHTML;
+};
+const addMissingMuxCopyButton = (html: string) => html.replace(
+  /(<a class="production-comment-mux-asset-public-link" href="([^"]+)"[^>]*>[^<]*<\/a>)(?!<button\b)/g,
+  (_, link: string, href: string) => `<div class="production-comment-mux-actions">${link}<button type="button" data-copy-public-link="${href}">Copy public link</button></div>`,
+);
 
 type ProductionCardProps = {
   id: string;
   drawer?: boolean;
+  focusTarget?: string;
   onUpdated?: () => void;
+  onDeleted?: () => void;
 };
 
-export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCardProps) {
+export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onDeleted }: ProductionCardProps) {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -59,10 +89,16 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
   const [comment, setComment] = useState<Descendant[] | null>(null);
   const [commentEditorKey, setCommentEditorKey] = useState(0);
   const [commentSaving, setCommentSaving] = useState(false);
+  const [tagText, setTagText] = useState('');
+  const [dateMeanings, setDateMeanings] = useState<Record<string, string>>({});
+  const suggestedDates = suggestCommentDates(comment);
+  const acceptedDates = suggestedDates.filter(date => dateMeanings[date] === 'filming');
+  const dueDate = suggestedDates.find(date => dateMeanings[date] === 'due');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [commentEdit, setCommentEdit] = useState<Descendant[] | null>(null);
   const [commentChanging, setCommentChanging] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [deletingCard, setDeletingCard] = useState(false);
 
   const load = () => fetch(`/api/admin/production-board/${encodeURIComponent(id)}`, { cache: 'no-store' }).then(async (response) => {
     const payload = await response.json();
@@ -72,51 +108,8 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
 
   useEffect(() => { load().then(setData).catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to open this card.')); }, [id]);
   useEffect(() => {
-    const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('.production-card video'));
-    if (!videos.length) return;
-
-    const prime = (video: HTMLVideoElement) => {
-      if (video.dataset.deckPreviewPrimed === 'true') return;
-      video.dataset.deckPreviewPrimed = 'true';
-      const wasMuted = video.muted;
-      video.muted = true;
-      video.defaultMuted = true;
-      video.playsInline = true;
-      video.preload = 'auto';
-
-      const pauseOnFirstFrame = () => {
-        const pause = () => {
-          if (!video.paused) video.pause();
-          // Muting is only needed for the automatic preview. Restore normal audio
-          // before someone intentionally presses Play.
-          video.muted = wasMuted;
-          video.defaultMuted = wasMuted;
-        };
-        // Safari is more dependable at retaining a decoded frame after a brief muted play
-        // than after seeking an unloaded movie. Audio is restored before user playback.
-        void video.play().then(() => window.setTimeout(pause, 140)).catch(() => {
-          try { video.currentTime = Math.min(0.12, Number.isFinite(video.duration) ? video.duration : 0.12); }
-          catch { /* Leave the browser's normal empty-video state intact. */ }
-          video.muted = wasMuted;
-          video.defaultMuted = wasMuted;
-        });
-      };
-
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) pauseOnFirstFrame();
-      else video.addEventListener('loadeddata', pauseOnFirstFrame, { once: true });
-    };
-
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          prime(entry.target as HTMLVideoElement);
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { rootMargin: '160px 0px' });
-    videos.forEach((video) => observer.observe(video));
-    return () => observer.disconnect();
-  }, [data, comment]);
+    if (data && focusTarget) document.getElementById(focusTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [Boolean(data), focusTarget]);
   if (error || !data) return <p className="admin-empty">{error || 'Opening production card…'}</p>;
 
   const card = data.card;
@@ -147,6 +140,20 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save this card.'); }
     finally { setSaving(false); }
   };
+  const confirmNoteDate = async (date: string, meaning: 'filming' | 'due') => {
+    const url = `/api/admin/production-board/${encodeURIComponent(id)}`;
+    const response = await fetch(meaning === 'filming' ? `${url}/signal` : url, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(meaning === 'filming'
+        ? { attention: text(card.attention), filmingDates: [date], appendFilmingDates: true }
+        : { ...cardDraft(), notesHtml: text(card.notes_html), dueOn: date }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'Unable to update this date.');
+    if (meaning === 'due') setData(payload);
+    else setData(current => current ? { ...current, card: { ...current.card, filmingOn: JSON.stringify([...new Set([...filmingDates(current.card.filmingOn), date])].sort()) } } : current);
+    onUpdated?.();
+  };
   const editNotes = () => {
     setDraft({ ...cardDraft(), notesHtml: text(card.notes_html) });
     setNotesFocused(true);
@@ -168,12 +175,23 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
     if (!hasCommentContent(comment)) return;
     setCommentSaving(true); setError('');
     try {
-      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}/comments`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: comment }) });
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}/comments`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: comment, ...((tagText.trim() || acceptedDates.length || dueDate) ? { signal: { ...(tagText.trim() ? { attention: tagText.trim() } : {}), ...(acceptedDates.length ? { filmingDates: acceptedDates } : {}), ...(dueDate ? { dueOn: dueDate } : {}) } } : {}) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to add comment.');
-      setData({ ...data, localComments: [...data.localComments, payload.localComment] }); setComment(null); setCommentEditorKey((value) => value + 1);
+      setData({ ...data, card: { ...data.card, ...(dueDate ? { due_on: dueDate } : {}), ...(tagText.trim() ? { attention: tagText.trim() } : {}), ...(acceptedDates.length ? { filmingOn: JSON.stringify([...new Set([...filmingDates(card.filmingOn), ...acceptedDates])].sort()) } : {}), ...(dueDate ? { dueOn: dueDate } : {}) }, localComments: [...data.localComments, payload.localComment] }); setTagText(''); setDateMeanings({}); setComment(null); setCommentEditorKey((value) => value + 1); onUpdated?.();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to add comment.'); }
     finally { setCommentSaving(false); }
+  };
+  const setQuestionAddressed = async (commentId: string, addressed: boolean) => {
+    setCommentChanging(true);
+    try {
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}/questions`, { method: 'PATCH', headers: { 'content-type':'application/json' }, body: JSON.stringify({ commentId, addressed }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to update question.');
+      setData(current => current ? { ...current, localComments: current.localComments.map(item => item.id === commentId ? { ...item, questionResolvedAt: payload.questionResolvedAt } : item) } : current);
+      onUpdated?.();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to update question.'); }
+    finally { setCommentChanging(false); }
   };
   const editableByViewer = (localComment: LocalComment) => Boolean(data.viewer && (localComment.authorEmail ? data.viewer.email?.toLowerCase() === localComment.authorEmail.toLowerCase() : data.viewer.name === localComment.authorName));
   const editComment = (localComment: LocalComment) => {
@@ -187,7 +205,7 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
     try {
       const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}/comments`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ commentId, body: commentEdit }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error || 'Unable to update comment.');
-      setData({ ...data, localComments: data.localComments.map((item) => item.id === commentId ? payload.localComment : item) }); setEditingCommentId(null); setCommentEdit(null);
+      setData({ ...data, localComments: data.localComments.map((item) => item.id === commentId ? payload.localComment : item) }); setEditingCommentId(null); setCommentEdit(null); onUpdated?.();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to update comment.'); }
     finally { setCommentChanging(false); }
   };
@@ -197,23 +215,47 @@ export function ProductionCard({ id, drawer = false, onUpdated }: ProductionCard
     try {
       const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}/comments`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ commentId }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error || 'Unable to delete comment.');
-      setData({ ...data, localComments: data.localComments.map((item) => item.id === commentId ? payload.localComment : item) });
+      setData({ ...data, localComments: data.localComments.map((item) => item.id === commentId ? payload.localComment : item) }); onUpdated?.();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete comment.'); }
     finally { setCommentChanging(false); setDeletingCommentId(null); }
   };
+  const copyEmbeddedPublicLink = (event: MouseEvent<HTMLElement>) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-copy-public-link]');
+    const href = button?.dataset.copyPublicLink;
+    if (!button || !href) return;
+    const label = button.textContent;
+    void navigator.clipboard.writeText(new URL(href, window.location.origin).toString()).then(() => {
+      button.textContent = 'Copied';
+      window.setTimeout(() => { button.textContent = label; }, 1800);
+    }).catch(() => {
+      button.textContent = 'Copy failed';
+      window.setTimeout(() => { button.textContent = label; }, 1800);
+    });
+  };
+  const deleteCard = async () => {
+    if (!window.confirm(`Delete “${activeDraft.title}” from The Deck? This cannot be undone.`)) return;
+    setDeletingCard(true); setError('');
+    try {
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to delete this card.');
+      onDeleted?.();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete this card.'); }
+    finally { setDeletingCard(false); }
+  };
   return <article className={`production-card${drawer ? ' is-drawer-card' : ''}`}>
-    <div className="production-card-heading"><div><p className="eyebrow">Local production record · Basecamp source preserved</p><input className="production-inline-title" aria-label="Card title" value={activeDraft.title} maxLength={240} onChange={(event) => setDraft({ ...activeDraft, title: event.target.value })} onBlur={() => void save()} disabled={saving} /></div></div>
+    <div className="production-card-heading"><div><p className="eyebrow">Local production record · Basecamp source preserved</p><ProductionCardTitle value={activeDraft.title} onChange={title => setDraft({ ...activeDraft, title })} onSave={() => void save()} disabled={saving} /></div></div>
     {error && <p className="production-save-error">{error}</p>}
-    <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><ClientPicker value={activeDraft.client} clients={data.clients} onChange={(value) => setDraft({ ...activeDraft, client: value })} onBlur={() => void save()} disabled={saving} onClientsChanged={() => onUpdated?.()} placeholder="Search or add a client" /></dd></div><div><dt>Assigned to</dt><dd><TeamMemberPicker value={activeDraft.assignedTo} members={data.assignees} onChange={(value) => setDraft({ ...activeDraft, assignedTo: value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><input type="date" className={activeDraft.dueOn ? undefined : "is-empty"} value={activeDraft.dueOn} onChange={(event) => setDraft({ ...activeDraft, dueOn: event.target.value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Status</dt><dd><select value={activeDraft.columnSourceId} onChange={(event) => { const next = { ...activeDraft, columnSourceId: event.target.value }; setDraft(next); void save(next); }} disabled={saving}>{data.columns.map((column) => <option key={column.sourceId} value={column.sourceId}>{column.name}</option>)}</select></dd></div></dl>
-    <section className="production-card-notes production-inline-notes"><div className="production-inline-notes-heading"><h2>Notes</h2>{!notesFocused && <button type="button" onClick={editNotes}>{hasSavedNotes ? 'Edit notes' : 'Add notes'}</button>}</div>{!notesFocused ? <div className={`production-notes-display${hasSavedNotes ? '' : ' is-empty'}`} onChange={toggleSavedChecklist} dangerouslySetInnerHTML={{ __html: text(card.notes_html) || '<p>Add notes…</p>' }} /> : <><ProductionNotesEditor key={`${id}-notes-edit`} initialHtml={text(card.notes_html)} disabled={saving} onChange={updateNotesHtml} /><div className="production-inline-notes-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setDraft(null); setNotesFocused(false); }} disabled={saving}>Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { void save().finally(() => setNotesFocused(false)); }} disabled={saving}>{saving ? 'Saving…' : 'Save notes'}</button></div></>}</section>
-    {data.steps.length > 0 && <section><h2>Checklist</h2><ul>{data.steps.map((step) => <li key={text(step.source_id)}>{step.completed === 1 ? '✓ ' : '○ '}{text(step.title)}</li>)}</ul></section>}
-    {data.attachments.length > 0 && <details className="production-card-files"><summary>Attachments <span>{data.attachments.length}</span></summary><ul>{data.attachments.map((file) => <li key={file.sourceId}>{file.status === 'stored' ? <a href={`/api/admin/production-board/attachments/${encodeURIComponent(file.sourceId)}`}>{file.filename}</a> : <span>{file.filename} — {file.status}</span>}</li>)}</ul></details>}
-    <section className="production-local-comments"><h2>Comments</h2>{timeline.map((item) => {
+    <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><ClientPicker value={activeDraft.client} clients={data.clients} onChange={(value) => setDraft({ ...activeDraft, client: value })} onBlur={() => void save()} disabled={saving} onClientsChanged={() => onUpdated?.()} placeholder="Search or add a client" /></dd></div><div><dt>Assigned to</dt><dd><TeamMemberPicker value={activeDraft.assignedTo} members={data.assignees} onChange={(value) => setDraft({ ...activeDraft, assignedTo: value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><span className="production-date-field" data-empty={!activeDraft.dueOn}><input aria-label="Due on" type="date" className={activeDraft.dueOn ? undefined : "is-empty"} value={activeDraft.dueOn} onChange={(event) => setDraft({ ...activeDraft, dueOn: event.target.value })} onBlur={() => void save()} disabled={saving} /><span className="production-date-placeholder" aria-hidden="true">Set date</span></span></dd></div><div><dt>Status</dt><dd><select value={activeDraft.columnSourceId} onChange={(event) => { const next = { ...activeDraft, columnSourceId: event.target.value }; setDraft(next); void save(next); }} disabled={saving}>{data.columns.map((column) => <option key={column.sourceId} value={column.sourceId}>{column.name}</option>)}</select></dd></div></dl>
+    <section className="production-card-notes production-inline-notes"><div className="production-inline-notes-heading"><h2>Notes</h2>{!notesFocused && <button type="button" onClick={editNotes}>{hasSavedNotes ? 'Edit notes' : 'Add notes'}</button>}</div>{!notesFocused ? <div className={`production-notes-display${hasSavedNotes ? '' : ' is-empty'}`} onChange={toggleSavedChecklist} dangerouslySetInnerHTML={{ __html: text(card.notes_html) || '<p>Add notes…</p>' }} /> : <><ProductionNotesEditor key={`${id}-notes-edit`} initialHtml={text(card.notes_html)} disabled={saving} onChange={updateNotesHtml} /><div className="production-inline-notes-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setDraft(null); setNotesFocused(false); }} disabled={saving}>Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { void save().finally(() => setNotesFocused(false)); }} disabled={saving}>{saving ? 'Saving…' : 'Save notes'}</button></div></>}{!notesFocused && <NotesDatePrompts key={id} text={notesText} filmingOn={text(card.filmingOn)} dueOn={text(card.due_on).slice(0,10)} disabled={saving || Boolean(draft)} onConfirm={confirmNoteDate} />}</section>
+    {data.steps.length > 0 && <section><h2>Checklist</h2><ul>{data.steps.map((step) => <li key={text(step.source_id)}>{step.completed === 1 ? <><UiIcon name="check" /><span className="sr-only">Completed: </span></> : <><UiIcon name="circle" /><span className="sr-only">Incomplete: </span></>}{text(step.title)}</li>)}</ul></section>}
+    <div id="card-gallery"><CardMediaGallery key={id} cardId={id} onUpdated={onUpdated} /></div>
+    <section id="card-comments" className="production-local-comments"><h2>Comments</h2><CardSignalEditor key={`${id}-${text(card.attention)}-${text(card.filmingOn)}`} id={id} attention={text(card.attention)} filmingOn={text(card.filmingOn)} onSaved={() => { void load().then(setData).catch(cause => setError(String(cause))); onUpdated?.(); }} />{timeline.map((item) => {
       const localComment = item.kind === 'local-comment' ? data.localComments.find((comment) => `local-${comment.id}` === item.id) : null;
       const canEdit = localComment ? editableByViewer(localComment) && !localComment.deletedAt : false;
       const isEditingComment = localComment?.id === editingCommentId;
-      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><div dangerouslySetInnerHTML={{ __html: item.html || '' }} />{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
-    })}<div className="production-comment-form"><div><p className="production-comment-author">{data.viewer?.name || 'Signed-in team member'}</p><ProductionCommentEditor key={commentEditorKey} cardId={id} client={text(card.client) || null} onChange={setComment} /></div><button type="button" onClick={addComment} disabled={commentSaving || !hasCommentContent(comment)}>{commentSaving ? 'Posting…' : 'Post comment'}</button></div></section>
-    <div className="production-card-archive"><button type="button" onClick={() => { const next = { ...activeDraft, archived: !activeDraft.archived }; setDraft(next); void save(next); }} disabled={saving}>{activeDraft.archived ? 'Unarchive card' : 'Archive card'}</button></div>
+      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article id={`comment-${item.id}`} className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id} onClick={copyEmbeddedPublicLink}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><CommentMediaContent key={`${id}-${item.id}`} cardId={id} commentKey={item.id} onCopy={block => { setComment(current => [...(current || []), block, { type: 'paragraph', children: [{ text: '' }] }]); setCommentEditorKey(value => value + 1); window.setTimeout(() => document.querySelector('.production-comment-form')?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 0); }} html={addMissingMuxCopyButton(compactCommentLinks(item.html || '')).replace(/(class="production-comment-mux-asset-public-link"[^>]*>Open public page) ↗(?=<\/a>)/g, (_, label: string) => label + ' ' + uiIconMarkup('external'))} />{Boolean(localComment?.isQuestion) && <div className="production-comment-actions"><button type="button" disabled={commentChanging} onClick={() => void setQuestionAddressed(localComment!.id, !localComment!.questionResolvedAt)}>{localComment?.questionResolvedAt ? 'Question addressed · Reopen' : 'Mark question addressed'}</button></div>}{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
+    })}<div className="production-comment-form"><div><p className="production-comment-author">{data.viewer?.name || 'Signed-in team member'}</p><ProductionCommentEditor key={commentEditorKey} initialValue={comment || undefined} cardId={id} client={text(card.client) || null} onChange={setComment} renderActions={(uploadButton, uploading) => <><div className="comment-tag-options">{suggestedDates.map(date => <details className="comment-date-prompt" key={date}><summary>{dateMeanings[date] === 'filming' ? 'Filming' : dateMeanings[date] === 'due' ? 'Due date' : dateMeanings[date] === 'reference' ? 'Reference' : 'Date found'} · {date}</summary><div role="group" aria-label={`Meaning of ${date}`} className="comment-date-popover"><strong>What does {date} mean?</strong><small>Dates without a year use the current year. Applied when you post.</small>{[['filming','Filming date'],['due','Due date'],['reference','Just a reference']].map(([value,label]) => <button type="button" key={value} disabled={commentSaving} aria-pressed={dateMeanings[date] === value} onClick={event => { setDateMeanings(current => ({ ...Object.fromEntries(Object.entries(current).filter(([key,meaning]) => key === date || value !== 'due' || meaning !== value)), [date]:value })); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{label}</button>)}</div></details>)}<details><summary>Add a card tag</summary><label>Needs attention<input value={tagText} maxLength={80} placeholder="Casting options provided" onChange={event => setTagText(event.target.value)} disabled={commentSaving} /></label><small>Saved with this comment. Clear it when addressed.</small></details></div><div className="production-comment-submit-actions">{uploadButton}<button type="button" onClick={addComment} disabled={commentSaving || uploading || !hasCommentContent(comment)}>{commentSaving ? 'Posting…' : 'Post comment'}</button></div></>} /></div></div></section>
+    <div className="production-card-archive"><button type="button" onClick={() => { const next = { ...activeDraft, archived: !activeDraft.archived }; setDraft(next); void save(next); }} disabled={saving || deletingCard}>{activeDraft.archived ? 'Unarchive card' : 'Archive card'}</button><button type="button" className="production-card-delete" onClick={() => void deleteCard()} disabled={saving || deletingCard}>{deletingCard ? 'Deleting…' : 'Delete card'}</button></div>
   </article>;
 }

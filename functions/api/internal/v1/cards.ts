@@ -1,14 +1,28 @@
 import { apiData, apiError, page, requireApiScope } from '../../../_lib/internal-api';
 import type { AdminEnvironment } from '../../../_lib/admin';
+import { CardInputError, createProductionCard } from '../../../_lib/create-production-card';
 
 type Context = { request: Request; env: AdminEnvironment };
 type Card = { id: string; sourceId: string; title: string; client: string; columnSourceId: string; archived: number; dueOn: string | null; updatedAt: string | null };
+
+export async function onRequestPost({ request, env }: Context): Promise<Response> {
+  const access = await requireApiScope(request, env, 'cards:create'); if (access instanceof Response) return access;
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('invalid_card', 'Provide card details as a JSON object.', 400);
+  try {
+    const card = await createProductionCard(env, body, access);
+    return apiData({ ...card, url: `${new URL(request.url).origin}/app/deck?card=${encodeURIComponent(card.id)}` }, undefined, card.created ? 201 : 200);
+  } catch (error) {
+    if (error instanceof CardInputError) return apiError('invalid_card', error.message, error.status);
+    return apiError('card_create_failed', 'Unable to create the card. Retry with the same request ID.', 503);
+  }
+}
 
 export async function onRequestGet({ request, env }: Context): Promise<Response> {
   const access = await requireApiScope(request, env, 'cards:read'); if (access instanceof Response) return access;
   try {
     const { limit, cursor, query } = page(request); const url = new URL(request.url); const client = url.searchParams.get('client')?.trim().toLocaleLowerCase() || ''; const columnId = url.searchParams.get('columnId') || ''; const updatedAfter = url.searchParams.get('updatedAfter') || '';
-    const clauses: string[] = []; const values: unknown[] = [];
+    const clauses: string[] = ['o.deleted_at IS NULL']; const values: unknown[] = [];
     if (query) { clauses.push("LOWER(COALESCE(o.title, p.title) || ' ' || COALESCE(o.client, '')) LIKE ?"); values.push(`%${query}%`); }
     if (client) { clauses.push("LOWER(COALESCE(o.client, '')) LIKE ?"); values.push(`%${client}%`); }
     if (columnId) { clauses.push('COALESCE(o.column_source_id, p.column_source_id) = ?'); values.push(columnId); }

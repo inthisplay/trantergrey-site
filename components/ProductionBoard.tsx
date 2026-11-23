@@ -1,6 +1,17 @@
 'use client';
+import { filmingDates } from '@/lib/filming-dates';
+import { cardSignal, type CardSignalFields } from '@/lib/card-signal';
 
-import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { ColumnColorDialog } from './ColumnColorDialog';
+import { DeckActivity } from './DeckActivity';
+import activityStyles from './DeckActivityPreview.module.css';
+import { useDeckReturnAnimation } from './useDeckReturnAnimation';
+import mobileDragStyles from './ProductionBoardMobileDrag.module.css';
+import { columnColorStyle } from '@/lib/deck-colors';
+import type { CSSProperties } from 'react';
+import { UiIcon } from '@/components/UiIcon';
+
+import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, MeasuringStrategy, pointerWithin, type CollisionDetection, closestCorners, useDroppable, useDndContext, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -8,9 +19,10 @@ import { ProductionCard } from './ProductionCard';
 import { ClientPicker } from './ClientPicker';
 import { TeamMemberPicker } from './TeamMemberPicker';
 
-type Card = { id: string; title: string; client?: string; columnSourceId: string; position: number | null; archived: number; createdAt?: string; updatedAt?: string; dueOn?: string; completedAt?: string; commentsCount?: number };
-type Column = { sourceId: string; name: string; cardsCount: number };
+type Card = CardSignalFields & { id: string; title: string; client?: string; columnSourceId: string; position: number | null; archived: number; createdAt?: string; updatedAt?: string; dueOn?: string; completedAt?: string; commentsCount?: number };
+type Column = { sourceId: string; name: string; cardsCount: number; color?: string | null };
 type BoardData = { columns: Column[]; cards: Card[]; clients: string[]; assignees: string[] };
+type NewCardDraft = { id: string; title: string; notes: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
 type DropTargetData = { type?: string; columnSourceId?: string };
 
 const cardFromLocation = () => new URLSearchParams(window.location.search).get('card') || '';
@@ -36,14 +48,16 @@ const updatedDateTone = (card: Card) => {
   if (ageInDays >= 28) return ' is-due-soon';
   return ' is-recent';
 };
-function SortableProductionCard({ card, onOpen, isOpen }: { card: Card; onOpen: (id: string) => void; isOpen: boolean }) {
+function SortableProductionCard({ card, onOpen, isOpen }: { card: Card; onOpen: (id: string, target?: string) => void; isOpen: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, data: { type: 'card', columnSourceId: card.columnSourceId } });
+  const signal = cardSignal(card);
   const commentsCount = Number(card.commentsCount) || 0;
   const commentBadge = commentsCount > 0 && <span className="production-card-comment-count" aria-label={`${commentsCount} comment${commentsCount === 1 ? '' : 's'}`}>{commentsCount}</span>;
-  return <a ref={setNodeRef} {...attributes} {...listeners} aria-grabbed={isDragging} className={`${isDragging ? 'is-dragging' : ''}${isOpen ? ' is-open-card' : ''}`} aria-current={isOpen ? 'true' : undefined} style={{ transform: CSS.Transform.toString(transform), transition }} href={`/admin/production?card=${encodeURIComponent(card.id)}`} onClick={(event) => { event.preventDefault(); if (!isDragging) onOpen(card.id); }}>{card.client ? <><small className="production-card-client">{card.client}</small><b>{card.title}</b></> : <b>{card.title}</b>}{(commentsCount > 0 || card.createdAt || card.updatedAt) && <div className="production-card-meta">{commentBadge}{(card.createdAt || card.updatedAt) && <small className="production-card-dates">{card.createdAt && <>Created {shortDate(card.createdAt)}</>}{card.createdAt && card.updatedAt && ' · '}{card.updatedAt && <>Updated <span className={`production-card-updated${updatedDateTone(card)}`}>{shortDate(card.updatedAt)}</span></>}</small>}</div>}{card.archived === 1 && <small>Archived</small>}{card.dueOn && <small>Due {card.dueOn}</small>}</a>;
+  return <a ref={setNodeRef} {...attributes} {...listeners} aria-grabbed={isDragging} className={`${isDragging ? 'is-dragging' : ''}${isOpen ? ' is-open-card' : ''}`} aria-current={isOpen ? 'true' : undefined} style={{ transform: CSS.Transform.toString(transform), transition }} href={`/admin/production?card=${encodeURIComponent(card.id)}`} onClick={(event) => { event.preventDefault(); if (!isDragging) onOpen(card.id, signal?.target); }}>{card.client ? <><small className="production-card-client">{card.client}</small><b>{card.title}</b></> : <b>{card.title}</b>}{signal && <span className={`production-card-signal is-${signal.kind}`} title={signal.kind === 'date' ? `Filming dates: ${filmingDates(card.filmingOn).join(', ')}` : signal.label}>{signal.label}</span>}{(commentsCount > 0 || card.createdAt || card.updatedAt) && <div className="production-card-meta">{commentBadge}{(card.createdAt || card.updatedAt) && <small className="production-card-dates">{card.createdAt && <>Created {shortDate(card.createdAt)}</>}{card.createdAt && card.updatedAt && ' · '}{card.updatedAt && <>Updated <span className={`production-card-updated${updatedDateTone(card)}`}>{shortDate(card.updatedAt)}</span></>}</small>}</div>}{card.archived === 1 && <small>Archived</small>}{card.dueOn && <small>Due {card.dueOn}</small>}</a>;
 }
 
-function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, collapsedForCompact, expanded, isCollapsible, isDropTarget, menuOpen, onSelect, onOpenCard, onMenu, onAction }: { column: Column; cards: Card[]; selectedCardId: string; collapsedForDrawer: boolean; collapsedForCompact: boolean; expanded: boolean; isCollapsible: boolean; isDropTarget: boolean; menuOpen: boolean; onSelect: () => void; onOpenCard: (id: string) => void; onMenu: () => void; onAction: (action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive') => void }) {
+function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, collapsedForCompact, expanded, isCollapsible, isDropTarget, menuOpen, onSelect, onOpenCard, onMenu, onAction }: { column: Column; cards: Card[]; selectedCardId: string; collapsedForDrawer: boolean; collapsedForCompact: boolean; expanded: boolean; isCollapsible: boolean; isDropTarget: boolean; menuOpen: boolean; onSelect: () => void; onOpenCard: (id: string, target?: string) => void; onMenu: () => void; onAction: (action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive' | 'color') => void }) {
+  const { measureDroppableContainers } = useDndContext();
   const { setNodeRef } = useDroppable({ id: column.sourceId, data: { type: 'column', columnSourceId: column.sourceId } });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
@@ -61,16 +75,16 @@ function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, c
     mutationObserver.observe(element, { childList: true, subtree: true });
     return () => { element.removeEventListener('scroll', update); resizeObserver.disconnect(); mutationObserver.disconnect(); };
   }, [cards.length, collapsed]);
-  return <section ref={setNodeRef} className={`production-column${isCollapsible ? ' is-collapsible' : ''}${expanded ? ' is-expanded' : ''}${collapsedForDrawer ? ' is-drawer-collapsed' : ''}${collapsedForCompact ? ' is-compact-collapsed' : ''}${isDropTarget ? ' is-drop-target' : ''}`}>
-    <header><button type="button" aria-expanded={!collapsedForDrawer && !collapsedForCompact && (!isCollapsible || expanded)} onClick={onSelect}><h2>{column.name}</h2></button><div className="production-column-menu"><button type="button" className="production-column-add-card" aria-label={`Add card to ${column.name}`} onClick={(event) => { event.stopPropagation(); onAction('add'); }}>+</button><span>{column.cardsCount}</span><button type="button" className="production-column-menu-trigger" aria-label={`Column options for ${column.name}`} aria-expanded={menuOpen} onClick={(event) => { event.stopPropagation(); onMenu(); }}>•••</button>{menuOpen && <div className="production-column-menu-popover" role="menu"><button type="button" role="menuitem" onClick={() => onAction('oldest')}>Sort by oldest first</button><button type="button" role="menuitem" onClick={() => onAction('newest')}>Sort by newest first</button><button type="button" role="menuitem" onClick={() => onAction('add')}>Add card</button><button type="button" role="menuitem" onClick={() => onAction('rename')}>Rename column</button><button type="button" role="menuitem" onClick={() => onAction('archive')}>Archive column</button></div>}</div></header>
+  return <section ref={setNodeRef} onAnimationEnd={() => measureDroppableContainers([])} data-column-color={column.color || undefined} style={columnColorStyle(column.color) as CSSProperties} className={`production-column${isCollapsible ? ' is-collapsible' : ''}${expanded ? ' is-expanded' : ''}${collapsedForDrawer ? ' is-drawer-collapsed' : ''}${collapsedForCompact ? ' is-compact-collapsed' : ''}${isDropTarget ? ' is-drop-target' : ''}`}>
+    <header><button type="button" aria-expanded={!collapsedForDrawer && !collapsedForCompact && (!isCollapsible || expanded)} onClick={onSelect}><h2>{column.name}</h2></button><div className="production-column-menu"><button type="button" className="production-column-add-card" aria-label={`Add card to ${column.name}`} onClick={(event) => { event.stopPropagation(); onAction('add'); }}><UiIcon name="plus" /></button><span>{column.cardsCount}</span><button type="button" className="production-column-menu-trigger" aria-label={`Column options for ${column.name}`} aria-expanded={menuOpen} onClick={(event) => { event.stopPropagation(); onMenu(); }}><UiIcon name="more" /></button>{menuOpen && <div className="production-column-menu-popover" role="menu"><button type="button" role="menuitem" onClick={() => onAction('oldest')}>Sort by oldest first</button><button type="button" role="menuitem" onClick={() => onAction('newest')}>Sort by newest first</button><button type="button" role="menuitem" onClick={() => onAction('add')}>Add card</button><button type="button" role="menuitem" onClick={() => onAction('rename')}>Rename column</button><button type="button" role="menuitem" onClick={() => onAction('color')}>Change color</button><button type="button" role="menuitem" onClick={() => onAction('archive')}>Archive column</button></div>}</div></header>
     {collapsed && <span className="production-collapsed-count">{column.cardsCount}</span>}
-    <div className={`production-column-content${scrollEdges.top ? ' has-scroll-above' : ''}${scrollEdges.bottom ? ' has-scroll-below' : ''}`}><div ref={scrollRef} className="production-column-scroll"><SortableContext items={cards.map((card) => card.id)} strategy={verticalListSortingStrategy}><div>{(() => { let previousMonth = ''; const showMonthDividers = column.name.toLowerCase() === 'done'; return cards.map((card) => { const month = showMonthDividers ? completionMonth(card) : ''; const showDivider = Boolean(month && month !== previousMonth); if (month) previousMonth = month; return <Fragment key={card.id}>{showDivider && <div className="production-month-divider"><span>{month}</span></div>}<SortableProductionCard card={card} onOpen={onOpenCard} isOpen={card.id === selectedCardId} /></Fragment>; }); })()}</div></SortableContext></div><div className="production-column-scroll-shadow production-column-scroll-shadow-top" aria-hidden="true" /><div className="production-column-scroll-shadow production-column-scroll-shadow-bottom" aria-hidden="true" /></div>
+    <div className={`production-column-content${scrollEdges.top ? ' has-scroll-above' : ''}${scrollEdges.bottom ? ' has-scroll-below' : ''}`}><div ref={scrollRef} className="production-column-scroll"><SortableContext items={cards.map((card) => card.id)} strategy={verticalListSortingStrategy}><div>{(() => { let previousMonth = ''; const showMonthDividers = column.name.toLowerCase() === 'done'; return cards.map((card) => { const month = showMonthDividers ? completionMonth(card) : ''; const showDivider = Boolean(month && month !== previousMonth); if (month) previousMonth = month; return <Fragment key={card.id}>{showDivider && <div className="production-month-divider"><span>{month}</span></div>}<SortableProductionCard card={column.name.toLowerCase() === 'done' ? { ...card, completedAt: card.completedAt || 'done' } : card} onOpen={onOpenCard} isOpen={card.id === selectedCardId} /></Fragment>; }); })()}</div></SortableContext></div><div className="production-column-scroll-shadow production-column-scroll-shadow-top" aria-hidden="true" /><div className="production-column-scroll-shadow production-column-scroll-shadow-bottom" aria-hidden="true" /></div>
   </section>;
 }
 
-function ProductionNewCard({ column, columns, clients, assignees, onCreated }: { column: Column; columns: Column[]; clients: string[]; assignees: string[]; onCreated: (id: string) => void }) {
+function ProductionNewCard({ column, columns, clients, assignees, initialClient = '', onCreated }: { initialClient?: string; column: Column; columns: Column[]; clients: string[]; assignees: string[]; onCreated: (draft: NewCardDraft) => void }) {
   const [title, setTitle] = useState('');
-  const [client, setClient] = useState('');
+  const [client, setClient] = useState(initialClient);
   const [assignedTo, setAssignedTo] = useState('');
   const [dueOn, setDueOn] = useState('');
   const [notes, setNotes] = useState('');
@@ -85,7 +99,7 @@ function ProductionNewCard({ column, columns, clients, assignees, onCreated }: {
       const response = await fetch('/api/admin/production-board/cards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ columnSourceId, title, client, assignedTo, dueOn, notes }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to create this card.');
-      onCreated(payload.id);
+      onCreated({ id: payload.id, title, notes, client, assignedTo, dueOn, columnSourceId, archived: false });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to create this card.'); }
     finally { setSaving(false); }
   };
@@ -99,19 +113,31 @@ function ProductionNewCard({ column, columns, clients, assignees, onCreated }: {
 }
 
 export function ProductionBoard() {
+  const { boardRef, prepareReturn } = useDeckReturnAnimation();
   const [data, setData] = useState<BoardData | null>(null);
   const [error, setError] = useState('');
   const [cardId, setCardId] = useState('');
+  const [signalTarget, setSignalTarget] = useState('');
   const [newCardColumnId, setNewCardColumnId] = useState('');
+  const [newCardClient, setNewCardClient] = useState('');
   const [expandedColumnId, setExpandedColumnId] = useState('');
   const [compactBoard, setCompactBoard] = useState(false);
   const [phoneBoard, setPhoneBoard] = useState(false);
+  const [mobileTouchBoard, setMobileTouchBoard] = useState(false);
   const [activeDragCardId, setActiveDragCardId] = useState('');
   const [dropColumnId, setDropColumnId] = useState('');
   const [menuColumnId, setMenuColumnId] = useState('');
+  const [colorColumn, setColorColumn] = useState<Column | null>(null);
   const [movingCardId, setMovingCardId] = useState('');
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [returnToActivity, setReturnToActivity] = useState(false);
+  const [newlyCreatedCard, setNewlyCreatedCard] = useState<NewCardDraft | null>(null);
+  const [clientReminderOpen, setClientReminderOpen] = useState(false);
+  const [reminderClient, setReminderClient] = useState('');
+  const [savingReminderClient, setSavingReminderClient] = useState(false);
   const dragOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const mobileSensors = useSensors(useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }), useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const loadBoard = useCallback(() => fetch('/api/admin/production-board', { cache: 'no-store' }).then(async (response) => {
     if (response.status === 401) { location.replace('/login?next=/admin/production'); return null; }
     const payload = await response.json();
@@ -121,45 +147,72 @@ export function ProductionBoard() {
 
   useEffect(() => {
     setCardId(cardFromLocation());
-    setNewCardColumnId(newCardColumnFromLocation());
-    const onPopState = () => { setCardId(cardFromLocation()); setNewCardColumnId(newCardColumnFromLocation()); };
+    setNewCardColumnId(newCardColumnFromLocation()); setNewCardClient(new URLSearchParams(window.location.search).get('client') || '');
+    const onPopState = () => { setCardId(cardFromLocation()); setNewCardColumnId(newCardColumnFromLocation()); setNewCardClient(new URLSearchParams(window.location.search).get('client') || ''); };
     addEventListener('popstate', onPopState);
     return () => removeEventListener('popstate', onPopState);
   }, []);
   useEffect(() => {
-    const query = matchMedia('(max-width: 980px)'); const phoneQuery = matchMedia('(max-width: 620px)');
-    const update = () => { setCompactBoard(query.matches); setPhoneBoard(phoneQuery.matches); };
-    update(); query.addEventListener('change', update); phoneQuery.addEventListener('change', update);
-    return () => { query.removeEventListener('change', update); phoneQuery.removeEventListener('change', update); };
+    const query = matchMedia('(max-width: 980px)'); const phoneQuery = matchMedia('(max-width: 620px)'); const touchQuery = matchMedia('(max-width: 980px) and (pointer: coarse)');
+    const update = () => { setCompactBoard(query.matches); setPhoneBoard(phoneQuery.matches); setMobileTouchBoard(touchQuery.matches); };
+    update(); query.addEventListener('change', update); phoneQuery.addEventListener('change', update); touchQuery.addEventListener('change', update);
+    return () => { query.removeEventListener('change', update); phoneQuery.removeEventListener('change', update); touchQuery.removeEventListener('change', update); };
   }, []);
   useEffect(() => { loadBoard().then((payload) => payload && setData(payload)).catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to open the production board.')); }, [loadBoard]);
   useEffect(() => () => { if (dragOpenTimer.current) clearTimeout(dragOpenTimer.current); }, []);
 
   const selectedCard = useMemo(() => data?.cards.find((card) => card.id === cardId) || null, [cardId, data]);
   const activeDragCard = useMemo(() => data?.cards.find((card) => card.id === activeDragCardId) || null, [activeDragCardId, data]);
-  const drawerColumnId = selectedCard?.columnSourceId || newCardColumnId;
+  const mobileDrag = mobileTouchBoard && Boolean(activeDragCard);
+  const mobileCollision: CollisionDetection = (args) => {
+    if (!args.pointerCoordinates) return closestCorners(args);
+    const hits = pointerWithin(args);
+    const cards = hits.filter(hit => hit.id !== args.active.id && args.droppableContainers.find(container => container.id === hit.id)?.data.current?.type === 'card');
+    return cards.length ? cards : hits.some(hit => hit.id === args.active.id) ? hits.filter(hit => hit.id === args.active.id) : hits;
+  };
+  const resolvedNewColumnId = newCardColumnId === '1' ? (data?.columns.find(column => column.name.toLowerCase() === 'triage') || data?.columns[0])?.sourceId || '' : newCardColumnId;
+  const drawerColumnId = selectedCard?.columnSourceId || resolvedNewColumnId;
   useEffect(() => { if (drawerColumnId) setExpandedColumnId(drawerColumnId); }, [cardId, newCardColumnId, drawerColumnId]);
   const clearDragOpenTimer = () => { if (dragOpenTimer.current) clearTimeout(dragOpenTimer.current); dragOpenTimer.current = null; };
-  const setCardInUrl = (id = '') => {
-    const url = new URL(location.href); if (id) url.searchParams.set('card', id); else url.searchParams.delete('card'); url.searchParams.delete('newCard');
+  const setCardInUrl = (id = '', target = '') => {
+    setSignalTarget(target);
+    if (id) setActivityOpen(false);
+    const url = new URL(location.href); if (id) url.searchParams.set('card', id); else url.searchParams.delete('card'); url.searchParams.delete('newCard'); url.searchParams.delete('client'); setNewCardClient('');
     history.pushState({}, '', url);
     const nextCard = data?.cards.find((card) => card.id === id); if (nextCard) setExpandedColumnId(nextCard.columnSourceId);
     setCardId(id);
     setNewCardColumnId('');
   };
   const setNewCardInUrl = (columnSourceId = '') => {
-    const url = new URL(location.href); url.searchParams.delete('card');
+    const url = new URL(location.href); url.searchParams.delete('card'); url.searchParams.delete('client'); setNewCardClient('');
     if (columnSourceId) url.searchParams.set('newCard', columnSourceId); else url.searchParams.delete('newCard');
     history.pushState({}, '', url);
     if (columnSourceId) setExpandedColumnId(columnSourceId);
     setCardId(''); setNewCardColumnId(columnSourceId);
   };
+  const closeCardDrawer = () => {
+    if (newlyCreatedCard && newlyCreatedCard.id === cardId && !newlyCreatedCard.client.trim()) { setReminderClient(''); setClientReminderOpen(true); return; }
+    setCardInUrl();
+  };
+  const saveReminderClient = async () => {
+    if (!newlyCreatedCard || !reminderClient.trim()) return;
+    setSavingReminderClient(true);
+    try {
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(newlyCreatedCard.id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...newlyCreatedCard, client: reminderClient }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to save this client.');
+      setClientReminderOpen(false); setNewlyCreatedCard(null); setCardInUrl();
+      const refreshed = await loadBoard(); if (refreshed) setData(refreshed);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save this client.'); }
+    finally { setSavingReminderClient(false); }
+  };
   const selectColumn = (column: Column) => {
     if (cardId || compactBoard) { setExpandedColumnId(column.sourceId); return; }
     if (['triage', 'not now', 'done'].includes(column.name.toLowerCase())) setExpandedColumnId((current) => current === column.sourceId ? '' : column.sourceId);
   };
-  const runColumnAction = async (column: Column, action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive') => {
+  const runColumnAction = async (column: Column, action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive' | 'color') => {
     setMenuColumnId(''); setError('');
+    if (action === 'color') { setColorColumn(column); return; }
     try {
       if (action === 'add') {
         setNewCardInUrl(column.sourceId); return;
@@ -203,9 +256,10 @@ export function ProductionBoard() {
     finally { setMovingCardId(''); }
   };
   const columnForDropTarget = (event: DragOverEvent | DragEndEvent) => (event.over?.data.current as DropTargetData | undefined)?.columnSourceId || '';
-  const onDragStart = (event: DragStartEvent) => setActiveDragCardId(String(event.active.id));
+  const onDragStart = (event: DragStartEvent) => { setActiveDragCardId(String(event.active.id)); if (mobileTouchBoard) { clearDragOpenTimer(); setMenuColumnId(''); } };
   const onDragOver = (event: DragOverEvent) => {
     const columnSourceId = columnForDropTarget(event); setDropColumnId(columnSourceId);
+    if (mobileDrag) return;
     const column = data?.columns.find((item) => item.sourceId === columnSourceId);
     if (!column || !activeDragCardId) return;
     const drawerOpen = Boolean(selectedCard || newCardColumnId);
@@ -214,8 +268,9 @@ export function ProductionBoard() {
     dragOpenTimer.current = setTimeout(() => { setExpandedColumnId(column.sourceId); dragOpenTimer.current = null; }, 550);
   };
   const onDragEnd = (event: DragEndEvent) => {
+    prepareReturn(mobileDrag);
     clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId('');
-    if (!data || !event.over) return;
+    if (!data || !event.over || (mobileDrag && event.over.id === event.active.id)) return;
     const card = data.cards.find((item) => item.id === String(event.active.id));
     const columnSourceId = columnForDropTarget(event); if (!card || !columnSourceId) return;
     const destinationCards = data.cards.filter((item) => item.columnSourceId === columnSourceId && item.id !== card.id).sort(byPosition);
@@ -224,7 +279,13 @@ export function ProductionBoard() {
     if (overCardIndex >= 0) {
       const translatedTop = event.active.rect.current.translated?.top ?? event.active.rect.current.initial?.top ?? 0;
       const overMiddle = event.over.rect.top + event.over.rect.height / 2;
-      beforeCardId = translatedTop > overMiddle ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
+      if (mobileDrag && card.columnSourceId === columnSourceId) {
+        const originalCards = data.cards.filter(item => item.columnSourceId === columnSourceId).sort(byPosition);
+        const movingDown = originalCards.findIndex(item => item.id === card.id) < originalCards.findIndex(item => item.id === overCardId);
+        beforeCardId = movingDown ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
+      } else {
+        beforeCardId = translatedTop > overMiddle ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
+      }
     }
     void moveCard(card, columnSourceId, beforeCardId);
   };
@@ -238,17 +299,20 @@ export function ProductionBoard() {
   const compactRailWidth = phoneBoard ? '32px' : '52px'; const compactLaneWidth = phoneBoard ? 'minmax(160px, 1fr)' : 'minmax(240px, 1fr)';
   const gridTemplateColumns = data.columns.map((column) => drawerOpen ? column.sourceId === activeDrawerColumnId ? compactLaneWidth : compactRailWidth : compactBoard ? column.sourceId === activeCompactColumnId ? compactLaneWidth : compactRailWidth : isCollapsible(column) && column.sourceId !== expandedColumnId ? '58px' : 'minmax(0, 1fr)').join(' ');
 
-  return <div className={`production-board-layout${drawerOpen ? ' is-drawer-open' : ''}`}>
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
-      <div className="production-board" style={{ gridTemplateColumns }} aria-label="The Deck">{data.columns.map((column) => {
+  return <div className={`production-board-layout${drawerOpen ? ' is-drawer-open' : ''}${!drawerOpen ? ` ${activityStyles.layout}` : ''}`}>
+    <DndContext sensors={mobileTouchBoard ? mobileSensors : sensors} collisionDetection={mobileDrag ? mobileCollision : closestCorners} measuring={mobileDrag ? { droppable: { strategy: MeasuringStrategy.Always } } : undefined} autoScroll={mobileDrag ? { canScroll: element => element.classList.contains('production-column-scroll'), threshold: { x: 0, y: 0.2 } } : undefined} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { prepareReturn(mobileDrag); clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
+      <div ref={boardRef} className={`production-board${mobileTouchBoard ? ` ${mobileDragStyles.touchBoard}` : ''}${mobileDrag ? ` ${mobileDragStyles.dragBoard}` : ''}`} style={{ gridTemplateColumns: mobileDrag ? 'calc(100vw / 3 - 16px) calc(100vw - 32px)' : gridTemplateColumns, ...(mobileDrag ? { gridTemplateRows: `repeat(${Math.max(1, data.columns.length - 1)}, minmax(0, 1fr))` } : {}) }} aria-label="The Deck">{data.columns.map((column) => {
         const collapsedForDrawer = drawerOpen && column.sourceId !== activeDrawerColumnId;
-        const collapsedForCompact = !drawerOpen && compactBoard && column.sourceId !== activeCompactColumnId;
-        const expanded = drawerOpen ? column.sourceId === activeDrawerColumnId : compactBoard ? column.sourceId === activeCompactColumnId : column.sourceId === expandedColumnId;
+        const collapsedForCompact = mobileDrag ? column.sourceId !== activeDragCard?.columnSourceId : !drawerOpen && compactBoard && column.sourceId !== activeCompactColumnId;
+        const expanded = mobileDrag ? column.sourceId === activeDragCard?.columnSourceId : drawerOpen ? column.sourceId === activeDrawerColumnId : compactBoard ? column.sourceId === activeCompactColumnId : column.sourceId === expandedColumnId;
         const cards = data.cards.filter((card) => card.columnSourceId === column.sourceId).sort(byPosition);
         return <ProductionColumn column={column} cards={cards} selectedCardId={cardId} collapsedForDrawer={collapsedForDrawer} collapsedForCompact={collapsedForCompact} expanded={expanded} isCollapsible={isCollapsible(column)} isDropTarget={dropColumnId === column.sourceId} menuOpen={menuColumnId === column.sourceId} onSelect={() => selectColumn(column)} onOpenCard={setCardInUrl} onMenu={() => setMenuColumnId((current) => current === column.sourceId ? '' : column.sourceId)} onAction={(action) => { void runColumnAction(column, action); }} key={column.sourceId} />;
       })}</div>
-      <DragOverlay dropAnimation={null}>{activeDragCard && <div className="production-card-drag-overlay"><b>{activeDragCard.title}</b></div>}</DragOverlay>
+      <DragOverlay dropAnimation={null} zIndex={mobileDrag ? 1200 : 999}>{activeDragCard && <div className="production-card-drag-overlay"><b>{activeDragCard.title}</b></div>}</DragOverlay>
     </DndContext>
-    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar"><span>{selectedCard ? 'Production record' : 'New production card'}</span><button type="button" onClick={() => setCardInUrl()} aria-label="Close card details">Close ×</button></div>{selectedCard ? <ProductionCard id={selectedCard.id} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} /> : (() => { const column = data.columns.find((item) => item.sourceId === newCardColumnId); return column ? <ProductionNewCard column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(id) => { void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(id); }); }} /> : null; })()}</aside>}
+    <DeckActivity open={activityOpen} hidden={drawerOpen || mobileDrag} onOpen={() => { setCardInUrl(); setActivityOpen(true); }} onClose={() => setActivityOpen(false)} onCard={(id) => { setActivityOpen(false); setReturnToActivity(true); setCardInUrl(id); }} />
+    {colorColumn && <ColumnColorDialog columnId={colorColumn.sourceId} name={colorColumn.name} color={colorColumn.color} onClose={() => setColorColumn(null)} onSaved={(color) => setData((current) => current && ({ ...current, columns: current.columns.map((column) => column.sourceId === colorColumn.sourceId ? { ...column, color } : column) }))} />}
+    {(selectedCard || newCardColumnId) && <aside className="production-card-drawer" aria-label={selectedCard ? `${selectedCard.title} details` : 'New card'}><div className="production-drawer-topbar">{returnToActivity ? <button type="button" onClick={() => { setCardInUrl(); setReturnToActivity(false); setActivityOpen(true); }}><UiIcon name="back" /> Back to activity</button> : <span>{selectedCard ? 'Production record' : 'New production card'}</span>}<button type="button" onClick={closeCardDrawer} aria-label="Close card details">Close <UiIcon name="close" /></button></div>{selectedCard ? <ProductionCard key={selectedCard.id} id={selectedCard.id} focusTarget={signalTarget} drawer onUpdated={() => loadBoard().then((payload) => payload && setData(payload))} onDeleted={() => { setNewlyCreatedCard(null); setCardInUrl(); void loadBoard().then((payload) => payload && setData(payload)); }} /> : (() => { const column = data.columns.find((item) => item.sourceId === resolvedNewColumnId); return column ? <ProductionNewCard key={column.sourceId + newCardClient} initialClient={(data.clients || []).find(name => name === newCardClient) || ''} column={column} columns={data.columns} clients={data.clients || []} assignees={data.assignees || []} onCreated={(draft) => { setNewlyCreatedCard(draft); void loadBoard().then((payload) => { if (payload) setData(payload); setCardInUrl(draft.id); }); }} /> : null; })()}</aside>}
+    {clientReminderOpen && <div className="client-reminder-modal" role="dialog" aria-modal="true" aria-labelledby="card-client-reminder-title"><div className="client-reminder-panel"><p>One last detail</p><h2 id="card-client-reminder-title">Leave this new card without a client?</h2><span>Adding a client now keeps this card connected to the right work. You can still close it without one.</span><div className="client-reminder-picker"><ClientPicker value={reminderClient} clients={data.clients || []} onChange={setReminderClient} onClientsChanged={(clients) => setData((current) => current ? { ...current, clients } : current)} placeholder="Search or add a client" disabled={savingReminderClient} /></div><div className="client-reminder-actions"><button type="button" disabled={savingReminderClient} onClick={() => { setClientReminderOpen(false); setNewlyCreatedCard(null); setCardInUrl(); }}>Save without client</button><button className="primary" type="button" disabled={savingReminderClient || !reminderClient.trim()} onClick={() => void saveReminderClient()}>{savingReminderClient ? 'Saving…' : 'Save client'}</button></div></div></div>}
   </div>;
 }

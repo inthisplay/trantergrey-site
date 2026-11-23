@@ -17,10 +17,13 @@ type PrivateBucket = {
 };
 
 export type AdminEnvironment = {
+  ARCHIVE_WORKER_SECRET?: string;
   ADMIN_PASSWORD?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REDIRECT_URI?: string;
+  GOOGLE_DRIVE_ENCRYPTION_KEY?: string;
+  GOOGLE_DRIVE_ID?: string;
   MUX_TOKEN_ID?: string;
   MUX_TOKEN_SECRET?: string;
   // This is intentionally separate from the Mux API token.
@@ -29,13 +32,14 @@ export type AdminEnvironment = {
   PRODUCTION_API_TOKEN?: string;
   TG_DATA: { prepare(query: string): Statement; batch(statements: Statement[]): Promise<unknown> };
   PRODUCTION_ARCHIVE?: PrivateBucket;
+  MEDIA_OPTIMIZER?: { fetch(url: string, init?: RequestInit): Promise<Response> };
 };
 
 export type AdminSession = { name: string; email: string | null };
 type AdminIdentity = { name: string; email?: string | null };
 
 const sessionCookie = 'tg_admin';
-const sessionLifetimeSeconds = 60 * 60 * 12;
+const teamSessionLifetimeSeconds = 60 * 60 * 24 * 30;
 
 function cookie(request: Request, name: string) {
   const value = request.headers.get('cookie') || '';
@@ -52,11 +56,7 @@ function sameValue(first: string, second: string) {
 }
 
 export function configured(env: AdminEnvironment) {
-  return passwordConfigured(env) || Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
-}
-
-export function passwordConfigured(env: AdminEnvironment) {
-  return Boolean(env.ADMIN_PASSWORD);
+  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 }
 
 export async function adminSession(request: Request, env: AdminEnvironment): Promise<AdminSession | null> {
@@ -66,7 +66,8 @@ export async function adminSession(request: Request, env: AdminEnvironment): Pro
     .prepare('SELECT user_name AS name, user_email AS email FROM admin_sessions WHERE id = ? AND expires_at > ?')
     .bind(value, new Date().toISOString())
     .first<{ name: string | null; email: string | null }>();
-  if (!session) return null;
+  // Legacy password sessions have no verified identity and are no longer accepted.
+  if (!session?.email) return null;
   return { name: session.name?.trim() || 'Admin', email: session.email || null };
 }
 
@@ -79,20 +80,27 @@ export async function adminResponse(request: Request, env: AdminEnvironment) {
   return Response.json({ error: configured(env) ? 'Sign in to use the private library.' : 'Private access has not been configured yet.' }, { status: configured(env) ? 401 : 503 });
 }
 
-export async function adminCookie(env: AdminEnvironment, identity: AdminIdentity = { name: 'Admin' }) {
+export async function adminCookie(env: AdminEnvironment, identity: AdminIdentity) {
   const value = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + sessionLifetimeSeconds * 1000).toISOString();
   const name = identity.name.trim().slice(0, 120) || 'Admin';
   const email = identity.email?.trim().toLowerCase().slice(0, 254) || null;
+  if (!email || !isTranterGreyEmail(email)) throw new Error('A verified company identity is required.');
+  const lifetime = teamSessionLifetimeSeconds;
+  const expiresAt = new Date(Date.now() + lifetime * 1000).toISOString();
   await env.TG_DATA
     .prepare('INSERT INTO admin_sessions (id, expires_at, user_name, user_email) VALUES (?, ?, ?, ?)')
     .bind(value, expiresAt, name, email)
     .run();
-  return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${sessionLifetimeSeconds}`;
+  return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${lifetime}`;
 }
 
 export function clearAdminCookie() {
   return `${sessionCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+export async function revokeAdminSession(request: Request, env: AdminEnvironment) {
+  const value = cookie(request, sessionCookie);
+  if (value) await env.TG_DATA.prepare('DELETE FROM admin_sessions WHERE id = ?').bind(value).run();
 }
 
 export function safeDestination(value: FormDataEntryValue | null) {

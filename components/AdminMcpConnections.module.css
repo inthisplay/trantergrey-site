@@ -1,0 +1,21 @@
+.panel { margin-top: 2rem; max-width: 950px; box-sizing: border-box; color: #f5f2ed; }
+.panel button { cursor: pointer; border: 1px solid rgba(245,242,237,.35); background: transparent; padding: 11px 13px; color: #f5f2ed; font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.panel button:hover:not(:disabled) { background: var(--bright); border-color: var(--bright); }
+.panel button:disabled { cursor: not-allowed; opacity: .55; }
+.panel button:focus-visible, .panel input:focus-visible, .panel select:focus-visible, .panel textarea:focus-visible, .panel summary:focus-visible { outline: 2px solid #b4313b; outline-offset: 3px; }
+.invite { display: flex; gap: 1rem; align-items: end; margin: 1.25rem 0; }
+.invite label, .issued label { display: grid; gap: .5rem; flex: 1; font-size: .9rem; }
+.invite select, .issued input, .instructions textarea { width: 100%; min-width: 0; padding: .8rem; border: 1px solid rgba(245,242,237,.28); border-radius: .3rem; background: #202022; color: #f5f2ed; font: inherit; box-sizing: border-box; }
+.issued input { font-family: monospace; }
+.hint, .issued p { font-size: .85rem; color: rgba(245,242,237,.65); line-height: 1.6; }
+.issued { display: grid; gap: .85rem; padding: 1.2rem; border: 1px solid rgba(120,196,199,.5); background: rgba(120,196,199,.06); border-radius: .5rem; margin: 1.25rem 0; }
+.actions { display: flex; gap: .75rem; flex-wrap: wrap; }
+.instructions { border-block: 1px solid rgba(245,242,237,.18); padding: 1rem 0; margin: 1.5rem 0; }
+.instructions summary { cursor: pointer; font-weight: 600; }
+.instructions textarea { margin-bottom: .75rem; font-size: .85rem; line-height: 1.5; resize: vertical; }
+.list { list-style: none; padding: 0; margin: 1rem 0 2rem; }
+.list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid rgba(245,242,237,.12); }
+.list li > div { display: grid; gap: .35rem; overflow-wrap: anywhere; }
+.list small, .list span { font-size: .85rem; color: rgba(245,242,237,.65); }
+.list .status { color: #78c4c7; font-weight: 600; }
+@media (max-width: 640px) { .invite { align-items: stretch; flex-direction: column; } .list li { align-items: start; flex-direction: column; } .panel header { gap: 1rem; } }

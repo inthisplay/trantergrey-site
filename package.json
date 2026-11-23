@@ -11,33 +11,41 @@
     "build:site": "node scripts/build-static-site.mjs",
     "check:cloudflare-release": "npm run build:site && node scripts/check-cloudflare-release.mjs",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "predev": "node scripts/prepare-pdf-assets.mjs",
+    "prebuild:site": "node scripts/prepare-pdf-assets.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@videojs/mux-data": "^10.3.0",
     "@videojs/mux-video": "^10.3.0",
     "@videojs/react": "^10.3.0",
     "@vimeo/player": "^2.30.4",
     "@zip.js/zip.js": "^2.24.0",
     "fuse.js": "^7.5.0",
+    "mediabunny": "1.66.2",
     "next": "^16.4.5",
+    "pdfjs-dist": "^6.5.438",
     "pixelarticons": "^2.4.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "sanitize-html": "^2.18.2",
     "slate": "^0.147.4",
     "slate-react": "^0.147.6",
-    "video.js": "^10.3.0"
+    "video.js": "^10.3.0",
+    "zod": "^4.6.7"
   },
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/sanitize-html": "^2.16.2",
     "typescript": "^5.0.0",
     "wrangler": "^4.158.0"
   }

@@ -1,3 +1,4 @@
+import { clientPublicLogo, publicProjectClient } from './client-public-logo';
 import type { AdminEnvironment } from './admin';
 import { getMuxLibraryAsset, getMuxLibraryAssets, muxSourceThumbnailUrl, muxThumbnailUrl } from './mux';
 import { readMuxMetadata, readVideoProjectStore } from './mux-state';
@@ -17,12 +18,17 @@ export async function publicWatchData(env: AdminEnvironment, slug: string) {
   if (project) {
     const assets = await Promise.all(project.variants.map((variant) => getMuxLibraryAsset(env, variant.assetId).catch(() => null)));
     const variants = assets.flatMap((asset, index) => asset ? [publicVariant(asset, project.variants[index].label, metadata)].filter((item): item is PublicVariant => Boolean(item)) : []);
-    return { title: project.title, client: project.client, description: project.description, unbrandedPublicPage: project.unbrandedPublicPage === true, variants, collections: store.collections.filter((collection) => project.collectionIds.includes(collection.id)) };
+    const client = await publicProjectClient(env, project).catch(() => project.client);
+    const unbrandedPublicPage = variants.length > 0 || project.unbrandedPublicPage === true;
+    const logoKey = await clientPublicLogo(env, {...project, client, unbrandedPublicPage}).catch(() => null);
+    return { clientLogoUrl: logoKey ? `/api/watch/${encodeURIComponent(project.slug)}/logo` : null, title: project.title, client, description: project.description, unbrandedPublicPage, variants, collections: store.collections.filter((collection) => project.collectionIds.includes(collection.id)) };
   }
   if (!/^[A-Za-z0-9]+$/.test(slug)) return null;
   const asset = await getMuxLibraryAsset(env, slug).catch(() => null); if (!asset) return null;
   const saved = metadata[asset.id]; const variant = publicVariant(asset, ratioLabel(asset.aspectRatio), metadata);
-  return { title: saved?.title || asset.title, client: saved?.client || '', description: '', unbrandedPublicPage: false, variants: variant ? [variant] : [], collections: [] };
+  const client = await publicProjectClient(env, { client: saved?.client || null, variants: [{assetId:asset.id}] }).catch(() => saved?.client || null);
+  const logoKey = variant ? await clientPublicLogo(env, { client, unbrandedPublicPage: true }).catch(() => null) : null;
+  return { clientLogoUrl: logoKey ? `/api/watch/${encodeURIComponent(asset.id)}/logo` : null, title: saved?.title || asset.title, client: client || '', description: '', unbrandedPublicPage: Boolean(variant), variants: variant ? [variant] : [], collections: [] };
 }
 
 export async function publicCollectionData(env: AdminEnvironment, slug: string) {
