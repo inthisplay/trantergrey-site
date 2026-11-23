@@ -4,6 +4,7 @@ export type MuxLibraryAsset = {
   id: string;
   title: string;
   status: string;
+  processing?: import('./mux-upload-status').ProcessingProgress | null;
   duration: number;
   createdAt: string | null;
   aspectRatio: string | null;

@@ -232,3 +232,15 @@ A lost acknowledgment may duplicate an alert; its stable notification tag lets
 the browser replace it. This is transport retry only: **Dot owns all conditions,
 recipient selection, timing and matching policy**. No daily or 24-hour checks are
 installed. Inbox writes need no push connectivity and survive push outages.
+
+## Video processing progress
+
+Normalized video assets now optionally include `processing: { state, percent }`.
+`percent` is a whole number from 0–100 only during Mux transcoding; otherwise null.
+Existing `status`, playback IDs/policies and scopes retain their meanings. Library
+and internal API reads are catalog snapshots, not live progress polling; old
+snapshots may omit the field. The personal MCP video tools inherit this additive
+field through the shared reader. Receipt tracking and live upload polling remain
+session-only website features because file transfer and replacement administration
+are not scoped integration capabilities. No new upload/write tool or grant is
+introduced. See `mux-library-maintenance.md` for persistence and readiness limits.

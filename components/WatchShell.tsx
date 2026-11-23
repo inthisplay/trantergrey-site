@@ -7,7 +7,7 @@ import { prepareDownload } from '@/lib/watch-download';
 import { VideoModal, type ModalVideo } from './VideoModal';
 import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 
-type VideoData = { clientLogoUrl?: string | null; title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
+type VideoData = { pending?: boolean; clientLogoUrl?: string | null; title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
 type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
 export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlayer = false }: { unbranded?: boolean; linkBase?: string; compactPlayer?: boolean }) {
@@ -94,14 +94,44 @@ export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlay
     const slug = collectionSlug || videoSlug || '';
     if (!slug) { setError('This video link is incomplete.'); return; }
     const endpoint = isCollection ? `/api/watch/collection/${encodeURIComponent(slug)}` : `/api/watch/${encodeURIComponent(slug)}`;
-    fetch(endpoint, { cache: 'no-store' }).then(async (response) => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    let retryable = true;
+    const load = () => fetch(endpoint, { cache: 'no-store', signal: controller.signal }).then(async (response) => {
       const payload = await response.json() as { video?: VideoData; collection?: VideoProjectCollection; downloadAssetIds?: string[]; projects?: CollectionData['projects']; error?: string };
-      if (!response.ok) throw new Error(payload.error || 'This page is unavailable.');
+      if (!response.ok) { retryable = response.status >= 500 || response.status === 429; throw new Error(payload.error || 'This page is unavailable.'); }
+      retryable = true;
       if (isCollection && payload.collection) { setCollection({ collection: payload.collection, projects: payload.projects ?? [], downloadAssetIds: payload.downloadAssetIds ?? [] }); document.title = `${payload.collection.name} — TranterGrey`; }
-      else if (payload.video) { setVideo(payload.video); document.title = `${payload.video.title} — TranterGrey`; }
+      else if (payload.video) { if (controller.signal.aborted) return; setVideo(payload.video);
+        if (payload.video.pending || payload.video.variants.some(variant => variant.status && !['ready', 'errored'].includes(variant.status))) timer = setTimeout(load, 5000); document.title = `${payload.video.title} — TranterGrey`; }
       else throw new Error('This page is unavailable.');
-    }).catch((reason) => setError(reason instanceof Error ? reason.message : 'This page is unavailable.'));
+    }).catch((reason) => { if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : 'This page is unavailable.'); if (retryable) timer = setTimeout(load, 15000); } });
+    void load();
+    return () => { controller.abort(); clearTimeout(timer); };
   }, []);
+
+  useEffect(() => {
+    if (!preview?.variants.some(variant => variant.status && !['ready', 'errored'].includes(variant.status))) return;
+    const href = preview.href;
+    const slug = href.split('/').at(-1)!;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/watch/${encodeURIComponent(slug)}`, { cache: 'no-store', signal: controller.signal });
+        if (response.ok) {
+          const { video } = await response.json() as { video?: VideoData };
+          if (video && !controller.signal.aborted) setPreview(current => current?.href === href ? { ...current, variants: video.variants } : current);
+          if (video && video.variants.every(variant => !variant.status || ['ready', 'errored'].includes(variant.status))) return;
+        }
+      } catch { /* Keep the received state and retry after temporary outages. */ }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 5000);
+    };
+    timer = setTimeout(poll, 5000);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [preview?.href]);
+
+  if (video && !video.variants.length) return <section className="solo-video-shell"><h1>{video.title}</h1><p role="status">{video.pending ? 'Video received. Preparing playback… This page will update automatically.' : 'Playback is not available for this video.'}</p></section>;
 
   if (collection) return <section className="solo-video-shell collection-page">
     <header className="solo-collection-header">

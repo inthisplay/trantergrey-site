@@ -1,5 +1,8 @@
 'use client';
 
+import { MuxProcessingProgress } from './MuxProcessingProgress';
+import type { ProcessingProgress } from '@/lib/mux-upload-status';
+
 import { PlaybackIcon } from './PlaybackIcon';
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
@@ -11,6 +14,8 @@ import { availableDownloadQualities, downloadQualities, prepareDownload, quality
 
 export type SoloVideoVariant = {
   assetId: string;
+  status?: string;
+  processing?: ProcessingProgress | null;
   label: string;
   aspectRatio: string | null;
   playbackId: string;
@@ -33,7 +38,12 @@ type RatioGroupLayout = {
   width: number;
 };
 
-export function MuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, keyboardShortcuts = true, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; keyboardShortcuts?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
+export function MuxVideoPlayer(props: Parameters<typeof ReadyMuxVideoPlayer>[0] & { status?: string; processing?: ProcessingProgress | null }) {
+  if (props.status && props.status !== 'ready') return <div role="status"><p>{props.status === 'errored' ? 'This video could not be processed.' : 'Video received. Preparing playback…'}</p>{props.status !== 'errored' && <MuxProcessingProgress processing={props.processing} />}</div>;
+  return <ReadyMuxVideoPlayer {...props} />;
+}
+
+function ReadyMuxVideoPlayer({ assetId, playbackId, poster, title, muted = false, autoPlay = false, keyboardShortcuts = true, onVideoElement }: { assetId: string; playbackId: string; poster: string | null; title: string; muted?: boolean; autoPlay?: boolean; keyboardShortcuts?: boolean; onVideoElement?: (assetId: string, video: HTMLVideoElement | null) => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -524,8 +534,8 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
     </div>}
     <div className="solo-video-media-region" ref={mediaRegionRef}>{showingAll ? <div className="ratio-group-canvas" ref={ratioGroupRef} style={{ width: `${ratioGroupLayout.width}px`, height: `${ratioGroupLayout.height}px` }}>{variants.map((variant, index) => {
       const tile = ratioGroupLayout.tiles[index];
-      return <Fragment key={variant.assetId}><div className={`solo-video-stage ratio-group-tile ratio-group-tile-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' ratio-group-tile-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} style={tile ? { left: `${tile.left}px`, top: `${tile.top}px`, width: `${tile.width}px`, height: `${tile.height}px` } : undefined}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div></Fragment>;
-    })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`} style={{width:soloSize.width,height:soloSize.height}}><div><MuxVideoPlayer key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}</div>
+      return <Fragment key={variant.assetId}><div className={`solo-video-stage ratio-group-tile ratio-group-tile-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' ratio-group-tile-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} style={tile ? { left: `${tile.left}px`, top: `${tile.top}px`, width: `${tile.width}px`, height: `${tile.height}px` } : undefined}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer status={variant.status} processing={variant.processing} assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div></Fragment>;
+    })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`} style={{width:soloSize.width,height:soloSize.height}}><div><MuxVideoPlayer status={selected.status} processing={selected.processing} key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}</div>
     <div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" disabled={downloadState === 'preparing'} onClick={copyUrl}>

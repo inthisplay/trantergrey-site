@@ -1,5 +1,9 @@
 'use client';
 
+import { useMuxUploadTracking } from './useMuxUploadTracking';
+import { MuxProcessingProgress } from './MuxProcessingProgress';
+import { waitForUpload, processingLabel, type ProcessingProgress } from '@/lib/mux-upload-status';
+
 import { VideoArchive } from './VideoArchive';
 
 import { UiIcon } from '@/components/UiIcon';
@@ -30,12 +34,12 @@ type LibraryDisplayItem =
   | { kind: 'project'; project: VideoProject; assets: MatchedMuxLibraryAsset[]; representative: MatchedMuxLibraryAsset };
 type LibraryDropTarget = { kind: 'asset' | 'collection' | 'project'; id: string };
 type PendingLibraryDrop = { sources: MatchedMuxLibraryAsset[]; target: MatchedMuxLibraryAsset };
-type UploadState = { id: string; name: string; title: string; client: string; tags: string; variantLabel: string; assetId?: string; progress: number; state: 'uploading' | 'processing' | 'complete' | 'error'; error?: string; saving?: boolean; thumbnailFailed?: boolean };
+type UploadState = { id: string; name: string; title: string; client: string; tags: string; variantLabel: string; assetId?: string; uploadId?: string; processing?: ProcessingProgress | null; progress: number; state: 'uploading' | 'processing' | 'complete' | 'error'; error?: string; saving?: boolean; thumbnailFailed?: boolean };
 type UploadDestination = 'solo' | 'collection';
 type UploadRatioGroup = { id: string; title: string; uploadIds: string[] };
 type DuplicateRatioWarning = { title: string; uploadIds: string[] } | null;
 type UploadPlan = { client: string; tags: string[]; grouping: 'none'; name: string; collectionId: string };
-type ReplacementProgress = { fileName: string; progress: number; stage: 'uploading' | 'processing' | 'swapping'; current: number; total: number };
+type ReplacementProgress = { fileName: string; progress: number; stage: 'uploading' | 'processing' | 'swapping'; processing?: ProcessingProgress | null; current: number; total: number };
 type LibraryFacets = { clients: string[]; directoryClients?: string[]; years: number[]; statusCounts: Record<StatusFilter, number>; thumbnailCounts: { needsThumbnail: number; customThumbnail: number } };
 type DeckCardMatch = { id: string; title: string; client: string };
 
@@ -93,7 +97,7 @@ function isProcessingAsset(asset: MatchedMuxLibraryAsset) {
 
 function ProcessingOverlay({ asset }: { asset: MatchedMuxLibraryAsset }) {
   if (!isProcessingAsset(asset)) return null;
-  return <span className="mux-processing-overlay" role="status"><i aria-hidden="true" /><strong>Processing</strong></span>;
+  return <span className="mux-processing-overlay" role="status"><i aria-hidden="true" /><strong>{hasMuxError(asset) ? 'Processing failed' : processingLabel(asset.processing)}</strong></span>;
 }
 
 function ThumbnailFallback() {
@@ -272,6 +276,20 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [refreshingLibrary, setRefreshingLibrary] = useState(false);
   const [locallyProcessingAssetIds, setLocallyProcessingAssetIds] = useState<string[]>([]);
   const [uploads, setUploads] = useState<UploadState[]>([]);
+  const uploadController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    uploadController.current = new AbortController();
+    return () => uploadController.current?.abort();
+  }, []);
+  const tracking = useMuxUploadTracking((uploadId, status) => {
+    setUploads(rows => rows.map(row => row.uploadId === uploadId ? {
+      ...row, processing: status.processing, assetId: status.assetId || row.assetId,
+      state: status.ready ? 'complete' : ['errored', 'cancelled', 'timed_out'].includes(status.status || '') ? 'error' : 'processing',
+      error: ['errored', 'cancelled', 'timed_out'].includes(status.status || '') ? 'Upload received, but Mux could not prepare playback.' : row.error,
+    } : row));
+    if (status.assetId) setAssets(rows => rows?.map(asset => asset.id === status.assetId && !status.ready ? { ...asset, status: status.status || asset.status, processing: status.processing } : asset) ?? null);
+    if (status.ready) { setLocallyProcessingAssetIds(ids => ids.filter(id => id !== status.assetId)); void refreshLibrary(); }
+  });
   const [isDraggingUpload, setIsDraggingUpload] = useState(false);
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [uploadDrawerOpen, setUploadDrawerOpen] = useState(false);
@@ -302,6 +320,13 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [loadingDeckCards, setLoadingDeckCards] = useState(false);
   const [postingToDeck, setPostingToDeck] = useState(false);
   const [deckPostError, setDeckPostError] = useState('');
+
+  useEffect(() => {
+    if (!uploads.length && !replacementProgress) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [uploads.length, replacementProgress]);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 760px), (pointer: coarse)');
@@ -372,13 +397,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   }, [query, client, dateRange, statusFilter]);
 
   useEffect(() => {
-    if (!assets || !locallyProcessingAssetIds.length) return;
-    const processingIds = locallyProcessingAssetIds.filter((id) => assets.some((asset) => asset.id === id && isProcessingAsset(asset)));
-    if (processingIds.length !== locallyProcessingAssetIds.length) {
-      setLocallyProcessingAssetIds(processingIds);
-      return;
-    }
-    if (!processingIds.length) return;
+    if (!assets?.some(asset => isProcessingAsset(asset) && !hasMuxError(asset)) && !locallyProcessingAssetIds.length) return;
     const interval = window.setInterval(() => { void refreshLibrary(); }, 15000);
     return () => window.clearInterval(interval);
   }, [assets, locallyProcessingAssetIds]);
@@ -463,15 +482,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   }
 
   async function waitForMuxAsset(uploadId: string, readyOnly = true) {
-    for (let attempt = 0; attempt < 150; attempt += 1) {
-      const response = await fetch(`/api/admin/mux-uploads?uploadId=${encodeURIComponent(uploadId)}`, { cache: 'no-store' });
-      const payload = await jsonResponse<{ assetId?: string | null; ready?: boolean; status?: string; error?: string }>(response);
-      if (!response.ok) throw new Error(payload.error || 'Could not check the Mux upload.');
-      if (payload.assetId && (!readyOnly || payload.ready)) return payload.assetId;
-      if (payload.status && /(?:error|fail)/i.test(payload.status)) throw new Error('Mux could not process this video. Check its source file and try again.');
-      await new Promise((resolve) => window.setTimeout(resolve, 2000));
-    }
-    throw new Error('Mux is still preparing this upload.');
+    return waitForUpload(uploadId, uploadController.current!.signal, (status) => {
+      if (readyOnly) setReplacementProgress(current => current ? { ...current, processing: status.processing } : current);
+    }, readyOnly);
   }
 
   async function saveUploadMetadata(assetId: string, plan: UploadPlan) {
@@ -504,15 +517,16 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         request.send(file);
       });
       // Once Mux assigns an asset ID, it can be saved into a project while
-      // encoding continues. The ready wait below is only for UI completion.
-      update({ progress: 100, state: 'processing' });
+      // encoding continues. Background tracking owns readiness updates.
+      update({ uploadId: payload.id, progress: 100, state: 'processing' });
+      tracking.track(payload.id, file.name);
       const assetId = await waitForMuxAsset(payload.id, false);
       await saveUploadMetadata(assetId, plan);
-      update({ assetId, progress: 100, state: 'processing' });
+      update({ assetId, progress: 100 });
       setLocallyProcessingAssetIds((current) => current.includes(assetId) ? current : [...current, assetId]);
       window.setTimeout(() => void refreshLibrary(), 2500);
-      await waitForMuxAsset(payload.id);
-      update({ progress: 100, state: 'complete' });
+      // Readiness is tracked independently, including after details are saved.
+      // Do not hold the batch open or turn a long encode into an upload error.
       return assetId;
     } catch (reason) {
       update({ state: 'error', error: reason instanceof Error ? reason.message : 'Could not upload that file.' });
@@ -587,6 +601,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   }
 
   function addFiles(files: FileList | File[]) {
+    if (!tracking.loaded) return;
     const videos = Array.from(files).filter((file) => file.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(file.name));
     if (uploads.some((upload) => upload.state !== 'error') || savingUploadDetails) {
       setUploadDrawerOpen(true);
@@ -709,9 +724,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       setUploads((current) => current.map((upload) => ({ ...upload, saving: false })));
       setUploadDrawerOpen(false);
       setUploadCollectionId('');
-      setUploads([]);
+      setUploads(current => current.filter(upload => !readyUploadIds.has(upload.id)));
       setPendingUploadFiles([]);
-      const failedCount = uploads.length - readyUploads.length;
+      const failedCount = uploads.filter(upload => !readyUploadIds.has(upload.id) && upload.state === 'error').length;
       setWorkspaceMessage(`Saved upload details for ${readyUploads.length} ${readyUploads.length === 1 ? 'video' : 'videos'}${failedCount ? `. ${failedCount} failed upload${failedCount === 1 ? ' was' : 's were'} skipped.` : '.'}`);
       await refreshLibrary();
     } catch (reason) {
@@ -1650,7 +1665,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   return <>
     {error && <div className="admin-empty" role="alert"><p>The library could not refresh. Showing the last loaded videos. {error}</p><button type="button" disabled={refreshingLibrary} onClick={() => void refreshLibrary()}>{refreshingLibrary ? 'Retrying…' : 'Try again'}</button>{errorLogLink}</div>}
     {workspaceMessage && <div className="mux-workspace-message" role="status" aria-live="polite">{workspaceMessage}</div>}
-    {replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing{replacementProgress.total > 1 ? ` ${replacementProgress.current} of ${replacementProgress.total}` : ''}</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? 'Mux is processing' : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><i><i style={{ width: `${replacementProgress.progress}%` }} /></i></div>}
+    {replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing{replacementProgress.total > 1 ? ` ${replacementProgress.current} of ${replacementProgress.total}` : ''}</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? `Upload received · ${processingLabel(replacementProgress.processing)}` : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><MuxProcessingProgress uploadPercent={replacementProgress.stage === 'uploading' ? replacementProgress.progress : undefined} processing={replacementProgress.processing} /><small>Keep this tab open until the replacement is applied.</small></div>}
     <input ref={replaceInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" onChange={(event) => { const file = event.target.files?.[0]; if (file && replaceTargetId) void replaceVideo(file, replaceTargetId); }} />
     <input ref={groupReplaceInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" multiple onChange={(event) => { const project = projects.find((item) => item.id === replaceProjectId); if (!project) return; const projectAssets = project.variants.map((variant) => assetsById.get(variant.assetId)).filter((asset): asset is MatchedMuxLibraryAsset => Boolean(asset)); void replaceProjectVideos(Array.from(event.target.files ?? []), project, projectAssets); }} />
     <button className="mux-mobile-upload-trigger" type="button" onClick={() => uploadInput.current?.click()}>Upload videos</button>
@@ -1658,8 +1673,10 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <input ref={uploadInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" multiple onChange={chooseUpload} />
       <div><p>Upload to Mux</p><h2>Drop videos here.</h2><span>Direct to Mux.</span></div>
       <button type="button" onClick={() => uploadInput.current?.click()}>Choose videos</button>
-      {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map((upload) => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? `${upload.progress}% uploaded` : upload.state === 'processing' ? upload.assetId ? 'Mux is preparing video · ready to save' : 'Mux is preparing video' : upload.state === 'complete' ? 'Ready to save' : 'Could not upload'}</b>{(upload.state === 'uploading' || upload.state === 'processing') && <i><i style={{ width: `${upload.progress}%` }} /></i>}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
+      {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map(upload => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? 'Uploading · keep this tab open' : upload.state === 'error' ? 'Upload needs attention' : upload.state === 'complete' ? 'Ready to play · save your details' : 'Upload received · save your details while playback is prepared'}</b>{(upload.state === 'uploading' || upload.state === 'processing') && <MuxProcessingProgress uploadPercent={upload.state === 'uploading' ? upload.progress : undefined} processing={upload.processing} />}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
+
     </section>
+    {tracking.items.filter(item => !uploads.some(upload => upload.uploadId === item.uploadId)).length > 0 && <section className="mux-upload-queue" aria-label="Recent upload status"><h3>Recent uploads</h3><p>Received files keep processing when you leave. {tracking.persistent ? 'Status resumes when you reopen this library in this browser.' : 'Status cannot be saved in this browser; find your video in the library when you return.'}</p>{tracking.items.filter(item => !uploads.some(upload => upload.uploadId === item.uploadId)).map(item => <div key={item.uploadId}><span>{item.name}</span><b>{item.status?.ready ? 'Ready to play' : ['errored', 'cancelled', 'timed_out'].includes(item.status?.status || '') ? 'Upload received · processing failed' : 'Upload received'}</b>{!item.status?.ready && !['errored', 'cancelled', 'timed_out'].includes(item.status?.status || '') && <MuxProcessingProgress processing={item.status?.processing} />}{item.notice && <small>{item.notice}</small>}<button type="button" onClick={() => tracking.dismiss(item.uploadId)}>Dismiss status</button></div>)}</section>}
     {!uploadDrawerOpen && uploads.length > 0 && <button type="button" onClick={() => setUploadDrawerOpen(true)}>Review unsaved upload details</button>}
     {uploadDrawerOpen && <aside className={`mux-upload-drawer${uploads.length >= 8 ? ' mux-upload-drawer-large' : uploads.length >= 4 ? ' mux-upload-drawer-wide' : ''}`} aria-label="Upload details">
       <header><div><p>Uploads in progress</p><h2>{uploads.length} {uploads.length === 1 ? 'video' : 'videos'}</h2></div><button type="button" onClick={() => setUploadDrawerOpen(false)} aria-label="Close upload details"><UiIcon name="close" /></button></header>
@@ -1679,7 +1696,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
           return <article className={`mux-upload-card${selectedUploadIds.includes(upload.id) ? ' selected' : ''}`} key={upload.id}>
             {selectable ? <button className="mux-upload-card-select" type="button" onClick={() => toggleUploadForRatioGroup(upload.id)} aria-pressed={selectedUploadIds.includes(upload.id)} aria-label={`${selectedUploadIds.includes(upload.id) ? 'Deselect' : 'Select'} ${upload.title}`}><div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : 'Mux preparing preview'}</span>}<i>{selectedUploadIds.includes(upload.id) ? <UiIcon name="check" /> : <UiIcon name="plus" />}</i></div></button> : <div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : 'Mux preparing preview'}</span>}</div>}
             {ratioGroup ? <p className="mux-upload-ratio-title">{ratioGroup.title} · ratio variation</p> : <label><span>Title</span><input value={upload.title} onChange={(event) => updateUpload(upload.id, { title: event.target.value })} /></label>}
-            {(upload.state === 'uploading' || upload.state === 'processing') && <i className="mux-upload-card-progress"><i style={{ width: `${upload.progress}%` }} /></i>}
+            <p>{upload.state === 'uploading' ? 'Keep this tab open until transfer finishes.' : upload.state === 'error' ? 'Upload needs attention' : upload.state === 'complete' ? 'Ready to play · save your details' : 'Upload received · save your details, then you can leave.'}</p>{(upload.state === 'uploading' || upload.state === 'processing') && <MuxProcessingProgress uploadPercent={upload.state === 'uploading' ? upload.progress : undefined} processing={upload.processing} />}
             {upload.error && <small role="alert">{upload.error}</small>}
           </article>;
         })}
@@ -1786,7 +1803,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <div className="video-ratio-preview">
         <SoloVideoPlayer key={previewProject.id} title={previewProject.title} variants={previewProjectVariants} standaloneHref={`/watch/${previewProject.slug}`} compact={compactPreviews} />
       </div>
-    </VideoModal> : previewAsset && <div className="mux-player-modal" role="dialog" aria-modal="true" aria-label={`Preview ${previewAsset.title}`} onMouseDown={closePreview}><div className="mux-player-modal-panel" onMouseDown={(event) => event.stopPropagation()}><button className="mux-player-modal-close" type="button" aria-label="Close preview" onClick={closePreview}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg></button>{previewAsset.playbackId && previewAsset.playbackPolicy === 'public' ? <MuxVideoPlayer key={previewAsset.id} assetId={previewAsset.id} playbackId={previewAsset.playbackId} poster={previewAsset.thumbnailUrl} title={previewProject?.title || previewAsset.title} autoPlay /> : <p>Preview unavailable while Mux finishes processing this asset.</p>}</div></div>}
+    </VideoModal> : previewAsset && <div className="mux-player-modal" role="dialog" aria-modal="true" aria-label={`Preview ${previewAsset.title}`} onMouseDown={closePreview}><div className="mux-player-modal-panel" onMouseDown={(event) => event.stopPropagation()}><button className="mux-player-modal-close" type="button" aria-label="Close preview" onClick={closePreview}><svg viewBox="0 0 256 256" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg></button>{canPreviewAsset(previewAsset) ? <MuxVideoPlayer key={previewAsset.id} assetId={previewAsset.id} playbackId={previewAsset.playbackId} poster={previewAsset.thumbnailUrl} title={previewProject?.title || previewAsset.title} autoPlay /> : <p>Preview unavailable while Mux finishes processing this asset.</p>}</div></div>}
       {selectingGroupTitle && <div className="mux-bulk-modal mux-group-selection-modal" role="dialog" aria-modal="true" aria-label={`Select videos from ${selectingGroupTitle}`} onMouseDown={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }} aria-label="Close"><UiIcon name="close" /></button><header><p>Select from group</p><h3>{selectingGroupTitle}</h3><span>{selectingGroupAssets.filter((asset) => selectedIds.includes(asset.id)).length} of {selectingGroupAssets.length} selected</span></header><div className="mux-group-selection-grid">{selectingGroupAssets.map((asset) => <button className={selectedIds.includes(asset.id) ? 'selected' : ''} type="button" key={asset.id} onClick={() => toggleAsset(asset)} aria-pressed={selectedIds.includes(asset.id)}><span>{asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <i>Preview unavailable</i>}<b>{duration(asset.duration)}</b><em>{selectedIds.includes(asset.id) ? <UiIcon name="check" /> : <UiIcon name="plus" />}</em></span><strong>{asset.title}</strong><small>{friendlyAssetRatio(asset)}</small></button>)}</div><footer><button type="button" onClick={() => { setSelectingProjectId(''); setSelectingCollectionId(''); }}>Done</button></footer></div></div>}
       {selectionMode && <div className="mux-selection-spacer" aria-hidden="true" />}
     {selectionMove && <div className="mux-bulk-modal" role="dialog" aria-modal="true" aria-label="Move selected videos"><div>

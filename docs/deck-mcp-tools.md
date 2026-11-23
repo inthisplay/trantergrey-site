@@ -166,3 +166,10 @@ Dot owns conditions and timing; no server matching or notification schedule is
 created. Device permission and inbox management remain personal PWA controls,
 not AI tools. See [the API contract](internal-api.md#team-inbox-and-push-notifications)
 for limits, migration, deployment and device setup.
+
+Video reads may include optional `processing: { state, percent }` from the catalog
+snapshot. This does not turn `search_videos` or `get_video` into live progress
+pollers. Only transcoding has a numeric percentage; other phases return null.
+Upload receipt tracking remains session-only UI functionality alongside the
+existing admin-only uploads/replacements. Tool inventory, scopes and authentication
+are unchanged; no plugin refresh or reconnect is required for this additive output.

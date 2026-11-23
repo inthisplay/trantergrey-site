@@ -1,3 +1,4 @@
+import { normalizeProcessing } from '../../lib/mux-upload-status';
 import type { AdminEnvironment } from './admin';
 import type { MuxLibraryAsset } from '../../lib/mux-shared';
 export type { MuxLibraryAsset } from '../../lib/mux-shared';
@@ -11,6 +12,7 @@ type MuxSnapshotAssetRow = { value: string };
 type MuxAsset = {
   id?: string;
   status?: string;
+  progress?: { state?: string; progress?: number };
   duration?: number;
   created_at?: number;
   aspect_ratio?: string;
@@ -63,6 +65,7 @@ function normalize(asset: MuxAsset): MuxLibraryAsset | null {
     id: asset.id,
     title,
     status: asset.status || 'unknown',
+    processing: normalizeProcessing(asset.progress),
     duration: Math.max(0, Math.round(asset.duration || 0)),
     createdAt: asset.created_at ? new Date(asset.created_at * 1000).toISOString() : null,
     aspectRatio: asset.aspect_ratio || null,
@@ -224,8 +227,12 @@ export async function createMuxDirectUpload(env: AdminEnvironment, title: string
   return { id: upload.id, url: upload.url };
 }
 
-export async function getMuxDirectUploadAssetId(env: AdminEnvironment, uploadId: string) {
+export async function getMuxDirectUploadStatus(env: AdminEnvironment, uploadId: string) {
   validId(uploadId);
-  const upload = await muxFetch<{ asset_id?: string }>(env, `uploads/${uploadId}`);
-  return upload?.asset_id || null;
+  const upload = await muxFetch<{ asset_id?: string; status?: string }>(env, `uploads/${uploadId}`);
+  return { assetId: upload?.asset_id || null, status: upload?.status || 'waiting' };
+}
+
+export async function getMuxDirectUploadAssetId(env: AdminEnvironment, uploadId: string) {
+  return (await getMuxDirectUploadStatus(env, uploadId)).assetId;
 }

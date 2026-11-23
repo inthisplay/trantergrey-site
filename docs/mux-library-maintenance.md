@@ -16,3 +16,42 @@ The production Library webhook also records new ready assets and delivers
 Only transport retries use the Worker minute trigger; there is no scheduled
 catalog/card check or 24-hour notification rule. Apply the separate MCP_AUTH
 events schema and deploy both Pages and the MCP Worker for this capability.
+
+## Upload progress and playback readiness
+
+Direct uploads distinguish browser transfer (bytes uploaded) from confirmed Mux
+receipt and playback readiness. `GET /api/admin/mux-uploads?uploadId=...` retains
+`assetId`, `ready`, `status`, and adds optional `processing: { state, percent }`.
+Only Mux's `transcoding` percentage is displayed; ingestion has no meaningful
+percentage and uses an indeterminate indicator. A received file can have details,
+collections and ratio groups saved while encoding continues. No encoding quality,
+playback policy, download policy or automatic association is changed.
+
+Processing checks no longer fail after five minutes (or 90 seconds for management
+page replacements). Network/5xx failures retry; explicit processing failure and
+expired authentication remain distinct. Upstream status failures return sanitized
+502 responses. `?assetId=...` is an authenticated read used by the management page
+to wait for readiness. It never changes visibility. Public watch responses include
+variant status/progress and are not cached while preparing. Players wait for ready;
+watch pages and collection previews refresh pending variants automatically.
+
+The library remembers received upload IDs, filenames and receipt timestamps for
+up to seven days in localStorage, keyed by the verified team email. It resumes
+status checks in the same browser and account, even after upload details are saved.
+Dismiss only removes the status entry, not the asset. Browser storage failure is
+shown explicitly. Unsaved form details and file bytes are **not** persisted:
+users must save details before leaving. Transfers and unsaved details trigger a
+leave-page warning. Replacements still require the tab to stay open through the
+existing swap; automatic destructive swaps are never resumed on reopening.
+
+Validation: `node scripts/test-mux-upload-progress.mjs`, the MCP integration suite,
+TypeScript and the Cloudflare release check. No database migration is required.
+
+Released November 23, 2026: production Pages `800f8041` and MCP Worker
+`b0cb42fb-82e0-49a4-98ae-972e070d1e68`. Ten focused upload tests and all 49
+API/MCP tests passed, along with TypeScript, static release checks and Worker dry
+run. An isolated browser fixture verified receipt confirmation, percentage and
+indeterminate states, reload recovery, temporary outages and automatic readiness.
+Live library bundle hashes matched the isolated build; anonymous progress reads
+were denied. Read-only production MCP/OAuth renewal and revocation checks passed.
+No live business mutations or full-length production upload were used for testing.

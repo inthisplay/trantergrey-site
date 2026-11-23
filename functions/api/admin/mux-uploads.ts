@@ -1,5 +1,5 @@
 import { adminResponse, adminSession, origin, type AdminEnvironment } from '../../_lib/admin';
-import { createMuxDirectUpload, getMuxDirectUploadAssetId, getMuxLibraryAsset, invalidateMuxLibraryCache } from '../../_lib/mux';
+import { createMuxDirectUpload, getMuxDirectUploadStatus, getMuxLibraryAsset, invalidateMuxLibraryCache } from '../../_lib/mux';
 import { invalidateMuxBrowseIndex, refreshMuxLibraryCatalog } from '../../_lib/mux-library';
 
 type Context = { request: Request; env: AdminEnvironment; waitUntil(promise: Promise<unknown>): void };
@@ -13,8 +13,8 @@ async function refreshCatalogAtUploadMilestone(env: AdminEnvironment, waitUntil:
   waitUntil((async () => {
     await Promise.all([invalidateMuxLibraryCache(env), invalidateMuxBrowseIndex(env)]);
     await refreshMuxLibraryCatalog(env);
-  })().catch((error) => {
-    console.error(`Mux ${milestone} catalog refresh failed`, error instanceof Error ? error.message : 'Unknown error');
+  })().catch(() => {
+    console.error(`Mux ${milestone} catalog refresh failed`);
   }));
 }
 
@@ -35,12 +35,20 @@ export async function onRequestPost({ request, env }: Context) {
 export async function onRequestGet({ request, env, waitUntil }: Context) {
   const denied = await adminResponse(request, env); if (denied) return denied;
   try {
-    const uploadId = new URL(request.url).searchParams.get('uploadId') || '';
-    const assetId = await getMuxDirectUploadAssetId(env, uploadId);
+    const query = new URL(request.url).searchParams;
+    const requestedAsset = query.get('assetId');
+    const uploadId = query.get('uploadId') || '';
+    if (!/^[A-Za-z0-9]+$/.test(requestedAsset || uploadId)) return Response.json({ error: 'Invalid upload or asset ID.' }, { status: 400 });
+    if (requestedAsset) {
+      const asset = await getMuxLibraryAsset(env, requestedAsset);
+      return Response.json({ assetId: asset.id, ready: asset.status === 'ready' && asset.playbackPolicy === 'public' && Boolean(asset.playbackId), status: asset.status, processing: asset.processing, playbackId: asset.playbackId, playbackPolicy: asset.playbackPolicy, duration: asset.duration }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
+    const upload = await getMuxDirectUploadStatus(env, uploadId);
+    const assetId = upload.assetId;
     // An upload gets an asset ID before Mux has made it usable.  Returning that
     // ID as "done" let the admin create a project while the asset was absent
     // from the library (or did not have public playback yet).
-    if (!assetId) return Response.json({ assetId: null, ready: false });
+    if (!assetId) return Response.json({ assetId: null, ready: false, status: upload.status }, { headers: { 'Cache-Control': 'private, no-store' } });
     const asset = await getMuxLibraryAsset(env, assetId);
     const ready = asset.status === 'ready' && asset.playbackPolicy === 'public' && Boolean(asset.playbackId);
     await env.TG_DATA.prepare('UPDATE mux_asset_ingests SET asset_id = ? WHERE upload_id = ?').bind(assetId, uploadId).run();
@@ -48,7 +56,7 @@ export async function onRequestGet({ request, env, waitUntil }: Context) {
     // processing overlay. Once Mux reports ready, a second rebuild swaps in
     // playable metadata. Repeated polling does not cause further rebuilds.
     await refreshCatalogAtUploadMilestone(env, waitUntil, uploadId, ready ? 'ready' : 'discovered');
-    return Response.json({ assetId, ready, status: asset.status });
+    return Response.json({ assetId, ready, status: asset.status, processing: asset.processing }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
-  catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not check that upload.' }, { status: 400 }); }
+  catch { return Response.json({ error: 'Upload status is temporarily unavailable. Please retry.' }, { status: 502 }); }
 }

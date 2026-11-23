@@ -4,12 +4,12 @@ import { getMuxLibraryAsset, getMuxLibraryAssets, muxSourceThumbnailUrl, muxThum
 import { readMuxMetadata, readVideoProjectStore } from './mux-state';
 import { ratioLabel } from '../../lib/video-projects-shared';
 
-export type PublicVariant = { assetId: string; label: string; aspectRatio: string | null; playbackId: string; thumbnailUrl: string | null; duration: number; downloadsEnabled: boolean; maxResolution: string | null };
+export type PublicVariant = { status: string; processing?: import('../../lib/mux-upload-status').ProcessingProgress | null; assetId: string; label: string; aspectRatio: string | null; playbackId: string; thumbnailUrl: string | null; duration: number; downloadsEnabled: boolean; maxResolution: string | null };
 
 function publicVariant(asset: Awaited<ReturnType<typeof getMuxLibraryAsset>>, label: string, metadata: Awaited<ReturnType<typeof readMuxMetadata>>): PublicVariant | null {
   if (!asset.playbackId || asset.playbackPolicy !== 'public') return null;
   const saved = metadata[asset.id];
-  return { assetId: asset.id, label, aspectRatio: asset.aspectRatio, playbackId: asset.playbackId, thumbnailUrl: saved?.thumbnailTime === null || saved?.thumbnailTime === undefined ? asset.thumbnailUrl : muxThumbnailUrl(asset.playbackId, saved.thumbnailTime), duration: asset.duration, downloadsEnabled: saved?.downloadsEnabled !== false, maxResolution: asset.maxResolution };
+  return { status: asset.status, processing: asset.processing, assetId: asset.id, label, aspectRatio: asset.aspectRatio, playbackId: asset.playbackId, thumbnailUrl: saved?.thumbnailTime === null || saved?.thumbnailTime === undefined ? asset.thumbnailUrl : muxThumbnailUrl(asset.playbackId, saved.thumbnailTime), duration: asset.duration, downloadsEnabled: saved?.downloadsEnabled !== false, maxResolution: asset.maxResolution };
 }
 
 export async function publicWatchData(env: AdminEnvironment, slug: string) {
@@ -21,14 +21,14 @@ export async function publicWatchData(env: AdminEnvironment, slug: string) {
     const client = await publicProjectClient(env, project).catch(() => project.client);
     const unbrandedPublicPage = variants.length > 0 || project.unbrandedPublicPage === true;
     const logoKey = await clientPublicLogo(env, {...project, client, unbrandedPublicPage}).catch(() => null);
-    return { clientLogoUrl: logoKey ? `/api/watch/${encodeURIComponent(project.slug)}/logo` : null, title: project.title, client, description: project.description, unbrandedPublicPage, variants, collections: store.collections.filter((collection) => project.collectionIds.includes(collection.id)) };
+    return { pending: assets.some(asset => asset?.status === 'preparing'), clientLogoUrl: logoKey ? `/api/watch/${encodeURIComponent(project.slug)}/logo` : null, title: project.title, client, description: project.description, unbrandedPublicPage, variants, collections: store.collections.filter((collection) => project.collectionIds.includes(collection.id)) };
   }
   if (!/^[A-Za-z0-9]+$/.test(slug)) return null;
   const asset = await getMuxLibraryAsset(env, slug).catch(() => null); if (!asset) return null;
   const saved = metadata[asset.id]; const variant = publicVariant(asset, ratioLabel(asset.aspectRatio), metadata);
   const client = await publicProjectClient(env, { client: saved?.client || null, variants: [{assetId:asset.id}] }).catch(() => saved?.client || null);
   const logoKey = variant ? await clientPublicLogo(env, { client, unbrandedPublicPage: true }).catch(() => null) : null;
-  return { clientLogoUrl: logoKey ? `/api/watch/${encodeURIComponent(asset.id)}/logo` : null, title: saved?.title || asset.title, client: client || '', description: '', unbrandedPublicPage: Boolean(variant), variants: variant ? [variant] : [], collections: [] };
+  return { pending: asset.status === 'preparing', clientLogoUrl: logoKey ? `/api/watch/${encodeURIComponent(asset.id)}/logo` : null, title: saved?.title || asset.title, client: client || '', description: '', unbrandedPublicPage: Boolean(variant), variants: variant ? [variant] : [], collections: [] };
 }
 
 export async function publicCollectionData(env: AdminEnvironment, slug: string) {

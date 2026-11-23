@@ -1,11 +1,14 @@
 'use client';
 
+import { waitForUpload, processingLabel, type ProcessingProgress } from '@/lib/mux-upload-status';
+import { MuxProcessingProgress } from './MuxProcessingProgress';
+
 import { UiIcon } from '@/components/UiIcon';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Rendition = { name: string | null; status: string; url: string | null };
-type ReplacementProgress = { fileName: string; progress: number; stage: 'uploading' | 'processing' | 'swapping' };
+type ReplacementProgress = { fileName: string; progress: number; stage: 'uploading' | 'processing' | 'swapping'; processing?: ProcessingProgress | null };
 
 async function postJson(url: string, body: object) {
   const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -170,6 +173,14 @@ export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, st
     const updated = await run('public-downloads', () => postJson('/api/admin/mux-assets/metadata', { assetId, downloadsEnabled: next }), next ? 'Public downloads enabled.' : 'Public downloads disabled.');
     if (updated) setPublicDownloadsEnabled(next);
   };
+  const replacementController = useRef<AbortController | null>(null);
+  useEffect(() => () => replacementController.current?.abort(), []);
+  useEffect(() => {
+    if (!replacementProgress) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [replacementProgress]);
   const replaceVideo = async (file: File | undefined) => {
     if (!file) return;
     if (!window.confirm('Replace this Mux video with the selected file? The shareable page will stay the same and the current Mux asset will be permanently deleted after the replacement is ready.')) return;
@@ -190,15 +201,8 @@ export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, st
         request.send(file);
       });
       setReplacementProgress((current) => current ? { ...current, progress: 100, stage: 'processing' } : current);
-      let replacementAssetId: string | null = null;
-      for (let attempt = 0; attempt < 45 && !replacementAssetId; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 2000));
-        const response = await fetch(`/api/admin/mux-uploads?uploadId=${encodeURIComponent(uploadResponse.id)}`, { cache: 'no-store' });
-        const payload = await response.json().catch(() => null) as { assetId?: string; ready?: boolean; error?: string } | null;
-        if (!response.ok) throw new Error(payload?.error || 'Mux could not process the replacement file.');
-        replacementAssetId = payload?.ready ? payload.assetId ?? null : null;
-      }
-      if (!replacementAssetId) throw new Error('Mux is still preparing the replacement. Please try again in a moment.');
+      replacementController.current = new AbortController();
+      const replacementAssetId = await waitForUpload(uploadResponse.id, replacementController.current.signal, status => setReplacementProgress(current => current ? { ...current, processing: status.processing } : current));
       setReplacementProgress((current) => current ? { ...current, stage: 'swapping' } : current);
       for (let attempt = 0; attempt < 45; attempt += 1) {
         try {
@@ -223,7 +227,7 @@ export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, st
     <section className="mux-share-action"><small>Public link</small><p>Every video has a page ready to paste into an email or message.</p>
       <input aria-label="Public video URL" readOnly value={publicUrl} onFocus={(event) => event.currentTarget.select()} /><div className="mux-share-buttons"><button className="primary" type="button" onClick={() => void copyLink(publicUrl, 'Public link')}>Copy URL</button><a href={sharePath} target="_blank" rel="noreferrer">Open <UiIcon name="external" /></a></div>
     </section>
-    <section className="mux-replace-action"><small>Replace video</small><p>Upload a revision without changing the shareable page. The superseded Mux asset is deleted when the swap finishes.</p><input ref={replaceInput} className="visually-hidden" type="file" accept="video/*,.mov,.mp4,.m4v,.webm,.avi,.mkv" onChange={(event) => { void replaceVideo(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /><button className="primary" type="button" onClick={() => replaceInput.current?.click()} disabled={Boolean(busy)}>{busy === 'replace' ? 'Replacing…' : 'Replace video'}</button>{replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? 'Mux is processing' : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><i><i style={{ width: `${replacementProgress.progress}%` }} /></i>{replacementProgress.stage !== 'uploading' && <span className="mux-replacement-spinner" aria-hidden="true" />}</div>}</section>
+    <section className="mux-replace-action"><small>Replace video</small><p>Upload a revision without changing the shareable page. The superseded Mux asset is deleted when the swap finishes.</p><input ref={replaceInput} className="visually-hidden" type="file" accept="video/*,.mov,.mp4,.m4v,.webm,.avi,.mkv" onChange={(event) => { void replaceVideo(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /><button className="primary" type="button" onClick={() => replaceInput.current?.click()} disabled={Boolean(busy)}>{busy === 'replace' ? 'Replacing…' : 'Replace video'}</button>{replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? `Upload received · ${processingLabel(replacementProgress.processing)}` : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><MuxProcessingProgress uploadPercent={replacementProgress.stage === 'uploading' ? replacementProgress.progress : undefined} processing={replacementProgress.processing} /><small>Keep this tab open until the replacement is applied.</small>{replacementProgress.stage !== 'uploading' && <span className="mux-replacement-spinner" aria-hidden="true" />}</div>}</section>
     <section className="mux-thumbnail-action"><small>Thumbnail</small><p>Choose the frame used throughout the video library.</p>
       {previewThumbnail && <img src={previewThumbnail} alt="Selected thumbnail frame" />}
       <div className="mux-thumbnail-time"><input aria-label="Thumbnail frame time" type="range" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /><label><input type="number" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /> sec</label></div>
