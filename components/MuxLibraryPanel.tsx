@@ -1,5 +1,6 @@
 'use client';
 
+import { MuxRecentUploadsBar } from './MuxRecentUploadsBar';
 import { useMuxUploadTracking } from './useMuxUploadTracking';
 import { MuxProcessingProgress } from './MuxProcessingProgress';
 import { waitForUpload, processingLabel, type ProcessingProgress } from '@/lib/mux-upload-status';
@@ -1676,7 +1677,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map(upload => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? 'Uploading · keep this tab open' : upload.state === 'error' ? 'Upload needs attention' : upload.state === 'complete' ? 'Ready to play · save your details' : 'Upload received · save your details while playback is prepared'}</b>{(upload.state === 'uploading' || upload.state === 'processing') && <MuxProcessingProgress uploadPercent={upload.state === 'uploading' ? upload.progress : undefined} processing={upload.processing} />}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
 
     </section>
-    {tracking.items.filter(item => !uploads.some(upload => upload.uploadId === item.uploadId)).length > 0 && <section className="mux-upload-queue" aria-label="Recent upload status"><h3>Recent uploads</h3><p>Received files keep processing when you leave. {tracking.persistent ? 'Status resumes when you reopen this library in this browser.' : 'Status cannot be saved in this browser; find your video in the library when you return.'}</p>{tracking.items.filter(item => !uploads.some(upload => upload.uploadId === item.uploadId)).map(item => <div key={item.uploadId}><span>{item.name}</span><b>{item.status?.ready ? 'Ready to play' : ['errored', 'cancelled', 'timed_out'].includes(item.status?.status || '') ? 'Upload received · processing failed' : 'Upload received'}</b>{!item.status?.ready && !['errored', 'cancelled', 'timed_out'].includes(item.status?.status || '') && <MuxProcessingProgress processing={item.status?.processing} />}{item.notice && <small>{item.notice}</small>}<button type="button" onClick={() => tracking.dismiss(item.uploadId)}>Dismiss status</button></div>)}</section>}
+    <MuxRecentUploadsBar items={tracking.items.filter(item => !uploads.some(upload => upload.uploadId === item.uploadId))} dismiss={tracking.dismiss} />
     {!uploadDrawerOpen && uploads.length > 0 && <button type="button" onClick={() => setUploadDrawerOpen(true)}>Review unsaved upload details</button>}
     {uploadDrawerOpen && <aside className={`mux-upload-drawer${uploads.length >= 8 ? ' mux-upload-drawer-large' : uploads.length >= 4 ? ' mux-upload-drawer-wide' : ''}`} aria-label="Upload details">
       <header><div><p>Uploads in progress</p><h2>{uploads.length} {uploads.length === 1 ? 'video' : 'videos'}</h2></div><button type="button" onClick={() => setUploadDrawerOpen(false)} aria-label="Close upload details"><UiIcon name="close" /></button></header>
