@@ -8,7 +8,7 @@ matching logic, notification recipient, or card-monitoring timer on the server.
 
 ## Connect
 
-Rescan the TranterGrey plugin/server so events appear alongside its 24 tools.
+Rescan the TranterGrey plugin/server so events appear alongside its 26 tools.
 Then ask Dot to subscribe to `mux.asset.ready` and describe the desired behavior.
 Installing/rescanning alone does not subscribe. For example: “Subscribe to new
 Mux assets. Confirm the subscription, and let me decide the follow-up rules.”
@@ -43,7 +43,8 @@ revocation or expired authorization stops delivery. Persistent OAuth is unchange
 Each connection may hold ten subscriptions; creation/refresh has a 20/minute
 limit in addition to existing request limits.
 
-Only the exact trusted origin `https://chatgpt.com` is accepted for callbacks.
+Only the exact trusted origins `https://chatgpt.com` and
+`https://connectors.api.openai.com` are accepted for callbacks.
 Arbitrary DNS hosts, subdomains/lookalikes, IP literals, credentials, nonstandard
 ports, URL fragments and redirects are rejected. This deliberate ChatGPT-only
 allowlist avoids user-controlled DNS/rebinding targets; it is not a general
@@ -139,3 +140,17 @@ keys, authorization headers or identity IDs are included. These diagnostics are
 in Workers Logs, not the Connection health error totals. A generic ChatGPT task
 error does not identify the failing side; correlate a controlled attempt with
 these stages before changing validation or callback restrictions.
+
+
+### Dot callback compatibility fix — November 22, 2026
+
+A controlled real Dot subscription reached our handler but failed the exact-host
+callback allowlist. The receiver supplied by Dot is `connectors.api.openai.com`.
+Both `https://chatgpt.com` and `https://connectors.api.openai.com` are now allowed
+for verification and delivery. No wildcard domains, arbitrary callback hosts,
+non-HTTPS addresses, alternate ports, credentials, fragments or redirects are
+allowed. Signed challenge verification remains required before saving a
+subscription. Regression coverage exercises the connector hostname through
+subscription, signed asset delivery and unsubscribe, plus lookalike-host rejection.
+Temporary hostname logging was removed once the destination was identified.
+Diagnostics retain only allowlisted field names/types, stages and numeric errors.

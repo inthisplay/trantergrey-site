@@ -28,7 +28,9 @@ export function registerEvents(server: McpServer, env: TrialEnvironment, session
   async function identity(url:string) {
     if(!sessionId || !await liveSession(env,sessionId)) throw new McpError(-32001,'An active persistent connection is required. Reconnect if necessary.');
     let callback:string;
-    try {callback=callbackUrl(url);} catch {throw new McpError(-32602,'Callback must use the trusted HTTPS chatgpt.com host, without credentials or fragments.');}
+    try {callback=callbackUrl(url);} catch {
+      console.info(JSON.stringify({diagnostic:'mcp_events',operation:'callback_validation',stage:'destination_rejected'}));
+      throw new McpError(-32602,'Callback must use an approved OpenAI HTTPS host, without credentials or fragments.');}
     const id='sub_'+await hash(JSON.stringify([sessionId,eventName,{},callback]));
     return {id,callback};
   }
@@ -38,7 +40,7 @@ export function registerEvents(server: McpServer, env: TrialEnvironment, session
   });
   server.server.setRequestHandler(z.object({method:z.literal('events/subscribe'),params:z.unknown()}),async({params:input})=>guarded('event_subscribe',async()=>{
     console.info(JSON.stringify({diagnostic:'mcp_events',operation:'event_subscribe',stage:'received'}));
-    const parsed=subscribe.safeParse(input); if(!parsed.success)throw new McpError(-32602,'Invalid subscription parameters. Use the event schema and a null replay cursor.');
+    const parsed=subscribe.safeParse(input); if(!parsed.success) { console.info(JSON.stringify({diagnostic:'mcp_events',operation:'event_subscribe',stage:'invalid_fields',shape:Object.fromEntries(['name','event','eventName','event_name','arguments','args','filters','delivery','cursor','ttlMs','subscriptionId','subscription_id','id'].filter(key=>input!==null&&typeof input==='object'&&Object.hasOwn(input,key)).map(key=>[key,Reflect.get(input as object,key)===null?'null':typeof Reflect.get(input as object,key)])),issues:parsed.error.issues.map(issue=>({code:issue.code,path:issue.path.map(part=>['name','arguments','delivery','mode','url','secret','cursor','ttlMs'].includes(String(part))?part:'other')}))})); throw new McpError(-32602,'Invalid subscription parameters. Use the event schema and a null replay cursor.'); }
     const params=parsed.data;
     const {id,callback}=await identity(params.delivery.url);
     console.info(JSON.stringify({diagnostic:'mcp_events',operation:'event_subscribe',stage:'identity_validated'}));

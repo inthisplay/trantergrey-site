@@ -545,7 +545,7 @@ async function eventClient(f) {
 function receiver(t,handler=()=>new Response(null,{status:204})) {
   const previous=globalThis.fetch, calls=[];
   globalThis.fetch=async(url,init)=>{
-    assert.equal(new URL(url).hostname,'chatgpt.com');assert.equal(init.redirect,'error');
+    assert.ok(['chatgpt.com','connectors.api.openai.com'].includes(new URL(url).hostname));assert.equal(init.redirect,'error');
     const body=JSON.parse(init.body);calls.push({url,init,body});
     if(body.type==='verification')return Response.json({challenge:body.challenge});
     return handler(url,init,body);
@@ -764,4 +764,13 @@ test('event diagnostics report rejected stages without payloads, secrets or call
  const response=await f.fetch('/mcp',{method:'POST',headers:{authorization:`Bearer ${access}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'events/subscribe',params:{name:'private-event-name',arguments:{},delivery:{mode:'webhook',url:'https://private-callback.invalid/secret-path',secret:'private-signing-secret'}}})});
  const result=await response.json();assert.equal(result.error.code,-32602);
  const logs=entries.join('\n');assert.match(logs,/transport_received/);assert.match(logs,/rejected/);assert.ok(!logs.includes('private-'));assert.ok(!logs.includes(access));
+});
+
+
+test('Dot connector callback host supports verified subscription, signed delivery and unsubscribe',async t=>{
+ const f=fixture(t),{rpc}=await eventClient(f),calls=receiver(t);const params=subscriptionParams('https://connectors.api.openai.com/mcp-events/test');
+ const sub=await rpc('events/subscribe',params);assert.ok(sub.result?.id,JSON.stringify(sub));assert.ok(await validEventSignature(calls[0]));
+ await enqueueMuxReady(f.env,readyEvent('dotCallbackAsset'));await deliverEvents(f.env);assert.equal(calls[1].body.data.assetId,'dotCallbackAsset');assert.ok(await validEventSignature(calls[1]));
+ const {secret,...delivery}=params.delivery;assert.deepEqual((await rpc('events/unsubscribe',{name:params.name,arguments:{},delivery})).result,{});
+ for(const url of ['http://connectors.api.openai.com/test','https://connectors.api.openai.com.evil.test/test','https://connectors.api.openai.com@127.0.0.1/test','https://connectors.api.openai.com:8443/test','https://connectors.api.openai.com/test#fragment','https://other.api.openai.com/test'])assert.equal((await rpc('events/subscribe',subscriptionParams(url))).error.code,-32602);
 });

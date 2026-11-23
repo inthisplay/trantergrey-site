@@ -23,10 +23,10 @@ export async function hash(value: string) {
 }
 export function callbackUrl(value: string) {
   const url = new URL(value);
-  // This integration is exclusively for ChatGPT/Dot. A fixed, exact trusted
-  // hostname prevents callers choosing private IPs, attacker-controlled DNS or
+  // This integration is exclusively for ChatGPT/Dot. Fixed, exact trusted
+  // hostnames prevent callers choosing private IPs, attacker-controlled DNS or
   // lookalike/subdomains. Never widen this to arbitrary subscription URLs.
-  if (url.origin !== 'https://chatgpt.com' || url.hostname !== 'chatgpt.com' || url.username || url.password || url.hash || url.pathname === '/') throw new Error('invalid_callback');
+  if (!['https://chatgpt.com','https://connectors.api.openai.com'].includes(url.origin) || url.username || url.password || url.hash || url.pathname === '/') throw new Error('invalid_callback');
   return url.href;
 }
 export function signingKey(secret: string) {
