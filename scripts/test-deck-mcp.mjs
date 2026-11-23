@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const temp = await mkdtemp(join(tmpdir(), 'tg-deck-mcp-'));
-await build({ entryPoints: ['workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/_lib/mcp-events.ts', 'functions/api/webhooks/mux.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+await build({ entryPoints: ['functions/_lib/notifications.ts','functions/api/admin/inbox.ts','functions/api/internal/v1/notifications.ts','workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/_lib/mcp-events.ts', 'functions/api/webhooks/mux.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
 const worker = (await import(pathToFileURL(join(temp, 'workers/deck-mcp/index.mjs')))).default;
 const { onRequestPost } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards.mjs')));
 const { onRequest: manageConnections } = await import(pathToFileURL(join(temp, 'functions/api/admin/mcp-connections.mjs')));
@@ -21,7 +21,7 @@ const { enforceRateLimit, cleanupIntegrationHealth } = await import(pathToFileUR
 const { onRequest: healthApi } = await import(pathToFileURL(join(temp, 'functions/api/admin/integration-health.mjs')));
 const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/comments.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
-const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
+const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8') + await readFile('workers/deck-mcp/events-schema.sql','utf8');
 const {enqueueMuxReady,deliverEvents}=await import(pathToFileURL(join(temp,'functions/_lib/mcp-events.mjs')));
 const {onRequestPost:muxWebhook}=await import(pathToFileURL(join(temp,'functions/api/webhooks/mux.mjs')));
@@ -59,12 +59,12 @@ function fixture(t) {
   t.after(() => { db.close(); auth.close(); });
   const fetch = (path, options = {}) => worker.fetch(new Request(new URL(path, env.MCP_ORIGIN), options), env);
   const form = (path, body, headers = {}) => fetch(path, { method: 'POST', headers, body: new URLSearchParams(body) });
-  async function grant(accessCode = env.TEST_ACCESS_CODE) {
+  async function grant(accessCode = env.TEST_ACCESS_CODE, scope = 'tg:personal') {
     const registration = await fetch('/register', { method: 'POST', body: JSON.stringify({ redirect_uris: ['https://chatgpt.com/connector_platform_oauth_redirect'], token_endpoint_auth_method: 'none' }) });
     assert.equal(registration.status, 201);
     const { client_id } = await registration.json();
     const verifier = 'x'.repeat(64);
-    const parameters = { client_id, redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect', response_type: 'code', code_challenge_method: 'S256', code_challenge: await hash(verifier), resource: env.MCP_ORIGIN + '/mcp', scope: 'tg:personal', state: 'return-state' };
+    const parameters = { client_id, redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect', response_type: 'code', code_challenge_method: 'S256', code_challenge: await hash(verifier), resource: env.MCP_ORIGIN + '/mcp', scope, state: 'return-state' };
     const page = await fetch('/authorize?' + new URLSearchParams(parameters)); assert.equal(page.status, 200);
     assert.equal(page.headers.get('referrer-policy'), 'same-origin', 'Consent form must preserve browser Origin on same-site POST');
     assert.equal(page.headers.get('content-security-policy'), `default-src 'none'; form-action 'self' ${parameters.redirect_uri}; frame-ancestors 'none'; base-uri 'none'`);
@@ -73,8 +73,8 @@ function fixture(t) {
     const approve = () => form('/authorize', { transaction, access_code: accessCode }, { origin: env.MCP_ORIGIN, cookie });
     return { parameters, client_id, verifier, approve, cookie, transaction };
   }
-  async function token(accessCode = env.TEST_ACCESS_CODE) {
-    const g = await grant(accessCode); const response = await g.approve(); assert.equal(response.status, 303);
+  async function token(accessCode = env.TEST_ACCESS_CODE, scope = 'tg:personal') {
+    const g = await grant(accessCode, scope); const response = await g.approve(); assert.equal(response.status, 303);
     const target = new URL(response.headers.get('location')); assert.equal(target.searchParams.get('iss'), env.MCP_ORIGIN); assert.equal(target.searchParams.get('state'), 'return-state');
     const exchange = { grant_type: 'authorization_code', code: target.searchParams.get('code'), client_id: g.client_id, code_verifier: g.verifier, redirect_uri: g.parameters.redirect_uri, resource: g.parameters.resource };
     const r = await form('/token', exchange); assert.equal(r.status, 200);
@@ -119,13 +119,13 @@ test('separate consent tabs survive retries and clear only their own cookie', as
   assert.equal((await submit(first, first.cookie)).status, 400);
 });
 
-test('real MCP client discovers 24 tools and creates one audited card across retries', async t => {
+test('real MCP client discovers 26 tools and creates one audited card across retries', async t => {
   const f = fixture(t); const { access } = await f.token();
   const client = new Client({ name: 'deck-test', version: '1.0' });
   const transport = new StreamableHTTPClientTransport(new URL(f.env.MCP_ORIGIN + '/mcp'), { requestInit: { headers: { Authorization: `Bearer ${access}` } }, fetch: (url, options) => f.fetch(url, options) });
   await client.connect(transport);
   try {
-    const tools = await client.listTools(); assert.equal(tools.tools.length, 24); assert.equal(new Set(tools.tools.map(x => x.name)).size, 24); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
+    const tools = await client.listTools(); assert.equal(tools.tools.length, 26); assert.equal(new Set(tools.tools.map(x => x.name)).size, 26); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
     const columns = await client.callTool({ name: 'list_deck_columns', arguments: {} });
     assert.deepEqual(columns.structuredContent.columns, [{ id: 'ideas', name: 'Ideas' }, { id: 'production', name: 'Production' }]);
     const args = { title: 'Mabra fall campaign — MCP test', client: 'Mabra', columnSourceId: 'ideas', notes: '<script>alert(1)</script>', requestId: crypto.randomUUID() };
@@ -661,4 +661,100 @@ test('invitation revocation stops event delivery even while its OAuth session ex
   f.auth.prepare("UPDATE oauth_records SET data=json_set(data,'$.invitationId',?) WHERE kind='session'").run(invitation);
   await enqueueMuxReady(f.env,readyEvent());f.auth.prepare('UPDATE mcp_invitations SET revoked_at=? WHERE id=?').run('now',invitation);
   await deliverEvents(f.env);assert.equal(calls.filter(c=>!c.body.type).length,0);assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_subscriptions').get().n,0);
+});
+
+const notifications=await import(pathToFileURL(join(temp,'functions/_lib/notifications.mjs')));
+const {onRequest:inboxApi}=await import(pathToFileURL(join(temp,'functions/api/admin/inbox.mjs')));
+const {onRequest:notificationsApi}=await import(pathToFileURL(join(temp,'functions/api/internal/v1/notifications.mjs')));
+const sender={type:'integration',id:'sender',name:'Sender',email:null,scopes:new Set(['notifications:send'])};
+const notificationInput=()=>({requestId:crypto.randomUUID(),recipients:['taylor@trantergrey.com'],title:'Check video',body:'Please review this match.',href:'/app/deck?card=one'});
+function inboxSession(f,email='taylor@trantergrey.com') {
+ const id=crypto.randomUUID();f.db.prepare('INSERT INTO admin_sessions VALUES(?,?,?,?)').run(id,'Taylor',email,new Date(Date.now()+86400000).toISOString());
+ return {id,call:(body,query='',origin='https://deck.test')=>inboxApi({env:f.env,request:new Request('https://deck.test/api/admin/inbox'+query,{headers:{cookie:`tg_admin=${id}`,origin,'Content-Type':'application/json'},...(body?{method:'POST',body:JSON.stringify(body)}:{})})})};
+}
+async function pushKeys(f){const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);const jwk=await crypto.subtle.exportKey('jwk',pair.privateKey);f.env.PUSH_VAPID_PUBLIC_KEY=Buffer.from(await crypto.subtle.exportKey('raw',pair.publicKey)).toString('base64url');f.env.PUSH_VAPID_PRIVATE_KEY=jwk.d;
+ const device=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);return {endpoint:'https://web.push.apple.com/test-'+crypto.randomUUID(),keys:{p256dh:Buffer.from(await crypto.subtle.exportKey('raw',device.publicKey)).toString('base64url'),auth:Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url')}};
+}
+test('notifications are atomic, deduplicated concurrently, reject changed retries and validate recipients/links',async t=>{
+ const f=fixture(t),input=notificationInput();
+ await Promise.all([notifications.sendNotification(f.env,sender,input),notifications.sendNotification(f.env,sender,input)]);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM team_notifications').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM notification_requests').get().n,1);
+ await assert.rejects(()=>notifications.sendNotification(f.env,sender,{...input,title:'changed'}),e=>e.status===409);
+ for(const href of ['https://evil.test','//evil.test','/app/../admin','/app/\\evil.test','javascript:alert(1)'])await assert.rejects(()=>notifications.sendNotification(f.env,sender,{...notificationInput(),href}));
+ await assert.rejects(()=>notifications.sendNotification(f.env,sender,{...notificationInput(),recipients:['unknown@trantergrey.com']}));
+ assert.equal(f.db.prepare('SELECT count(*) n FROM team_notifications').get().n,1);
+ f.db.exec(`CREATE TRIGGER fail_notification BEFORE INSERT ON team_notifications BEGIN SELECT RAISE(ABORT,'fixture failure'); END;`);
+ await assert.rejects(()=>notifications.sendNotification(f.env,sender,notificationInput()));assert.equal(f.db.prepare('SELECT count(*) n FROM notification_requests').get().n,1);
+});
+test('inbox isolates users, protects writes, paginates and preserves read status on retry',async t=>{
+ const f=fixture(t),a=inboxSession(f),b=inboxSession(f,'other@trantergrey.com');f.db.prepare('INSERT INTO admin_team_directory VALUES(?,?)').run('Other','other@trantergrey.com');
+ const input=notificationInput();const saved=await notifications.sendNotification(f.env,sender,input);await notifications.sendNotification(f.env,sender,notificationInput());const id=saved.notifications[0].id;
+ assert.equal((await a.call({action:'read',id},'','https://evil.test')).status,403);
+ await b.call({action:'read',id});assert.equal(f.db.prepare('SELECT read_at FROM team_notifications WHERE id=?').get(id).read_at,null);
+ assert.equal((await (await b.call()).json()).data.items.length,0);
+ const first=(await (await a.call(undefined,'?limit=1')).json()).data;assert.ok(first.nextCursor);const second=(await (await a.call(undefined,'?limit=1&cursor='+encodeURIComponent(first.nextCursor))).json()).data;assert.notEqual(first.items[0].id,second.items[0].id);
+ await a.call({action:'read',id});await notifications.sendNotification(f.env,sender,input);assert.ok(f.db.prepare('SELECT read_at FROM team_notifications WHERE id=?').get(id).read_at);
+ assert.equal((await (await a.call()).json()).data.unread,1);
+ const unauth=await inboxApi({env:f.env,request:new Request('https://deck.test/api/admin/inbox')});assert.equal(unauth.status,401);
+});
+test('push subscriptions validate targets and keys, and device opt-out removes queued jobs',async t=>{
+ const f=fixture(t),session=inboxSession(f),sub=await pushKeys(f);
+ for(const endpoint of ['https://127.0.0.1/test','http://web.push.apple.com/test','https://web.push.apple.com.evil.test/test','https://web.push.apple.com:999/test'])assert.equal((await session.call({action:'subscribe',subscription:{...sub,endpoint}})).status,400);
+ assert.equal((await session.call({action:'subscribe',subscription:{...sub,keys:{...sub.keys,p256dh:'A'.repeat(87)}}})).status,400);
+ assert.equal((await session.call({action:'subscribe',subscription:sub})).status,200);
+ await notifications.sendNotification(f.env,sender,notificationInput());assert.equal(f.db.prepare('SELECT count(*) n FROM notification_push_jobs').get().n,1);
+ assert.equal((await session.call({action:'unsubscribe',endpoint:sub.endpoint})).status,200);assert.equal(f.db.prepare('SELECT count(*) n FROM notification_push_jobs').get().n,0);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM team_notifications').get().n,1);
+});
+test('push uses encrypted payloads, retries transient failures, removes expired subscriptions and skips logged-out devices',async t=>{
+ const f=fixture(t),session=inboxSession(f),sub=await pushKeys(f);await session.call({action:'subscribe',subscription:sub});
+ await notifications.sendNotification(f.env,sender,notificationInput());let calls=0;const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original;});
+ globalThis.fetch=async(url,options)=>{calls++;assert.equal(url,sub.endpoint);assert.equal(options.redirect,'manual');assert.ok(options.headers);const headers=new Headers(options.headers);assert.equal(headers.get('content-encoding'),'aes128gcm');assert.match(headers.get('authorization'),/^vapid /);assert.ok(!Buffer.from(options.body).includes(Buffer.from('Check video')));return new Response(null,{status:calls===1?503:201});};
+ await notifications.deliverNotificationPush(f.env);assert.equal(f.db.prepare('SELECT status FROM notification_push_jobs').get().status,'pending');
+ f.db.exec('UPDATE notification_push_jobs SET next_attempt=0');await Promise.all([notifications.deliverNotificationPush(f.env),notifications.deliverNotificationPush(f.env)]);assert.equal(calls,2);assert.equal(f.db.prepare('SELECT status FROM notification_push_jobs').get().status,'accepted');
+ await notifications.sendNotification(f.env,sender,notificationInput());globalThis.fetch=async()=>new Response(null,{status:410});await notifications.deliverNotificationPush(f.env);assert.equal(f.db.prepare('SELECT count(*) n FROM push_subscriptions').get().n,0);
+ await session.call({action:'subscribe',subscription:sub});await notifications.sendNotification(f.env,sender,notificationInput());f.db.prepare('DELETE FROM admin_sessions WHERE id=?').run(session.id);globalThis.fetch=async()=>{assert.fail('Revoked session must not receive push');};await notifications.deliverNotificationPush(f.env);assert.equal(f.db.prepare("SELECT count(*) n FROM notification_push_jobs WHERE status='skipped'").get().n,1);
+});
+test('notification tools require explicit consent and refresh retains the original scope',async t=>{
+ const f=fixture(t);
+ async function connect(token){const c=new Client({name:'notification-test',version:'1'});await c.connect(new StreamableHTTPClientTransport(new URL(f.env.MCP_ORIGIN+'/mcp'),{requestInit:{headers:{Authorization:`Bearer ${token.access}`}},fetch:(url,options)=>f.fetch(url,options)}));t.after(()=>c.close());return c;}
+ const old=await f.token();const oldClient=await connect(old);assert.equal((await oldClient.callTool({name:'list_notification_recipients',arguments:{}})).isError,true);
+ const newToken=await f.token(undefined,'tg:personal notifications:send');const c=await connect(newToken);assert.equal((await c.callTool({name:'list_notification_recipients',arguments:{}})).structuredContent.recipients.length,1);
+ const input=notificationInput();assert.equal((await c.callTool({name:'send_team_notification',arguments:input})).structuredContent.saved,true);
+ assert.equal((await c.callTool({name:'send_team_notification',arguments:input})).structuredContent.saved,true);
+ const renewed=await f.form('/token',{grant_type:'refresh_token',refresh_token:newToken.refresh,client_id:newToken.grant.client_id,resource:f.env.MCP_ORIGIN+'/mcp'});assert.equal((await renewed.json()).scope,'tg:personal notifications:send');
+ const oldRenew=await f.form('/token',{grant_type:'refresh_token',refresh_token:old.refresh,client_id:old.grant.client_id,resource:f.env.MCP_ORIGIN+'/mcp'});assert.equal((await oldRenew.json()).scope,'tg:personal');
+ assert.equal(f.db.prepare('SELECT count(*) n FROM team_notifications').get().n,1);
+});
+test('notification REST endpoint rejects anonymous and legacy broad-token callers',async t=>{
+ const f=fixture(t);f.env.PRODUCTION_API_TOKEN='legacy-token';
+ const call=headers=>notificationsApi({env:f.env,request:new Request('https://deck.test/api/internal/v1/notifications',{headers})});
+ assert.equal((await call({})).status,401);assert.equal((await call({authorization:'Bearer legacy-token'})).status,403);
+});
+
+test('notification REST credential scopes, payload bounds, send limits and retry exceptions',async t=>{
+ const f=fixture(t),id=crypto.randomUUID(),token=`tg_${id}_${'x'.repeat(32)}`;
+ const secret=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))).toString('hex');
+ f.db.prepare('INSERT INTO api_integration_credentials(id,name,secret_hash,scopes_json,created_at) VALUES(?,?,?,?,?)').run(id,'Test notifier',secret,'["notifications:send"]','now');
+ const call=body=>notificationsApi({env:f.env,request:new Request('https://deck.test/api/internal/v1/notifications',{method:body?'POST':'GET',headers:{authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})})});
+ assert.equal((await call()).status,200);const input=notificationInput();assert.equal((await call(input)).status,200);
+ assert.equal((await call({...notificationInput(),body:'x'.repeat(20000)})).status,413);
+ for(let i=1;i<10;i++)assert.equal((await call(notificationInput())).status,200);
+ assert.equal((await call(notificationInput())).status,429);assert.equal((await call(input)).status,200);
+ assert.equal((await call({...input,title:'changed'})).status,409);
+});
+
+test('service worker keeps private content out of push display and opens the inbox',async()=>{
+ const {runInNewContext}=await import('node:vm');const listeners={};let shown,opened,notified=0,pending;
+ runInNewContext(await readFile('public/sw.js','utf8'),{self:{addEventListener:(name,fn)=>listeners[name]=fn,registration:{showNotification:async(title,options)=>{shown={title,options};}},clients:{matchAll:async()=>[{postMessage:()=>notified++}],openWindow:async path=>{opened=path;}}},URL});
+ listeners.push({data:{json:()=>({id:'11111111-1111-4111-8111-111111111111',title:'Private title',url:'https://evil.test'})},waitUntil:p=>{pending=p;}});await pending;
+ assert.equal(shown.title,'TG Team');assert.ok(!JSON.stringify(shown).includes('Private title'));assert.equal(notified,1);
+ listeners.notificationclick({notification:{close(){}},waitUntil:p=>{pending=p;}});await pending;assert.equal(opened,'/app/inbox');
+});
+
+
+test('push stops after a crashed final attempt and keeps the inbox',async t=>{
+ const f=fixture(t),session=inboxSession(f),sub=await pushKeys(f);await session.call({action:'subscribe',subscription:sub});await notifications.sendNotification(f.env,sender,notificationInput());
+ f.db.exec("UPDATE notification_push_jobs SET attempts=8,next_attempt=0,lease='crashed'");const original=globalThis.fetch;t.after(()=>globalThis.fetch=original);globalThis.fetch=async()=>assert.fail('Exhausted jobs must not send again');
+ await notifications.deliverNotificationPush(f.env);assert.equal(f.db.prepare('SELECT status FROM notification_push_jobs').get().status,'failed');assert.equal(f.db.prepare('SELECT count(*) n FROM team_notifications').get().n,1);
 });

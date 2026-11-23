@@ -7,3 +7,6 @@
   flex: 1;
   max-width: 160px;
 }
+
+.aboveContent .bell { position: relative; flex: 0 0 44px; display:flex; align-items:center; justify-content:center; padding:8px; }
+@media(max-width:400px){.aboveContent{gap:2px;padding-left:8px;padding-right:8px}.aboveContent a{padding-left:6px;padding-right:6px}}

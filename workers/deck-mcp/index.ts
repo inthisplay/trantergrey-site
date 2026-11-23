@@ -1,3 +1,5 @@
+import { registerNotificationTools } from './notifications';
+import { deliverNotificationPush } from '../../functions/_lib/notifications';
 import { enforceRateLimit, peer, operationLabel, recordIntegrationEvent, cleanupIntegrationHealth } from '../../functions/_lib/integration-health';
 import { registerEvents } from './events';
 import { deliverEvents } from '../../functions/_lib/mcp-events';
@@ -14,7 +16,7 @@ const instructions = 'TranterGrey personal MCP manages live Deck cards, videos a
 const securitySchemes = [{ type: 'oauth2', scopes: ['tg:personal'] }];
 
 export function createServer(env: TrialEnvironment, actor: ApiActor = mcpActor(), sessionId?: string) {
-  const server = new McpServer({ name: 'trantergrey-deck-trial', version: '0.7.0' }, { instructions });
+  const server = new McpServer({ name: 'trantergrey-deck-trial', version: '0.8.0' }, { instructions });
   server.registerTool('list_deck_columns', {
     title: 'List Deck columns', description: 'Get active Deck column names and IDs before creating a card. Does not read existing cards.',
     inputSchema: {}, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }, _meta: { securitySchemes },
@@ -47,6 +49,7 @@ export function createServer(env: TrialEnvironment, actor: ApiActor = mcpActor()
     }
   });
   registerTools(server, env, actor);
+  registerNotificationTools(server, env, actor);
   registerEvents(server, env, sessionId);
   return server;
 }
@@ -103,6 +106,7 @@ export default {
   async scheduled(event: { cron?: string }, env: TrialEnvironment) {
     try {
     await deliverEvents(env,20);
+    await deliverNotificationPush(env);
     if(event.cron === '* * * * *') return;
     await cleanupIntegrationHealth(env);
     await env.MCP_AUTH.prepare('DELETE FROM oauth_records WHERE expires_at <= ?').bind(Math.floor(Date.now() / 1000)).run();

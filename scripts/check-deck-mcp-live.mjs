@@ -12,7 +12,7 @@ const registration=await request('/register',{method:'POST',body:JSON.stringify(
 assert.equal(registration.status,201,'OAuth registration');
 const {client_id}=await registration.json();const verifier=crypto.randomUUID()+crypto.randomUUID();
 const challenge=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))).toString('base64url');
-const parameters={client_id,redirect_uri:redirectUri,response_type:'code',code_challenge_method:'S256',code_challenge:challenge,resource:origin+'/mcp',scope:'tg:personal'};
+const parameters={client_id,redirect_uri:redirectUri,response_type:'code',code_challenge_method:'S256',code_challenge:challenge,resource:origin+'/mcp',scope:process.argv.includes('--notifications')?'tg:personal notifications:send':'tg:personal'};
 const consent=await request('/authorize?'+new URLSearchParams(parameters));assert.equal(consent.status,200,'Consent page');
 const cookie=consent.headers.get('set-cookie').split(';')[0];const transaction=(await consent.text()).match(/name="transaction" value="([^"]+)"/)[1];
 const approved=await request('/authorize',{method:'POST',headers:{origin,cookie},body:new URLSearchParams({transaction,access_code:accessCode})});assert.equal(approved.status,303,'Consent redirect');
@@ -26,7 +26,7 @@ const access_token=renewed.access_token;console.log('Refresh token issued and ro
 const client=new Client({name:'tg-owner-readonly-smoke',version:'0.2.0'});
 try {
   await client.connect(new StreamableHTTPClientTransport(new URL(origin+'/mcp'),{requestInit:{headers:{Authorization:`Bearer ${access_token}`}}}));
-  const {tools}=await client.listTools();assert.equal(tools.length,24);console.log('Discovered 24 authenticated tools.');
+  const {tools}=await client.listTools();assert.equal(tools.length,26);console.log('Discovered 26 authenticated tools.');
   // This SDK version strips unknown capability keys on the client side.
   // Verify the extension on the raw wire, then use an explicit result schema.
   const initialized=await request('/mcp',{method:'POST',headers:{Authorization:`Bearer ${access_token}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'event-discovery-smoke',version:'1'}}})});
@@ -34,6 +34,7 @@ try {
   const events=await client.request({method:'events/list',params:{}},z.object({events:z.array(z.object({name:z.string()}))}));
   assert.deepEqual(events.events.map(e=>e.name),['mux.asset.ready']);console.log('Authenticated event capability and discovery: passed');
   async function call(name,args={}) { const r=await client.callTool({name,arguments:args});assert.ok(!r.isError,`${name} failed`);console.log(`${name}: passed`);return r.structuredContent; }
+  if(process.argv.includes('--notifications'))await call('list_notification_recipients');
   const columns=await call('list_deck_columns');
   const cards=await call('search_deck_cards',{limit:1});
   if(cards.data[0]) { await call('get_deck_card',{cardId:cards.data[0].id});await call('get_deck_card_activity',{cardId:cards.data[0].id});await call('get_deck_card_comments',{cardId:cards.data[0].id,limit:2}); }

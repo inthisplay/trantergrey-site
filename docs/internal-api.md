@@ -59,7 +59,7 @@ credential before distributing MCP access.
 ## MCP integration
 
 The owner-and-invited-teammate MCP server in `workers/deck-mcp` runs separately from
-Pages and currently exposes 24 tools across Deck, videos, Client HQ and move
+Pages and currently exposes 26 tools across Deck, videos, Client HQ and move
 reporting. It reuses scoped route handlers and shared commands in-process under
 an authenticated integration actor, with a separate OAuth store and persistent
 refresh-token renewal. See [the tool inventory](deck-mcp-tools.md) for current
@@ -110,7 +110,7 @@ an online connection. The existing admin route remains `/admin/clients`.
 
 ## Personal MCP adapter
 
-The standalone Worker now exposes 24 tools for the owner and invited teammates; see [the full tool inventory](deck-mcp-tools.md). Existing scoped route handlers are reused in-process via an authenticated request-scoped integration actor. HTTP callers retain normal bearer/session checks. Shared client item commands in `functions/_lib/client-items.ts` provide partial updates, optimistic concurrency and a durable retry ledger (migration 0053) to MCP, the internal API, and the admin website. Calendar reporting reads structured local edit history. These Worker changes do not deploy new main-site REST endpoints automatically.
+The standalone Worker now exposes 26 tools for the owner and invited teammates; see [the full tool inventory](deck-mcp-tools.md). Existing scoped route handlers are reused in-process via an authenticated request-scoped integration actor. HTTP callers retain normal bearer/session checks. Shared client item commands in `functions/_lib/client-items.ts` provide partial updates, optimistic concurrency and a durable retry ledger (migration 0053) to MCP, the internal API, and the admin website. Calendar reporting reads structured local edit history. These Worker changes do not deploy new main-site REST endpoints automatically.
 
 ## Owner-only AI connection management
 
@@ -159,7 +159,7 @@ needed; refresh plugin metadata/new chat to discover the added tool.
 ## Mux events for Dot
 
 The MCP endpoint now supports `events/list`, `events/subscribe`, and
-`events/unsubscribe` in addition to its 24 tools. See
+`events/unsubscribe` in addition to its 26 tools. See
 [the event contract](mcp-events.md). This is a native MCP subscription protocol,
 not a second REST subscription API or an admin UI feature: callback verification
 and OAuth connection identity are required. Existing API read endpoints remain
@@ -170,3 +170,62 @@ The verified Pages Mux webhook durably records `video.asset.ready` and fans out
 contains no 24-hour delay, card-check schedule, matching policy or notification
 rule. Dot owns those instructions. The minute-level Worker trigger only drains
 pending deliveries/retries; it never scans videos or comments.
+
+## Team inbox and push notifications
+
+`GET /notifications` requires **notifications:send** and returns the complete small
+team directory as `data.recipients` (email and name). `POST /notifications` uses
+the same scope and shared command as MCP `send_team_notification`:
+
+```json
+{"requestId":"<fresh UUID>","recipients":["<exact directory email>"],"title":"Video needs review","body":"Please verify this asset belongs on the card.","href":"/app/deck?card=<resolved card ID>"}
+```
+
+Up to 25 recipients per request (duplicates are collapsed), title 120 characters,
+body 2,000 characters; only internal `/app` links are accepted. JSON requests are
+bounded to 16 KiB. Resolve actual people and record URLs first. Ten new notification
+requests per actor per minute, in addition to shared ingress limits. Identical
+retries remain allowed and return existing results; changed arguments with the
+same actor/requestId return 409. The inbox rows, sender/request audit ledger and
+push jobs commit atomically. The ledger has no automatic expiry. Recipient email
+is normalized to lowercase. New browser sessions have access; old scoped tokens
+and the legacy production bearer do **not** silently acquire notifications:send.
+
+The response confirms `saved: true` and reports per-recipient `pushQueued`,
+`pushAccepted`, `pushFailed`, `readAt`. Push acceptance is not delivery/read proof.
+A recipient with no enabled device still gets an inbox item. Counts describe
+currently retained device jobs, not a permanent delivery receipt; removing a
+subscription removes its jobs. Inbox and read state survive device removal.
+
+The PWA bell opens `/app/inbox` and updates the unread badge while the app is
+visible (every minute and on focus/read changes). The signed-in user alone can
+read their inbox and mark individual messages read. Inbox pagination is newest
+first, 20 by default, up to 50, using the returned nextCursor. Reading does not
+delete items. These personal operations intentionally use the session-only
+`GET/POST /api/admin/inbox`; an AI cannot read a teammate's inbox or manage a
+teammate's device permissions. GET accepts limit/cursor or an exact id. POST
+supports read(id), subscribe(subscription), unsubscribe(endpoint),
+subscription-status(endpoint), and test(requestId). Writes require same-origin
+JSON; identity comes only from the verified session and team directory.
+
+Each device explicitly opts in through the inbox, can turn push off, and can send
+itself a test. iPhone/iPad users must open the installed Home Screen app first.
+Permission prompts occur only on a user tap. Up to 10 devices per user. Sessions
+that expire or are revoked stop push; return to the inbox and enable the current
+session after signing in again. Subscription expiry requires re-enabling. Push
+payloads contain only an opaque notification ID; the lock screen displays a
+generic TG Team update and opens the inbox, where the saved message links to the
+card/video. Private message text never appears on shared-device lock screens.
+
+Migration 0055 belongs to TG_DATA. Both Pages and the MCP Worker need the same
+PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY secrets, generated once and kept
+stable (changing keys requires device re-subscription). Web Push uses the pinned
+WebCrypto library, authenticated VAPID and encrypted aes128gcm. Only known browser
+push service HTTPS hosts are allowed; redirects are disabled. The existing minute
+Worker trigger drains pending jobs (up to 20/run, five in flight), with 120-second
+leases and up to eight attempts for network errors/408/429/5xx; 404/410 removes
+expired subscriptions, other failures terminate and appear in Connection health.
+A lost acknowledgment may duplicate an alert; its stable notification tag lets
+the browser replace it. This is transport retry only: **Dot owns all conditions,
+recipient selection, timing and matching policy**. No daily or 24-hour checks are
+installed. Inbox writes need no push connectivity and survive push outages.

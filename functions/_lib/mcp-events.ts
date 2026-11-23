@@ -59,7 +59,7 @@ export async function smallJson(response: Response) {
 }
 export async function liveSession(env: EventEnvironment, sessionId: string) {
   return env.MCP_AUTH.prepare(`SELECT s.id FROM oauth_records s WHERE s.kind='session' AND s.id=? AND s.expires_at>?
-    AND json_extract(s.data,'$.scope')='tg:personal'
+    AND json_extract(s.data,'$.scope') IN ('tg:personal','tg:personal notifications:send')
     AND (json_extract(s.data,'$.invitationId') IS NULL OR EXISTS
       (SELECT 1 FROM mcp_invitations i WHERE i.id=json_extract(s.data,'$.invitationId') AND i.revoked_at IS NULL AND i.redeemed_at IS NOT NULL))`)
     .bind(sessionId,seconds()).first();
@@ -68,7 +68,7 @@ export async function pruneSubscriptions(env: EventEnvironment) {
   await env.MCP_AUTH.batch([
     env.MCP_AUTH.prepare(`DELETE FROM mcp_event_subscriptions WHERE expires_at<=? OR NOT EXISTS
       (SELECT 1 FROM oauth_records s WHERE s.kind='session' AND s.id=mcp_event_subscriptions.session_id AND s.expires_at>?
-      AND json_extract(s.data,'$.scope')='tg:personal' AND (json_extract(s.data,'$.invitationId') IS NULL OR EXISTS
+      AND json_extract(s.data,'$.scope') IN ('tg:personal','tg:personal notifications:send') AND (json_extract(s.data,'$.invitationId') IS NULL OR EXISTS
       (SELECT 1 FROM mcp_invitations i WHERE i.id=json_extract(s.data,'$.invitationId') AND i.revoked_at IS NULL AND i.redeemed_at IS NOT NULL)))`).bind(seconds(),seconds()),
     env.MCP_AUTH.prepare('DELETE FROM mcp_event_deliveries WHERE subscription_id NOT IN (SELECT id FROM mcp_event_subscriptions) OR finished_at<?').bind(seconds()-30*86400),
     env.MCP_AUTH.prepare('UPDATE mcp_event_subscriptions SET previous_secret=NULL WHERE previous_until<=?').bind(seconds()),

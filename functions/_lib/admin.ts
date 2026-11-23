@@ -17,6 +17,8 @@ type PrivateBucket = {
 };
 
 export type AdminEnvironment = {
+  PUSH_VAPID_PUBLIC_KEY?: string;
+  PUSH_VAPID_PRIVATE_KEY?: string;
   ARCHIVE_WORKER_SECRET?: string;
   ADMIN_PASSWORD?: string;
   GOOGLE_CLIENT_ID?: string;

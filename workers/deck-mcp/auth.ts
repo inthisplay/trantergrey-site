@@ -8,6 +8,9 @@ export type TrialEnvironment = AdminEnvironment & {
   TEST_ACCESS_CODE: string;
 };
 const scope = 'tg:personal';
+const supportedScopes = [scope, 'notifications:send'];
+function validScope(value: string) { return value === scope || value === 'tg:personal notifications:send'; }
+function requestedScope(value: string) { return [...new Set(value.trim().split(/\s+/))].sort((a,b)=>a===scope?-1:b===scope?1:a.localeCompare(b)).join(' '); }
 const permanent = 253402300799; // Persistent grants; revoked explicitly, not on a calendar deadline.
 const accessLifetime = 3600;
 // Each consent page owns its cookie so a second tab/retry cannot invalidate it.
@@ -54,7 +57,7 @@ export async function authorized(request: Request, env: TrialEnvironment) {
   const bearer = request.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9-]+)$/)?.[1];
   if (!bearer) return false;
   const token = await get<Token>(env, 'token', await digest(bearer));
-  if (!token || token.resource !== `${env.MCP_ORIGIN}/mcp` || token.scope !== scope || token.expiresAt <= now()) return false;
+  if (!token || token.resource !== `${env.MCP_ORIGIN}/mcp` || !validScope(token.scope) || token.expiresAt <= now()) return false;
   const session = token.family ? await get<{ invitationId?: string }>(env, 'session', token.family) : null;
   if (token.family && !session) return false;
   const invitationId = session?.invitationId || token.invitationId;
@@ -62,10 +65,10 @@ export async function authorized(request: Request, env: TrialEnvironment) {
     const invitation = await activeInvitation(env, invitationId);
     if (!invitation) return false;
     await env.MCP_AUTH.prepare('UPDATE mcp_invitations SET last_used_at=? WHERE id=?').bind(new Date().toISOString(), invitationId).run();
-    return mcpActor(invitation);
+    return mcpActor(invitation, token.scope.includes('notifications:send'));
   }
   if (token.family) await env.MCP_AUTH.prepare("UPDATE oauth_records SET data=json_set(data,'$.lastUsedAt',?) WHERE kind='session' AND id=?").bind(now(), token.family).run();
-  return mcpActor();
+  return mcpActor(undefined, token.scope.includes('notifications:send'));
 }
 
 // Called after authorized() succeeds; retain the OAuth family so event delivery
@@ -88,19 +91,19 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
   const url = new URL(request.url);
   const resource = `${env.MCP_ORIGIN}/mcp`;
   if (url.pathname === '/.well-known/oauth-protected-resource' || url.pathname === '/.well-known/oauth-protected-resource/mcp') {
-    return json({ resource, authorization_servers: [env.MCP_ORIGIN], scopes_supported: [scope] });
+    return json({ resource, authorization_servers: [env.MCP_ORIGIN], scopes_supported: supportedScopes });
   }
   if (url.pathname === '/.well-known/oauth-authorization-server') {
     return json({ issuer: env.MCP_ORIGIN, authorization_endpoint: `${env.MCP_ORIGIN}/authorize`, token_endpoint: `${env.MCP_ORIGIN}/token`,
       registration_endpoint: `${env.MCP_ORIGIN}/register`, response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], revocation_endpoint: `${env.MCP_ORIGIN}/revoke`, revocation_endpoint_auth_methods_supported: ['none'],
-      token_endpoint_auth_methods_supported: ['none'], code_challenge_methods_supported: ['S256'], scopes_supported: [scope],
+      token_endpoint_auth_methods_supported: ['none'], code_challenge_methods_supported: ['S256'], scopes_supported: supportedScopes,
       authorization_response_iss_parameter_supported: true });
   }
   if (url.pathname === '/register' && request.method === 'POST') {
     const body = await request.json().catch(() => null) as { redirect_uris?: unknown; token_endpoint_auth_method?: string } | null;
     if (!Array.isArray(body?.redirect_uris) || !body.redirect_uris.length || body.redirect_uris.length > 5 || !body.redirect_uris.every(allowedRedirect)) return fail('invalid_redirect_uri');
     if (body.token_endpoint_auth_method && body.token_endpoint_auth_method !== 'none') return fail('invalid_client_metadata');
-    const client = { client_id: crypto.randomUUID(), redirect_uris: body.redirect_uris, token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], scope };
+    const client = { client_id: crypto.randomUUID(), redirect_uris: body.redirect_uris, token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], scope: supportedScopes.join(' ') };
     await put(env, 'client', client.client_id, client, permanent);
     return json(client, 201);
   }
@@ -109,13 +112,13 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
     const client = await get<Client>(env, 'client', p.get('client_id') || '');
     const redirectUri = p.get('redirect_uri') || '';
     if (!client || !client.redirect_uris.includes(redirectUri)) return fail('invalid_client_or_redirect');
-    if (p.get('response_type') !== 'code' || p.get('code_challenge_method') !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(p.get('code_challenge') || '') || p.get('resource') !== resource || (p.get('scope') || scope) !== scope) return fail('invalid_request');
-    const grant: Grant = { clientId: client.client_id, redirectUri, challenge: p.get('code_challenge')!, resource, state: p.get('state') || '', scope };
+    if (p.get('response_type') !== 'code' || p.get('code_challenge_method') !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(p.get('code_challenge') || '') || p.get('resource') !== resource || !validScope(requestedScope(p.get('scope') || scope))) return fail('invalid_request');
+    const grant: Grant = { clientId: client.client_id, redirectUri, challenge: p.get('code_challenge')!, resource, state: p.get('state') || '', scope: p.get('scope')?.includes('notifications:send') ? 'tg:personal notifications:send' : scope };
     if (grant.state.length > 2048) return fail('invalid_state');
     const transaction = random();
     const cookieName = consentCookieName(transaction);
     await put(env, 'pending', await digest(transaction), grant, 600);
-    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect TranterGrey personal MCP</title><body><main><h1>Connect TranterGrey personal MCP</h1><p>This connection can read Deck cards and history, move and create cards, add comments, read videos and public share links, subscribe to new Mux asset events, link videos to cards, and read and manage Client HQ clients, notes and to-dos, including deleting items. These actions affect <strong>live TranterGrey data</strong>.</p><p>This connection stays authorized until revoked. ChatGPT can renew access automatically without asking you to sign in every hour. With a teammate invitation, actions are recorded under the name assigned to that invitation. Keep your code private; it grants access as that person.</p><form method="post" action="/authorize"><input type="hidden" name="transaction" value="${escape(transaction)}"><label>Access code <input name="access_code" type="password" required autocomplete="off"></label><p><button type="submit">Allow TranterGrey personal MCP access</button></p></form><p>Close this window to cancel. Never enter your Google or ChatGPT password here.</p></main></body></html>`;
+    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect TranterGrey personal MCP</title><body><main><h1>Connect TranterGrey personal MCP</h1><p>This connection can read Deck cards and history, move and create cards, add comments, read videos and public share links, subscribe to new Mux asset events, link videos to cards, and read and manage Client HQ clients, notes and to-dos, including deleting items. These actions affect <strong>live TranterGrey data</strong>.</p>${grant.scope.includes('notifications:send') ? '<p>This connection can also list team notification recipients and send inbox and push notifications to selected teammates.</p>' : ''}<p>This connection stays authorized until revoked. ChatGPT can renew access automatically without asking you to sign in every hour. With a teammate invitation, actions are recorded under the name assigned to that invitation. Keep your code private; it grants access as that person.</p><form method="post" action="/authorize"><input type="hidden" name="transaction" value="${escape(transaction)}"><label>Access code <input name="access_code" type="password" required autocomplete="off"></label><p><button type="submit">Allow TranterGrey personal MCP access</button></p></form><p>Close this window to cancel. Never enter your Google or ChatGPT password here.</p></main></body></html>`;
     // Browser form POSTs need their same-site Origin; no-referrer makes it opaque (null).
     // same-origin still suppresses referrers when redirecting back to ChatGPT.
     // form-action also governs redirects in browsers: allow only the validated callback.
@@ -130,7 +133,7 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
     const cookie = request.headers.get('cookie')?.split(';').map(x => x.trim()).find(x => x.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1) || '';
     if (!transaction || !cookie || !sameValue(transaction, cookie)) return fail('invalid_transaction', 403);
     const grant = await get<Grant>(env, 'pending', await digest(transaction));
-    if (!grant || grant.scope !== scope) return fail('expired_transaction');
+    if (!grant || !validScope(grant.scope)) return fail('expired_transaction');
     const accessCode = String(form.get('access_code') || '').trim();
     const code = random(), codeHash = await digest(code), pendingHash = await digest(transaction);
     if (sameValue(accessCode, env.TEST_ACCESS_CODE)) {
@@ -172,7 +175,7 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
     if (form.get('grant_type') === 'refresh_token') {
       const oldHash = await digest(String(form.get('refresh_token') || ''));
       const old = await get<Refresh>(env, 'refresh', oldHash);
-      if (!old || old.scope !== scope || old.clientId !== form.get('client_id') || old.resource !== resource ||
+      if (!old || !validScope(old.scope) || old.clientId !== form.get('client_id') || old.resource !== resource ||
         (form.has('resource') && form.get('resource') !== old.resource) || (form.has('scope') && form.get('scope') !== old.scope)) return fail('invalid_grant');
       if ((old.invitationId && !await activeInvitation(env, old.invitationId)) || !await get(env, 'session', old.family)) return fail('invalid_grant');
       if (old.used) {
@@ -189,25 +192,25 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
         env.MCP_AUTH.prepare(`INSERT INTO oauth_records(kind,id,data,expires_at) SELECT 'refresh',?,?,? FROM oauth_records WHERE ${condition}`)
           .bind(refreshHash, JSON.stringify({ ...old, used: false }), permanent, oldHash, old.family),
         env.MCP_AUTH.prepare(`INSERT INTO oauth_records(kind,id,data,expires_at) SELECT 'token',?,?,? FROM oauth_records WHERE ${condition}`)
-          .bind(accessHash, JSON.stringify({ clientId: old.clientId, resource, scope, family: old.family, invitationId: old.invitationId, expiresAt }), expiresAt, oldHash, old.family),
+          .bind(accessHash, JSON.stringify({ clientId: old.clientId, resource, scope: old.scope, family: old.family, invitationId: old.invitationId, expiresAt }), expiresAt, oldHash, old.family),
         env.MCP_AUTH.prepare(`UPDATE oauth_records SET data=json_set(data,'$.used',json('true')) WHERE ${condition}`).bind(oldHash, old.family),
       ]);
       if (!await get(env, 'refresh', refreshHash)) {
         await env.MCP_AUTH.prepare("DELETE FROM oauth_records WHERE kind='session' AND id=?").bind(old.family).run();
         return fail('invalid_grant');
       }
-      return json({ access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: accessLifetime, scope });
+      return json({ access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: accessLifetime, scope: old.scope });
     }
     if (form.get('grant_type') !== 'authorization_code') return fail('unsupported_grant_type');
     const codeHash = await digest(String(form.get('code') || ''));
     const grant = await get<Grant>(env, 'code', codeHash);
     const verifier = String(form.get('code_verifier') || '');
-    if (!grant || grant.scope !== scope || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || grant.clientId !== form.get('client_id') || grant.redirectUri !== form.get('redirect_uri') || grant.resource !== form.get('resource') || !sameValue(await digest(verifier), grant.challenge)) return fail('invalid_grant');
+    if (!grant || !validScope(grant.scope) || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || grant.clientId !== form.get('client_id') || grant.redirectUri !== form.get('redirect_uri') || grant.resource !== form.get('resource') || !sameValue(await digest(verifier), grant.challenge)) return fail('invalid_grant');
     const accessToken = random(), refreshToken = random(), family = crypto.randomUUID();
     const issuedAt = now();
     const expiresAt = issuedAt + accessLifetime;
     if (grant.invitationId && !await activeInvitation(env, grant.invitationId)) return fail('invalid_grant');
-    const record = { clientId: grant.clientId, resource, scope, family, invitationId: grant.invitationId };
+    const record = { clientId: grant.clientId, resource, scope: grant.scope, family, invitationId: grant.invitationId };
     const condition = "kind='code' AND id=? AND expires_at>? AND (json_extract(data,'$.invitationId') IS NULL OR EXISTS (SELECT 1 FROM mcp_invitations i WHERE i.id=json_extract(oauth_records.data,'$.invitationId') AND i.revoked_at IS NULL AND i.redeemed_at IS NOT NULL))";
     await env.MCP_AUTH.batch([
       env.MCP_AUTH.prepare(`INSERT INTO oauth_records(kind,id,data,expires_at) SELECT 'session',?,?,? FROM oauth_records WHERE ${condition}`)
@@ -221,7 +224,7 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
       env.MCP_AUTH.prepare("DELETE FROM oauth_records WHERE kind='code' AND id=?").bind(codeHash),
     ]);
     if (!await get(env, 'session', family)) return fail('invalid_grant');
-    return json({ access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: accessLifetime, scope });
+    return json({ access_token: accessToken, refresh_token: refreshToken, token_type: 'Bearer', expires_in: accessLifetime, scope: grant.scope });
   }
   return null;
 }

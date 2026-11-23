@@ -1,4 +1,4 @@
-# TranterGrey personal MCP — 24 tools
+# TranterGrey personal MCP — 26 tools
 
 This is the implemented tool inventory, not a platform tool-count limit. It exposes the existing scoped API plus focused commands for client items and calendar reporting. Admin-only destructive video operations, uploads, and identity administration are not exposed.
 
@@ -51,9 +51,9 @@ Item updates/deletes require the exact `expectedUpdatedAt` from a fresh workspac
 
 ## Authorization and deployment
 
-The OAuth scope is `tg:personal`. Old `deck:create` tokens, codes and pending consent transactions cannot gain expanded access. Reconnect after refreshing tool metadata; recreate the custom connection if it retains old scopes. Server instructions and the consent page describe the expanded capabilities. Read/write/destructive/idempotent hints are present on every tool.
+The base OAuth scope is `tg:personal`; the two notification tools additionally require `notifications:send`. Old `deck:create` tokens, codes and pending consent transactions cannot gain expanded access. Reconnect after refreshing tool metadata; recreate the custom connection if it retains old scopes. Server instructions and the consent page describe the expanded capabilities. Read/write/destructive/idempotent hints are present on every tool.
 
-The owner can issue teammate invitations from Admin Access. There is no trial deadline; one-hour access tokens renew through persistent, rotating refresh tokens. Reconnect once when upgrading from the old access-token-only connection. There are no per-client restrictions or verified Google/ChatGPT identities; each invitation grants all 24 tools with its own attribution and revocation.
+The owner can issue teammate invitations from Admin Access. There is no trial deadline; one-hour access tokens renew through persistent, rotating refresh tokens. Reconnect once when upgrading from the old access-token-only connection. There are no per-client restrictions or verified Google/ChatGPT identities; each invitation grants the original 24 tools with its own attribution and revocation.
 
 Read handlers and established card commands are reused in-process under a scoped integration actor. `withApiActor` binds identity to one exact Request in a WeakMap, clears it in finally, and is never populated from incoming HTTP data. No admin cookie or broad API token is synthesized. External REST callers still pass the normal authentication checks. API errors at 5xx are redacted at the MCP boundary.
 
@@ -64,7 +64,7 @@ Apply `migrations/0053_mcp_item_requests.sql` to TG_DATA before this Worker vers
 - Editing card titles/assignees/due dates, archiving/deleting cards, attachments and card checklist steps.
 - Uploading/editing/deleting videos or enabling public playback.
 - External calendar event creation, calendar synchronization, or general business analytics beyond recorded card moves.
-- Automated video/card verification requests, notifications, PWA push subscriptions, and server-owned background card checks. A subscribed Dot can receive new-asset events and perform user-directed follow-up.
+- Server-owned matching rules, delayed verification requests and background card checks. Dot can subscribe to new-asset events and send user-directed notifications using the tools below.
 - Per-user Google sign-in and team permissions.
 
 ## Verification
@@ -140,3 +140,29 @@ subscribe and specify its behavior. Installing or rescanning does not itself
 subscribe. Existing `tg:personal` connections work; no scope expansion.
 See [MCP event contract and operations](mcp-events.md) for lifetime, callback
 verification, revocation, retry limits and deployment prerequisites.
+
+
+## Team notifications — 2 tools
+
+| Tool | What it does |
+| --- | --- |
+| `list_notification_recipients` | Lists the complete small team directory with exact emails and names. |
+| `send_team_notification` | Saves recipient inbox messages and queues push for opted-in devices; durable UUID requestId deduplicates retries. |
+
+These tools require the **additional OAuth scope notifications:send** alongside
+`tg:personal`. Existing grants keep their 24 original capabilities. Refresh plugin
+metadata and reconnect with both scopes to enable sending; the consent page must
+explicitly mention team notifications. Existing refresh tokens cannot gain it.
+A teammate who must reconnect needs a fresh one-use invitation from Admin Access.
+The owner may use their existing owner access code. Do not revoke an old connection
+until the replacement is working. The two new tool definitions advertise their
+required scopes and return an insufficient-scope challenge when needed.
+
+Dot must resolve recipients, obtain a user request or explicit standing rule,
+then supply requestId, recipients, title, body and an internal /app href. Retry
+with identical details and the same requestId; a changed retry returns conflict.
+Report saved/queued/accepted accurately, never “delivered” without evidence.
+Dot owns conditions and timing; no server matching or notification schedule is
+created. Device permission and inbox management remain personal PWA controls,
+not AI tools. See [the API contract](internal-api.md#team-inbox-and-push-notifications)
+for limits, migration, deployment and device setup.

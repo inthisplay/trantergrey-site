@@ -1,5 +1,5 @@
-const CACHE = 'tg-team-shell-v7';
-const SHELL = ['/app', '/app/mux', '/app/deck', '/app/clients', '/app/rolodex', '/manifest.webmanifest', '/tg-team-icon.png', '/favicon.svg'];
+const CACHE = 'tg-team-shell-v8';
+const SHELL = ['/app', '/app/mux', '/app/deck', '/app/clients', '/app/rolodex', '/app/inbox', '/manifest.webmanifest', '/tg-team-icon.png', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -20,4 +20,21 @@ self.addEventListener('fetch', (event) => {
       return response;
     }).catch(async () => (await caches.match(request)) || (await caches.match('/app/mux')) || (await caches.match('/app'))));
   }
+});
+
+// Push contains only an opaque inbox ID; never expose private content on lock screens.
+self.addEventListener('push', event => {
+  let id = '';
+  try { const data = event.data?.json(); if (/^[a-f0-9-]{36}$/.test(data?.id)) id = data.id; } catch {}
+  event.waitUntil(self.registration.showNotification('TG Team', {
+    body: 'New team update. Open your inbox to read it.', icon: '/tg-team-icon.png',
+    badge: '/tg-team-icon.png', tag: id || 'tg-inbox', data: { url: '/app/inbox' },
+  }).then(async () => {
+    const windows = await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    for (const client of windows) client.postMessage({type:'tg-inbox-push'});
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(self.clients.openWindow('/app/inbox'));
 });
