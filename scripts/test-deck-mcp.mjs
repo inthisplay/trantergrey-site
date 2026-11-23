@@ -545,7 +545,7 @@ async function eventClient(f) {
 function receiver(t,handler=()=>new Response(null,{status:204})) {
   const previous=globalThis.fetch, calls=[];
   globalThis.fetch=async(url,init)=>{
-    assert.ok(['chatgpt.com','connectors.api.openai.com'].includes(new URL(url).hostname));assert.equal(init.redirect,'error');
+    assert.ok(['chatgpt.com','connectors.api.openai.com'].includes(new URL(url).hostname));assert.equal(init.redirect,'manual');
     const body=JSON.parse(init.body);calls.push({url,init,body});
     if(body.type==='verification')return Response.json({challenge:body.challenge});
     return handler(url,init,body);
@@ -780,6 +780,7 @@ test('callback failures expose only safe verification phase and HTTP status and 
  console.info=value=>entries.push(JSON.parse(String(value)));
  t.after(()=>{console.info=originalLog;globalThis.fetch=originalFetch;});
  const cases=[
+  {phase:'http_status',status:302,run:()=>new Response(null,{status:302,headers:{location:'https://private.invalid/secret'}})},
   {phase:'http_status',status:403,run:()=>new Response('private-response',{status:403})},
   {phase:'response_json',status:200,run:()=>new Response('private-response')},
   {phase:'challenge',status:200,run:()=>Response.json({challenge:'private-response'})},
@@ -794,4 +795,17 @@ test('callback failures expose only safe verification phase and HTTP status and 
  }
  assert.equal(f.auth.prepare('SELECT COUNT(*) AS n FROM mcp_event_subscriptions').get().n,0);
  const logs=JSON.stringify(entries);assert.ok(!logs.includes('private-response'));assert.ok(!logs.includes(eventSecret));assert.ok(!logs.includes('https://'));
+});
+
+test('real Workers runtime sends signed callbacks and returns redirects without following them',async t=>{
+ const {Miniflare,convertV4MiniflareOptions}=await import('miniflare');
+ // The bundled workerd supports dates through Nov 11. This isolated sender
+ // test needs no newer compatibility flags; production keeps its own date.
+ const bundled=await build({stdin:{contents:`import {signedPost} from './functions/_lib/mcp-events.ts'; export default {async fetch(request){return signedPost('https://connectors.api.openai.com/test','sub_test','${eventSecret}','evt_test',{type:'verification',challenge:new URL(request.url).pathname});}};`,resolveDir:process.cwd(),sourcefile:'event-runtime-test.ts'},bundle:true,format:'esm',platform:'browser',write:false});
+ const mf=new Miniflare(convertV4MiniflareOptions({workers:[
+  {name:'sender',modules:true,compatibilityDate:'2026-11-11',script:bundled.outputFiles[0].text,outboundService:'receiver'},
+  {name:'receiver',modules:true,compatibilityDate:'2026-11-11',script:`export default {async fetch(request){const body=await request.json(); if(new URL(request.url).hostname!=='connectors.api.openai.com')return new Response('Redirect was followed',{status:500}); if(body.challenge==='/redirect')return new Response(null,{status:302,headers:{location:'https://private.invalid/secret'}}); return Response.json({challenge:body.challenge,signed:request.headers.get('webhook-signature')?.startsWith('v1,')});}};`},
+ ]}));t.after(()=>mf.dispose());
+ const ok=await mf.dispatchFetch('http://test/ok');assert.equal(ok.status,200);assert.deepEqual(await ok.json(),{challenge:'/ok',signed:true});
+ const redirect=await mf.dispatchFetch('http://test/redirect',{redirect:'manual'});assert.equal(redirect.status,302);
 });

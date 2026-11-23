@@ -160,3 +160,10 @@ Callback verification failures additionally record a fixed phase (`request`,
 `timeout` or `challenge_failed`. Response bodies, headers, challenges and raw
 exceptions are never logged. This distinguishes a receiver HTTP rejection from
 a network failure or invalid challenge response without exposing credentials.
+
+The subsequent verification failure exposed a Workers runtime mismatch:
+`redirect: 'error'` throws before sending in Workers, despite working in Node.
+Signed callback POSTs now use `redirect: 'manual'`; non-2xx responses remain
+rejected and redirects are never followed. A Miniflare/workerd regression test
+executes the actual shared sender and checks successful signed requests plus
+unfollowed redirects, in addition to the Node integration suite.

@@ -44,7 +44,9 @@ export async function signedPost(url: string, subscriptionId: string, secret: st
   const signed = `${eventId}.${timestamp}.${body}`;
   const signatures = [await signature(secret,signed)];
   if (previousSecret && previousSecret !== secret) signatures.push(await signature(previousSecret,signed));
-  return fetch(callbackUrl(url), { method:'POST', redirect:'error', signal:AbortSignal.timeout(10000),
+  // Workers rejects redirect:'error' before sending. Manual returns redirects
+  // unfollowed; callers reject every non-2xx response.
+  return fetch(callbackUrl(url), { method:'POST', redirect:'manual', signal:AbortSignal.timeout(10000),
     headers: {'Content-Type':'application/json','webhook-id':eventId,'webhook-timestamp':timestamp,
       'webhook-signature':signatures.join(' '),'X-MCP-Subscription-Id':subscriptionId}, body });
 }
