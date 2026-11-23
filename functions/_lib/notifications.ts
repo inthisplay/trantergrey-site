@@ -103,7 +103,12 @@ export async function saveSubscription(env: AdminEnvironment, recipient: string,
   return { enabled: true };
 }
 
-type PushJob={notification_id:string;subscription_id:string;endpoint:string;p256dh:string;auth:string;attempts:number};
+export function pushPreview(value:string,limit:number) {
+  const chars=Array.from(value.replace(/\s+/g,' ').trim());
+  return chars.length>limit?chars.slice(0,limit-1).join('')+'…':chars.join('');
+}
+
+type PushJob={notification_id:string;subscription_id:string;endpoint:string;p256dh:string;auth:string;attempts:number;title:string;body:string};
 export async function deliverNotificationPush(env: AdminEnvironment, limit=20) {
   if(!env.PUSH_VAPID_PUBLIC_KEY || !env.PUSH_VAPID_PRIVATE_KEY) return;
   const now=Date.now();
@@ -115,7 +120,7 @@ export async function deliverNotificationPush(env: AdminEnvironment, limit=20) {
     SELECT 1 FROM push_subscriptions s JOIN admin_sessions a ON a.id=s.session_id
     JOIN admin_team_directory t ON lower(t.email)=s.recipient
     WHERE s.id=subscription_id AND lower(a.user_email)=s.recipient AND a.expires_at>?)`).bind(new Date(now).toISOString()).run();
-  const jobs=(await env.TG_DATA.prepare(`SELECT j.*,s.endpoint,s.p256dh,s.auth FROM notification_push_jobs j JOIN push_subscriptions s ON s.id=j.subscription_id
+  const jobs=(await env.TG_DATA.prepare(`SELECT j.*,s.endpoint,s.p256dh,s.auth,n.title,n.body FROM notification_push_jobs j JOIN push_subscriptions s ON s.id=j.subscription_id JOIN team_notifications n ON n.id=j.notification_id AND n.recipient=s.recipient
     WHERE j.status='pending' AND j.next_attempt<=? ORDER BY j.next_attempt LIMIT ?`).bind(now,limit).all<PushJob>()).results;
   for(let i=0;i<jobs.length;i+=5) await Promise.all(jobs.slice(i,i+5).map(async job=>{
     const lease=crypto.randomUUID();
@@ -125,8 +130,8 @@ export async function deliverNotificationPush(env: AdminEnvironment, limit=20) {
     try {
       if(!validPushEndpoint(job.endpoint)) status=400;
       else {
-        // No message text, recipient or private links on lock screens/shared devices.
-        const payload=await buildPushPayload({data:JSON.stringify({id:job.notification_id}),options:{ttl:86400}},
+        // Always include a bounded preview inside the encrypted Web Push payload.
+        const payload=await buildPushPayload({data:JSON.stringify({id:job.notification_id,title:pushPreview(job.title,120),body:pushPreview(job.body,180)}),options:{ttl:86400}},
           {endpoint:job.endpoint,expirationTime:null,keys:{p256dh:job.p256dh,auth:job.auth}},
           {subject:'mailto:t.jackson@trantergrey.com',publicKey:env.PUSH_VAPID_PUBLIC_KEY!,privateKey:env.PUSH_VAPID_PRIVATE_KEY!});
         const response=await fetch(job.endpoint,{...payload,redirect:'manual',signal:AbortSignal.timeout(10000)});

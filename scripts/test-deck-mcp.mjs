@@ -744,11 +744,14 @@ test('notification REST credential scopes, payload bounds, send limits and retry
  assert.equal((await call({...input,title:'changed'})).status,409);
 });
 
-test('service worker keeps private content out of push display and opens the inbox',async()=>{
+test('service worker displays notification previews and keeps navigation in the inbox',async()=>{
  const {runInNewContext}=await import('node:vm');const listeners={};let shown,opened,notified=0,pending;
  runInNewContext(await readFile('public/sw.js','utf8'),{self:{addEventListener:(name,fn)=>listeners[name]=fn,registration:{showNotification:async(title,options)=>{shown={title,options};}},clients:{matchAll:async()=>[{postMessage:()=>notified++}],openWindow:async path=>{opened=path;}}},URL});
- listeners.push({data:{json:()=>({id:'11111111-1111-4111-8111-111111111111',title:'Private title',url:'https://evil.test'})},waitUntil:p=>{pending=p;}});await pending;
- assert.equal(shown.title,'TG Team');assert.ok(!JSON.stringify(shown).includes('Private title'));assert.equal(notified,1);
+ listeners.push({data:{json:()=>({id:'11111111-1111-4111-8111-111111111111',title:'Mux asset needs review',body:'A video is missing a client.',url:'https://evil.test'})},waitUntil:p=>{pending=p;}});await pending;
+ assert.equal(shown.title,'Mux asset needs review');assert.equal(shown.options.body,'A video is missing a client.');assert.equal(notified,1);
+ listeners.push({data:{json:()=>({id:'11111111-1111-4111-8111-111111111111'})},waitUntil:p=>{pending=p;}});await pending;assert.equal(shown.title,'TG Team');assert.match(shown.options.body,/New team update/);
+ assert.equal(notifications.pushPreview('  A\n video   needs review  ',180),'A video needs review');
+ const preview=notifications.pushPreview('🎬'.repeat(200),180);assert.equal(Array.from(preview).length,180);assert.ok(preview.endsWith('…'));
  listeners.notificationclick({notification:{close(){}},waitUntil:p=>{pending=p;}});await pending;assert.equal(opened,'/app/inbox');
 });
 

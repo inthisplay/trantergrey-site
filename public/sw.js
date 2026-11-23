@@ -1,4 +1,4 @@
-const CACHE = 'tg-team-shell-v8';
+const CACHE = 'tg-team-shell-v9';
 const SHELL = ['/app', '/app/mux', '/app/deck', '/app/clients', '/app/rolodex', '/app/inbox', '/manifest.webmanifest', '/tg-team-icon.png', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -22,12 +22,17 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// Push contains only an opaque inbox ID; never expose private content on lock screens.
+// Show the encrypted notification preview; old payloads retain a useful fallback.
 self.addEventListener('push', event => {
-  let id = '';
-  try { const data = event.data?.json(); if (/^[a-f0-9-]{36}$/.test(data?.id)) id = data.id; } catch {}
-  event.waitUntil(self.registration.showNotification('TG Team', {
-    body: 'New team update. Open your inbox to read it.', icon: '/tg-team-icon.png',
+  let id = '', title = 'TG Team', body = 'New team update. Open your inbox to read it.';
+  try {
+    const data = event.data?.json();
+    if (/^[a-f0-9-]{36}$/.test(data?.id)) id = data.id;
+    if (typeof data?.title === 'string' && data.title.trim()) title = Array.from(data.title.trim()).slice(0,120).join('');
+    if (typeof data?.body === 'string' && data.body.trim()) body = Array.from(data.body.trim()).slice(0,180).join('');
+  } catch {}
+  event.waitUntil(self.registration.showNotification(title, {
+    body, icon: '/tg-team-icon.png',
     badge: '/tg-team-icon.png', tag: id || 'tg-inbox', data: { url: '/app/inbox' },
   }).then(async () => {
     const windows = await self.clients.matchAll({type:'window',includeUncontrolled:true});

@@ -213,9 +213,12 @@ itself a test. iPhone/iPad users must open the installed Home Screen app first.
 Permission prompts occur only on a user tap. Up to 10 devices per user. Sessions
 that expire or are revoked stop push; return to the inbox and enable the current
 session after signing in again. Subscription expiry requires re-enabling. Push
-payloads contain only an opaque notification ID; the lock screen displays a
-generic TG Team update and opens the inbox, where the saved message links to the
-card/video. Private message text never appears on shared-device lock screens.
+payloads contain the notification ID, title and a whitespace-normalized body preview
+(up to 180 Unicode code points, with an ellipsis when shortened). Previews are
+always enabled and may appear on lock screens, subject to device notification
+settings. Tapping opens the inbox, where the full message links to the card/video.
+Existing PWA installs must pick up service worker v9 to display previews; older
+payloads still show a generic fallback. API/MCP request fields are unchanged.
 
 Migration 0055 belongs to TG_DATA. Both Pages and the MCP Worker need the same
 PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY secrets, generated once and kept
