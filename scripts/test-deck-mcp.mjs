@@ -774,3 +774,24 @@ test('Dot connector callback host supports verified subscription, signed deliver
  const {secret,...delivery}=params.delivery;assert.deepEqual((await rpc('events/unsubscribe',{name:params.name,arguments:{},delivery})).result,{});
  for(const url of ['http://connectors.api.openai.com/test','https://connectors.api.openai.com.evil.test/test','https://connectors.api.openai.com@127.0.0.1/test','https://connectors.api.openai.com:8443/test','https://connectors.api.openai.com/test#fragment','https://other.api.openai.com/test'])assert.equal((await rpc('events/subscribe',subscriptionParams(url))).error.code,-32602);
 });
+
+test('callback failures expose only safe verification phase and HTTP status and never save subscriptions',async t=>{
+ const f=fixture(t),{rpc}=await eventClient(f);const entries=[],originalLog=console.info,originalFetch=globalThis.fetch;
+ console.info=value=>entries.push(JSON.parse(String(value)));
+ t.after(()=>{console.info=originalLog;globalThis.fetch=originalFetch;});
+ const cases=[
+  {phase:'http_status',status:403,run:()=>new Response('private-response',{status:403})},
+  {phase:'response_json',status:200,run:()=>new Response('private-response')},
+  {phase:'challenge',status:200,run:()=>Response.json({challenge:'private-response'})},
+  {phase:'request',reason:'timeout',run:()=>{throw new DOMException('private-response','TimeoutError');}},
+ ];
+ for(const c of cases){
+  globalThis.fetch=async()=>c.run();
+  const result=await rpc('events/subscribe',subscriptionParams());
+  assert.equal(result.error.code,-32015);assert.equal(result.error.data.reason,c.reason||'challenge_failed');
+  const entry=entries.filter(e=>e.stage==='verification_failed').at(-1);
+  assert.equal(entry.phase,c.phase);assert.equal(entry.status,c.status);
+ }
+ assert.equal(f.auth.prepare('SELECT COUNT(*) AS n FROM mcp_event_subscriptions').get().n,0);
+ const logs=JSON.stringify(entries);assert.ok(!logs.includes('private-response'));assert.ok(!logs.includes(eventSecret));assert.ok(!logs.includes('https://'));
+});

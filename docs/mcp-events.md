@@ -154,3 +154,9 @@ subscription. Regression coverage exercises the connector hostname through
 subscription, signed asset delivery and unsubscribe, plus lookalike-host rejection.
 Temporary hostname logging was removed once the destination was identified.
 Diagnostics retain only allowlisted field names/types, stages and numeric errors.
+
+Callback verification failures additionally record a fixed phase (`request`,
+`http_status`, `response_json`, or `challenge`), HTTP status when available, and
+`timeout` or `challenge_failed`. Response bodies, headers, challenges and raw
+exceptions are never logged. This distinguishes a receiver HTTP rejection from
+a network failure or invalid challenge response without exposing credentials.

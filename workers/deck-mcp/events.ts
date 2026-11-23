@@ -52,14 +52,21 @@ export function registerEvents(server: McpServer, env: TrialEnvironment, session
     const now=seconds(), secret=params.delivery.secret;
     if(!old || old.secret!==secret || old.verified_at<now-300) {
       const challenge=crypto.randomUUID()+crypto.randomUUID();
+      let phase='request', status:number|undefined;
       try {
         const response=await signedPost(callback,id,secret,'verify_'+crypto.randomUUID(),{type:'verification',challenge},old?.secret);
+        status=response.status;
+        phase='http_status';
         if(!response.ok){await response.body?.cancel();throw new Error();}
+        phase='response_json';
         const reply=await smallJson(response);
+        phase='challenge';
         if(typeof reply?.challenge!=='string' || !equal(challenge,reply.challenge))throw new Error();
-      } catch {
+      } catch(error) {
+        const reason=error instanceof Error && error.name==='TimeoutError'?'timeout':'challenge_failed';
+        console.info(JSON.stringify({diagnostic:'mcp_events',operation:'event_verification',stage:'verification_failed',phase,status,reason}));
         await recordIntegrationEvent(env,'mcp','event_verification','server_error',502);
-        throw new McpError(-32015,'Callback verification failed.',{reason:'challenge_failed'});
+        throw new McpError(-32015,'Callback verification failed.',{reason});
       }
     }
     if(!await liveSession(env,sessionId!))throw new McpError(-32001,'Connection revoked.');
