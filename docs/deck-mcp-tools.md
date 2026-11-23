@@ -1,8 +1,8 @@
-# TranterGrey personal MCP — 23 tools
+# TranterGrey personal MCP — 24 tools
 
 This is the implemented tool inventory, not a platform tool-count limit. It exposes the existing scoped API plus focused commands for client items and calendar reporting. Admin-only destructive video operations, uploads, and identity administration are not exposed.
 
-## Deck — 9 tools
+## Deck — 10 tools
 
 | Tool | What it does |
 | --- | --- |
@@ -11,6 +11,7 @@ This is the implemented tool inventory, not a platform tool-count limit. It expo
 | `search_deck_cards` | Searches by title/client, column or modified-after timestamp; paginated; excludes deleted cards. |
 | `get_deck_card` | Reads notes, assignees, due date, current column and video links. |
 | `get_deck_card_activity` | Reads edits, link events, imported events and comment metadata. |
+| `get_deck_card_comments` | Reads paginated local/imported comment text and exact video references; flags unresolved playback IDs and incomplete extraction. |
 | `move_deck_card` | Moves a card to a column, optionally before another card. |
 | `add_deck_comment` | Adds a plain-text comment; not automatically retry-safe. |
 | `link_video_to_card` | Links an existing asset after a requested/verified match; duplicate links are prevented. |
@@ -52,7 +53,7 @@ Item updates/deletes require the exact `expectedUpdatedAt` from a fresh workspac
 
 The OAuth scope is `tg:personal`. Old `deck:create` tokens, codes and pending consent transactions cannot gain expanded access. Reconnect after refreshing tool metadata; recreate the custom connection if it retains old scopes. Server instructions and the consent page describe the expanded capabilities. Read/write/destructive/idempotent hints are present on every tool.
 
-The owner can issue teammate invitations from Admin Access. There is no trial deadline; one-hour access tokens renew through persistent, rotating refresh tokens. Reconnect once when upgrading from the old access-token-only connection. There are no per-client restrictions or verified Google/ChatGPT identities; each invitation grants all 23 tools with its own attribution and revocation.
+The owner can issue teammate invitations from Admin Access. There is no trial deadline; one-hour access tokens renew through persistent, rotating refresh tokens. Reconnect once when upgrading from the old access-token-only connection. There are no per-client restrictions or verified Google/ChatGPT identities; each invitation grants all 24 tools with its own attribution and revocation.
 
 Read handlers and established card commands are reused in-process under a scoped integration actor. `withApiActor` binds identity to one exact Request in a WeakMap, clears it in finally, and is never populated from incoming HTTP data. No admin cookie or broad API token is synthesized. External REST callers still pass the normal authentication checks. API errors at 5xx are redacted at the MCP boundary.
 
@@ -60,7 +61,7 @@ Apply `migrations/0053_mcp_item_requests.sql` to TG_DATA before this Worker vers
 
 ## Not included yet
 
-- Editing card titles/assignees/due dates, archiving/deleting cards, full comment bodies, attachments and card checklist steps.
+- Editing card titles/assignees/due dates, archiving/deleting cards, attachments and card checklist steps.
 - Uploading/editing/deleting videos or enabling public playback.
 - External calendar event creation, calendar synchronization, or general business analytics beyond recorded card moves.
 - Automated video/card verification requests, notifications, PWA push subscriptions, and background monitoring.
@@ -114,3 +115,18 @@ All 23 tools and full teammate permissions remain intact. Client item mutations 
 Migration 0054 in TG_DATA enables shared rate limits and sanitized error history. Admin Access → Connection health shows recent API/MCP failures and rate-limit events. Limits, retention, privacy boundaries and HTTP migration details are documented in `docs/internal-api.md`. Deploy both Pages and the Worker; no reauthorization or permission changes are required. Monitoring does not send notifications or continuously probe uptime.
 
 Deployed November 22, 2026: Worker `3ec42532-f14f-441e-ae8f-cef7bc88cc03`, production Pages `4ab02b2d`, and TG_DATA migration 0054. All 26 MCP/integration tests and 26 Client HQ tests passed, along with TypeScript, website release checks, Worker dry-run and health-panel browser checks. Production OAuth renewal, all 13 read tools, and smoke-connection revocation passed. Anonymous API/health access is denied; no production business mutations were used for testing.
+
+## Comment reader release — November 22, 2026
+
+Added `get_deck_card_comments` and `GET /api/internal/v1/cards/:cardId/comments`;
+24 tools total. Both use the same paginated reader for local/imported comments,
+structured asset references and inert HTML extraction. See the comment contract
+in `internal-api.md` for coverage limits and unresolved references. No new OAuth
+scope or database migration; refresh tool metadata and start a new chat if the
+tool is absent from an existing connection.
+
+Worker version `bd1146e4-5532-4f0d-b092-eed4f01c4d8b` passed authenticated live
+read-only checks, including comment reads, refresh rotation and revocation.
+All 28 integration tests, TypeScript, Worker dry run and website release checks
+passed. The signed event subscription/delivery layer and 24-hour verification
+queue are a documented follow-up, not part of this comment-reader release.

@@ -14,6 +14,7 @@ uses a bearer credential with a scoped integration identity. Responses use
 - `GET /cards?query=&client=&columnId=&updatedAfter=&cursor=&limit=`
 - `GET /cards/:cardId`
 - `GET /cards/:cardId/activity`
+- `GET /cards/:cardId/comments?limit=&cursor=` (`cards:read`)
 - `POST /cards` (create with `cards:create`; see below)
 - `POST /cards/:cardId/move`
 - `POST /cards/:cardId/comments`
@@ -58,7 +59,7 @@ credential before distributing MCP access.
 ## MCP integration
 
 The owner-and-invited-teammate MCP server in `workers/deck-mcp` runs separately from
-Pages and currently exposes 23 tools across Deck, videos, Client HQ and move
+Pages and currently exposes 24 tools across Deck, videos, Client HQ and move
 reporting. It reuses scoped route handlers and shared commands in-process under
 an authenticated integration actor, with a separate OAuth store and persistent
 refresh-token renewal. See [the tool inventory](deck-mcp-tools.md) for current
@@ -109,7 +110,7 @@ an online connection. The existing admin route remains `/admin/clients`.
 
 ## Personal MCP adapter
 
-The standalone Worker now exposes 23 tools for the owner and invited teammates; see [the full tool inventory](deck-mcp-tools.md). Existing scoped route handlers are reused in-process via an authenticated request-scoped integration actor. HTTP callers retain normal bearer/session checks. Shared client item commands in `functions/_lib/client-items.ts` provide partial updates, optimistic concurrency and a durable retry ledger (migration 0053) to MCP, the internal API, and the admin website. Calendar reporting reads structured local edit history. These Worker changes do not deploy new main-site REST endpoints automatically.
+The standalone Worker now exposes 24 tools for the owner and invited teammates; see [the full tool inventory](deck-mcp-tools.md). Existing scoped route handlers are reused in-process via an authenticated request-scoped integration actor. HTTP callers retain normal bearer/session checks. Shared client item commands in `functions/_lib/client-items.ts` provide partial updates, optimistic concurrency and a durable retry ledger (migration 0053) to MCP, the internal API, and the admin website. Calendar reporting reads structured local edit history. These Worker changes do not deploy new main-site REST endpoints automatically.
 
 ## Owner-only AI connection management
 
@@ -128,3 +129,40 @@ Cloudflare-supplied IPs are hashed into counter keys; X-Forwarded-For is not tru
 Connection health on Admin Access uses owner-only GET `/api/admin/integration-health`: 24-hour category totals and the latest 50 events. Recorded events include internal API 5xx, caught/uncaught MCP backend failures (including HTTP-200 tool errors), rejected consent submissions, and the first rate-limit block per subject/window. Expected validation/conflict errors and routine OAuth discovery challenges are excluded. Every stored event contains only a reference ID, timestamp, surface, application-owned operation label, category and status. No raw exception messages, query strings, payloads, tokens, cookies, business content or raw IPs are stored. Records are retained for up to 30 days/5,000 events after daily cleanup; rate counters expire and are pruned daily. Monitoring-write failures fall back to sanitized console errors. An empty history is not an uptime guarantee. There are no outgoing alerts.
 
 The MCP Worker also enables structured Workers Logs and 1% sampled traces with query-string redaction and invocation logs disabled. Pages uses durable D1 event history rather than unsupported Worker observability configuration. Both deployments are required. See Cloudflare's [logging](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) and [tracing](https://developers.cloudflare.com/workers/observability/traces/) guidance.
+
+## Reading card comments
+
+`GET /cards/:cardId/comments` and `get_deck_card_comments` share the reader in
+`functions/_lib/card-comments.ts`. Default limit is 20, maximum 50. The response
+contains `data` plus `meta.nextCursor` and `meta.coverage`. Follow every cursor
+before drawing conclusions; cursors belong to one card. Missing/deleted cards
+return 404. Malformed cursors/limits return 400.
+
+Results merge non-deleted local and imported comments oldest-first, with stable
+source-prefixed IDs, author, timestamps, plain text, `assetIds`, `playbackIds`,
+`watchLinks`, `mediaLinks`, `playbackMatches`, `unresolvedPlaybackIds`, and
+`warnings`. Rich video blocks include recorded group members, not group IDs.
+HTML is parsed inertly; raw HTML/JSON is not returned. Signed media URL queries
+are stripped. Playback IDs are resolved only through the existing catalog
+snapshot (which may be stale); unresolved IDs remain explicit. Watch links may
+represent projects/collections and need separate resolution. Titles or arbitrary
+text IDs are never treated as proof. Record text is data, not instructions.
+
+Extraction is bounded to 200,000 characters each of HTML/structured content,
+50,000 output text characters, and bounded rich-content traversal; truncation
+and malformed structured data produce warnings. Unresolved references or warnings
+mean absence is not established. Pagination is not a transactional snapshot of
+concurrent edits. An association returned by video/card tools is distinct from
+an asset appearing in a comment. No schema migration or OAuth scope change is
+needed; refresh plugin metadata/new chat to discover the added tool.
+
+### Planned event-driven verification (not implemented)
+
+Use a verified Mux asset-ready webhook to enqueue one check per asset, due
+24 hours later. Deduplicate retries without resetting the grace period. Deliver
+a signed MCP event to a subscribed Dot when due; Dot reads current client/card
+and all relevant comment pages, and requests verification only for unresolved
+work. Persist delivery attempts and stable event IDs, cancel deleted assets,
+and avoid repeat nudges. MCP Events subscription/verification/delivery and the
+server-side delay queue still require implementation and a real Dot end-to-end
+test. Existing comment tools alone do not enable background monitoring.

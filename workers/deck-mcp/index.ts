@@ -12,7 +12,7 @@ const instructions = 'TranterGrey personal MCP manages live Deck cards, videos a
 const securitySchemes = [{ type: 'oauth2', scopes: ['tg:personal'] }];
 
 export function createServer(env: TrialEnvironment, actor: ApiActor = mcpActor()) {
-  const server = new McpServer({ name: 'trantergrey-deck-trial', version: '0.5.0' }, { instructions });
+  const server = new McpServer({ name: 'trantergrey-deck-trial', version: '0.6.0' }, { instructions });
   server.registerTool('list_deck_columns', {
     title: 'List Deck columns', description: 'Get active Deck column names and IDs before creating a card. Does not read existing cards.',
     inputSchema: {}, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }, _meta: { securitySchemes },

@@ -1,6 +1,6 @@
 # TranterGrey Personal MCP
 
-Expansion of the Deck trial, with 23 tools for the owner and invited teammates. The existing deployment URL and directory name are retained. The owner can generate copyable teammate codes in Admin Access.
+Expansion of the Deck trial, with 24 tools for the owner and invited teammates. The existing deployment URL and directory name are retained. The owner can generate copyable teammate codes in Admin Access.
 
 ## Connect or reconnect
 

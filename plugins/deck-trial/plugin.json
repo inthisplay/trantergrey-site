@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "trantergrey-deck-trial",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "Personal TranterGrey MCP: Deck cards and history, videos and public share links, Client HQ notes and to-dos.",
   "author": {
     "name": "TranterGrey",
@@ -12,7 +12,7 @@
       "interface": {
         "displayName": "TranterGrey Personal",
         "shortDescription": "Manage Deck, videos and client work",
-        "longDescription": "Personal MCP with 23 tools for the owner and invited teammates. Reads live cards, video metadata and Client HQ; creates and moves cards, links videos, manages to-dos and notes, and reports recorded card moves by date. Requires explicit expanded authorization.",
+        "longDescription": "Personal MCP with 24 tools for the owner and invited teammates. Reads live cards, video metadata and Client HQ; creates and moves cards, links videos, manages to-dos and notes, and reports recorded card moves by date. Requires explicit expanded authorization.",
         "developerName": "TranterGrey",
         "category": "Productivity",
         "capabilities": [

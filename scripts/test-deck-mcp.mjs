@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const temp = await mkdtemp(join(tmpdir(), 'tg-deck-mcp-'));
-await build({ entryPoints: ['workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/api/admin/integration-health.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+await build({ entryPoints: ['workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
 const worker = (await import(pathToFileURL(join(temp, 'workers/deck-mcp/index.mjs')))).default;
 const { onRequestPost } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards.mjs')));
 const { onRequest: manageConnections } = await import(pathToFileURL(join(temp, 'functions/api/admin/mcp-connections.mjs')));
@@ -19,8 +19,9 @@ const { onRequest: clientHQAdmin } = await import(pathToFileURL(join(temp, 'func
 const { integrationRequest } = await import(pathToFileURL(join(temp, 'functions/_lib/integration-request.mjs')));
 const { enforceRateLimit, cleanupIntegrationHealth } = await import(pathToFileURL(join(temp, 'functions/_lib/integration-health.mjs')));
 const { onRequest: healthApi } = await import(pathToFileURL(join(temp, 'functions/api/admin/integration-health.mjs')));
+const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/comments.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
-const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
+const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8');
 const hash = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('base64url');
 
@@ -113,13 +114,13 @@ test('separate consent tabs survive retries and clear only their own cookie', as
   assert.equal((await submit(first, first.cookie)).status, 400);
 });
 
-test('real MCP client discovers 23 tools and creates one audited card across retries', async t => {
+test('real MCP client discovers 24 tools and creates one audited card across retries', async t => {
   const f = fixture(t); const { access } = await f.token();
   const client = new Client({ name: 'deck-test', version: '1.0' });
   const transport = new StreamableHTTPClientTransport(new URL(f.env.MCP_ORIGIN + '/mcp'), { requestInit: { headers: { Authorization: `Bearer ${access}` } }, fetch: (url, options) => f.fetch(url, options) });
   await client.connect(transport);
   try {
-    const tools = await client.listTools(); assert.equal(tools.tools.length, 23); assert.equal(new Set(tools.tools.map(x => x.name)).size, 23); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
+    const tools = await client.listTools(); assert.equal(tools.tools.length, 24); assert.equal(new Set(tools.tools.map(x => x.name)).size, 24); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
     const columns = await client.callTool({ name: 'list_deck_columns', arguments: {} });
     assert.deepEqual(columns.structuredContent.columns, [{ id: 'ideas', name: 'Ideas' }, { id: 'production', name: 'Production' }]);
     const args = { title: 'Mabra fall campaign — MCP test', client: 'Mabra', columnSourceId: 'ideas', notes: '<script>alert(1)</script>', requestId: crypto.randomUUID() };
@@ -244,13 +245,11 @@ test('video tools search newest uploads, return public links and refuse private 
   f.db.exec(`CREATE TABLE mux_asset_metadata(asset_id TEXT,client TEXT,title TEXT,tags TEXT,status TEXT,thumbnail_time REAL,downloads_enabled INTEGER);
     CREATE TABLE mux_video_projects(value TEXT,updated_at TEXT);
     CREATE TABLE mux_video_collections(value TEXT,updated_at TEXT);
-    CREATE TABLE mux_library_snapshot_state(id TEXT,refresh_id TEXT,refreshed_at TEXT);
-    CREATE TABLE mux_library_assets(asset_id TEXT,refresh_id TEXT,value TEXT);
     CREATE TABLE archive_imports(asset_id TEXT,vimeo_id TEXT,upload_id TEXT);
     CREATE TABLE archive_videos(vimeo_id TEXT,title TEXT,created_at TEXT,client TEXT,folder TEXT);
     INSERT INTO mux_asset_metadata VALUES('newvideo','VGA','VGA fall','[]','published',NULL,1),('oldvideo','VGA','VGA spring','[]','published',NULL,1);`);
   f.db.prepare('INSERT INTO mux_library_snapshot_state VALUES(?,?,?)').run('library','fixture',new Date().toISOString());
-  for(const [id,date] of [['oldvideo','2026-04-01'],['newvideo','2026-11-01']]) f.db.prepare('INSERT INTO mux_library_assets VALUES(?,?,?)').run(id,'fixture',JSON.stringify({id,title:id,createdAt:date,duration:30,playbackId:'play'+id,playbackPolicy:'public',thumbnailUrl:null}));
+  for(const [id,date] of [['oldvideo','2026-04-01'],['newvideo','2026-11-01']]) f.db.prepare("INSERT INTO mux_library_assets(asset_id,refresh_id,value,refreshed_at) VALUES(?,?,?,'now')").run(id,'fixture',JSON.stringify({id,title:id,createdAt:date,duration:30,playbackId:'play'+id,playbackPolicy:'public',thumbnailUrl:null}));
   const search=await call('search_videos',{client:'VGA',limit:1}); assert.equal(search.isError,undefined); assert.equal(search.structuredContent.data[0].id,'newvideo');
   const next=await call('search_videos',{client:'VGA',limit:1,cursor:search.structuredContent.meta.nextCursor}); assert.equal(next.structuredContent.data[0].id,'oldvideo');
   f.env.MUX_TOKEN_ID='fixture';f.env.MUX_TOKEN_SECRET='fixture';
@@ -477,4 +476,52 @@ test('monitoring catches MCP HTTP-200 tool failures and is owner-only',async t=>
   assert.equal((await healthApi({request:new Request('https://deck.test/api/admin/integration-health'),env:f.env})).status,401);
   assert.equal((await healthApi({request:sessionRequest(f,undefined,'/api/admin/integration-health',false),env:f.env})).status,403);
   f.db.exec('DELETE FROM admin_sessions');const read=await healthApi({request:sessionRequest(f,undefined,'/api/admin/integration-health'),env:f.env});assert.equal(read.status,200);assert.equal((await read.json()).events.length,1);
+});
+
+test('comment reader merges imported/local pages, excludes deleted records and isolates cards',async t=>{
+  const f=fixture(t);const{access}=await f.token();
+  const call=async(name,args)=>(await(await f.fetch('/mcp',{method:'POST',headers:{authorization:`Bearer ${access}`,'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json()).result;
+  const created=await call('create_deck_card',{title:'Comment test',columnSourceId:'ideas',requestId:crypto.randomUUID()});const cardId=created.structuredContent.id;
+  const source=f.db.prepare('SELECT source_id FROM production_cards WHERE id=?').get(cardId).source_id;
+  const local=(id,html,json=null,deleted=null)=>f.db.prepare('INSERT INTO production_local_comments(id,card_source_id,body_html,body_json,author_name,created_at,deleted_at) VALUES(?,?,?,?,?,?,?)').run(id,source,html,json,'Taylor','2026-11-22T12:00:00Z',deleted);
+  const group=[{type:'mux-asset',assetId:'group-not-an-asset',itemKind:'ratio-group',href:'/watch/campaign',media:[{id:'assetOne',playerUrl:'https://player.mux.com/playOne?token=secret'},{id:'assetTwo',playerUrl:'https://player.mux.com/playTwo'}],children:[{text:''}]}];
+  local('same','<p>Group review</p>',JSON.stringify(group));
+  local('z','<p>Second local</p>');local('deleted','<p>Deleted secret</p>',null,'now');
+  f.db.prepare('INSERT INTO production_comments(source_id,card_source_id,body_html,author_json,created_at,source_json,imported_at) VALUES(?,?,?,?,?,?,?)').run('same',source,'<p>Imported review &amp; notes</p><iframe src="https://player.mux.com/oldPlayback?token=hidden"></iframe>','{"name":"Imported Author"}','2026-11-22T12:00:00Z','{}','now');
+  f.db.prepare('INSERT INTO mux_library_snapshot_state VALUES(?,?,?)').run('library','refresh','now');
+  f.db.prepare('INSERT INTO mux_library_assets VALUES(?,?,?,?)').run('oldAsset','refresh',JSON.stringify({id:'oldAsset',playbackId:'oldPlayback'}),'now');
+  let cursor,all=[];
+  do {const page=await call('get_deck_card_comments',{cardId,limit:1,...(cursor?{cursor}:{})});assert.equal(page.isError,undefined);all.push(...page.structuredContent.data);cursor=page.structuredContent.meta.nextCursor;}while(cursor);
+  assert.equal(all.length,3);assert.equal(new Set(all.map(c=>c.id)).size,3);assert.ok(!JSON.stringify(all).includes('Deleted secret'));
+  const imported=all.find(c=>c.source==='imported');assert.equal(imported.authorName,'Imported Author');assert.deepEqual(imported.assetIds,['oldAsset']);assert.equal(imported.text,'Imported review & notes');assert.ok(!JSON.stringify(imported.mediaLinks).includes('token='));
+  const grouped=all.find(c=>c.id==='local:same');assert.deepEqual(grouped.assetIds,['assetOne','assetTwo']);assert.ok(!grouped.assetIds.includes('group-not-an-asset'));assert.deepEqual(grouped.unresolvedPlaybackIds,['playOne','playTwo']);assert.deepEqual(grouped.watchLinks,['https://trantergrey.com/watch/campaign']);
+  const page=await call('get_deck_card_comments',{cardId,limit:1});
+  const other=(await call('create_deck_card',{title:'Other',columnSourceId:'ideas',requestId:crypto.randomUUID()})).structuredContent.id;
+  assert.equal((await call('get_deck_card_comments',{cardId:other,cursor:page.structuredContent.meta.nextCursor})).isError,true);
+  assert.deepEqual((await call('get_deck_card_comments',{cardId:other})).structuredContent.data,[]);
+  const http=(headers={},query='')=>readComments({request:new Request('https://deck.test/api/internal/v1/cards/'+cardId+'/comments'+query,{headers}),env:f.env,params:{id:cardId}});
+  assert.equal((await http()).status,401);
+  const credentialId=crypto.randomUUID(), credential=`tg_${credentialId}_${'x'.repeat(32)}`;
+  const digest=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(credential))).toString('hex');
+  f.db.prepare('INSERT INTO api_integration_credentials(id,name,secret_hash,scopes_json,created_at) VALUES(?,?,?,?,?)').run(credentialId,'Comment reader',digest,'["cards:write"]','now');
+  assert.equal((await http({authorization:`Bearer ${credential}`})).status,403);
+  f.db.prepare('UPDATE api_integration_credentials SET scopes_json=? WHERE id=?').run('["cards:read"]',credentialId);
+  assert.equal((await http({authorization:`Bearer ${credential}`})).status,200);
+  f.db.prepare('UPDATE api_integration_credentials SET revoked_at=? WHERE id=?').run('now',credentialId);
+  assert.equal((await http({authorization:`Bearer ${credential}`})).status,401);
+  sessionRequest(f,undefined);
+  assert.equal((await http({cookie:'tg_admin=shared-session'},'?limit=0')).status,400);
+  assert.equal((await http({cookie:'tg_admin=shared-session'},'?cursor=garbage')).status,400);
+  const rest=await http({cookie:'tg_admin=shared-session'});assert.equal(rest.status,200);assert.deepEqual((await rest.json()).data,all);
+  f.db.prepare('UPDATE production_card_overrides SET deleted_at=? WHERE card_source_id=?').run('now',source);
+  assert.equal((await http({cookie:'tg_admin=shared-session'})).status,404);
+});
+test('comment extraction flags malformed content and never guesses IDs from text, titles or hostile URLs',async t=>{
+  const f=fixture(t);f.db.prepare("INSERT INTO production_cards(id,source_id,title,column_source_id,source_json,imported_at) VALUES(?,?,?,?,'{}','now')").run('card','source','Card','ideas');
+  f.db.prepare('INSERT INTO production_local_comments(id,card_source_id,body_html,body_json,author_name,created_at) VALUES(?,?,?,?,?,?)').run('malformed','source','<p>assetLooksReal is just text</p><script>https://player.mux.com/scriptOnly</script><iframe src="https://player.mux.com.evil.test/fake"></iframe><a href="https://trantergrey.com.evil.test/watch/fake">Fake</a><a href="/watch/u/a-project">Real project link</a><video src="https://stream.mux.com/unknownPlayback.m3u8?token=secret"></video>','{broken','Taylor','2026-11-22');
+  const request=sessionRequest(f,undefined,'/api/internal/v1/cards/card/comments');
+  const response=await readComments({request,env:f.env,params:{id:'card'}});assert.equal(response.status,200);
+  const{data:[comment]}=await response.json();assert.deepEqual(comment.assetIds,[]);assert.deepEqual(comment.playbackIds,['unknownPlayback']);assert.deepEqual(comment.unresolvedPlaybackIds,['unknownPlayback']);assert.deepEqual(comment.warnings,['invalid_structured_content']);assert.deepEqual(comment.watchLinks,['https://trantergrey.com/watch/u/a-project']);assert.ok(!comment.text.includes('scriptOnly'));assert.ok(!JSON.stringify(comment).includes('?token='));
+  f.db.prepare('UPDATE production_local_comments SET body_html=?,body_json=NULL').run('x'.repeat(200001));
+  const large=await readComments({request,env:f.env,params:{id:'card'}});const entry=(await large.json()).data[0];assert.ok(entry.warnings.includes('comment_content_truncated'));assert.ok(entry.warnings.includes('comment_text_truncated'));assert.equal(entry.text.length,50000);
 });

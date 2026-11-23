@@ -25,11 +25,11 @@ const access_token=renewed.access_token;console.log('Refresh token issued and ro
 const client=new Client({name:'tg-owner-readonly-smoke',version:'0.2.0'});
 try {
   await client.connect(new StreamableHTTPClientTransport(new URL(origin+'/mcp'),{requestInit:{headers:{Authorization:`Bearer ${access_token}`}}}));
-  const {tools}=await client.listTools();assert.equal(tools.length,23);console.log('Discovered 23 authenticated tools.');
+  const {tools}=await client.listTools();assert.equal(tools.length,24);console.log('Discovered 24 authenticated tools.');
   async function call(name,args={}) { const r=await client.callTool({name,arguments:args});assert.ok(!r.isError,`${name} failed`);console.log(`${name}: passed`);return r.structuredContent; }
   const columns=await call('list_deck_columns');
   const cards=await call('search_deck_cards',{limit:1});
-  if(cards.data[0]) { await call('get_deck_card',{cardId:cards.data[0].id});await call('get_deck_card_activity',{cardId:cards.data[0].id}); }
+  if(cards.data[0]) { await call('get_deck_card',{cardId:cards.data[0].id});await call('get_deck_card_activity',{cardId:cards.data[0].id});await call('get_deck_card_comments',{cardId:cards.data[0].id,limit:2}); }
   const clients=await call('list_clients');
   const firstClient=clients.data.clients.find(c=>c.id);
   if(firstClient) { await call('get_client_workspace',{clientId:firstClient.id});await call('get_client_related',{clientId:firstClient.id}); }

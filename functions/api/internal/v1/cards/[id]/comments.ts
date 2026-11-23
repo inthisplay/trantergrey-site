@@ -1,3 +1,4 @@
+import { readCardComments, CommentReadError } from '../../../../../_lib/card-comments';
 import { apiData, apiError, requireApiScope } from '../../../../../_lib/internal-api';
 import { addProductionComment, escapeHtml } from '../../../../../_lib/production-commands';
 import type { AdminEnvironment } from '../../../../../_lib/admin';
@@ -12,4 +13,16 @@ export async function onRequestPost({ request, env, params }: Context): Promise<
   if (text.length > 10_000) return apiError('invalid_comment', 'Enter a comment under 10,000 characters.', 400);
   try { return apiData(await addProductionComment(env, params.id, { bodyHtml: `<p>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</p>`, bodyJson: JSON.stringify({ text }) }, actor), undefined, 201); }
   catch (error) { return apiError('comment_create_failed', error instanceof Error ? error.message : 'Unable to add this comment.', 400); }
+}
+
+export async function onRequestGet({ request, env, params }: Context): Promise<Response> {
+  const actor = await requireApiScope(request, env, 'cards:read'); if (actor instanceof Response) return actor;
+  const url = new URL(request.url);
+  try {
+    const result = await readCardComments(env, params.id, url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : 20, url.searchParams.get('cursor') || '');
+    return apiData(result.comments, { nextCursor: result.nextCursor, coverage: result.coverage });
+  } catch (error) {
+    if (error instanceof CommentReadError) return apiError('invalid_comment_read', error.message, error.status);
+    return apiError('comments_unavailable', 'Unable to read comments. Try again later.', 503);
+  }
 }
