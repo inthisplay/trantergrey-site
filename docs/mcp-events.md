@@ -128,3 +128,14 @@ dry run passed. Refreshed the owner's existing TG Site – Personal plugin in
 ChatGPT and visually verified `mux.asset.ready` under Events alongside 24 tools.
 No Dot subscription, business-check timing, or notification rule was created.
 Actual Dot callback delivery remains to be checked after the user subscribes.
+
+### Diagnosing task-service subscription failures
+
+The Worker emits privacy-safe `mcp_events` console diagnostics for MCP transport
+arrival (allowlisted protocol method only), authentication rejection, and
+subscription received/identity-validated/stored/rejected stages. Rejections log
+only the numeric JSON-RPC error code. No request bodies, callback URLs, signing
+keys, authorization headers or identity IDs are included. These diagnostics are
+in Workers Logs, not the Connection health error totals. A generic ChatGPT task
+error does not identify the failing side; correlate a controlled attempt with
+these stages before changing validation or callback restrictions.

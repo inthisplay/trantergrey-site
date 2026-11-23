@@ -20,7 +20,7 @@ export function registerEvents(server: McpServer, env: TrialEnvironment, session
   async function guarded<T>(operation:string, fn:()=>Promise<T>):Promise<T> {
     try { return await fn(); }
     catch(error) {
-      if(error instanceof McpError) throw error;
+      if(error instanceof McpError) { console.info(JSON.stringify({diagnostic:'mcp_events',operation,stage:'rejected',code:error.code})); throw error; }
       await recordIntegrationEvent(env,'mcp',operation,'server_error',500);
       throw new McpError(-32603,'Event service unavailable. Try again later.');
     }
@@ -37,9 +37,11 @@ export function registerEvents(server: McpServer, env: TrialEnvironment, session
     return {events:[eventDefinition]};
   });
   server.server.setRequestHandler(z.object({method:z.literal('events/subscribe'),params:z.unknown()}),async({params:input})=>guarded('event_subscribe',async()=>{
+    console.info(JSON.stringify({diagnostic:'mcp_events',operation:'event_subscribe',stage:'received'}));
     const parsed=subscribe.safeParse(input); if(!parsed.success)throw new McpError(-32602,'Invalid subscription parameters. Use the event schema and a null replay cursor.');
     const params=parsed.data;
     const {id,callback}=await identity(params.delivery.url);
+    console.info(JSON.stringify({diagnostic:'mcp_events',operation:'event_subscribe',stage:'identity_validated'}));
     const limited=await enforceRateLimit(env,'mcp','event_subscribe',sessionId!,20);
     if(limited)throw new McpError(-32000,'Too many subscription requests. Retry in one minute.');
     try{signingKey(params.delivery.secret);}catch{throw new McpError(-32602,'Expected a whsec_ secret containing 24–64 base64-encoded bytes.');}
@@ -68,6 +70,7 @@ export function registerEvents(server: McpServer, env: TrialEnvironment, session
       ON CONFLICT(id) DO UPDATE SET secret=excluded.secret,previous_secret=excluded.previous_secret,previous_until=excluded.previous_until,verified_at=excluded.verified_at,expires_at=excluded.expires_at
       RETURNING id`).bind(id,sessionId,callback,secret,changed?old.secret:old?.previous_secret||null,changed?seconds()+300:old?.previous_until||0,seconds(),expires,seconds(),sessionId,id).first();
     if(!saved)throw new McpError(-32000,'This connection has reached its limit of 10 active subscriptions. Unsubscribe from an existing event first.');
+    console.info(JSON.stringify({diagnostic:'mcp_events',operation:'event_subscribe',stage:'stored'}));
     return {id,refreshBefore:new Date(expires*1000).toISOString(),cursor:null,truncated:false};
   }));
   server.server.setRequestHandler(z.object({method:z.literal('events/unsubscribe'),params:z.unknown()}),async({params:input})=>guarded('event_unsubscribe',async()=>{

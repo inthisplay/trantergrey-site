@@ -758,3 +758,10 @@ test('push stops after a crashed final attempt and keeps the inbox',async t=>{
  f.db.exec("UPDATE notification_push_jobs SET attempts=8,next_attempt=0,lease='crashed'");const original=globalThis.fetch;t.after(()=>globalThis.fetch=original);globalThis.fetch=async()=>assert.fail('Exhausted jobs must not send again');
  await notifications.deliverNotificationPush(f.env);assert.equal(f.db.prepare('SELECT status FROM notification_push_jobs').get().status,'failed');assert.equal(f.db.prepare('SELECT count(*) n FROM team_notifications').get().n,1);
 });
+
+test('event diagnostics report rejected stages without payloads, secrets or callback URLs',async t=>{
+ const f=fixture(t),{access}=await f.token();const entries=[];const original=console.info;console.info=value=>entries.push(String(value));t.after(()=>console.info=original);
+ const response=await f.fetch('/mcp',{method:'POST',headers:{authorization:`Bearer ${access}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'events/subscribe',params:{name:'private-event-name',arguments:{},delivery:{mode:'webhook',url:'https://private-callback.invalid/secret-path',secret:'private-signing-secret'}}})});
+ const result=await response.json();assert.equal(result.error.code,-32602);
+ const logs=entries.join('\n');assert.match(logs,/transport_received/);assert.match(logs,/rejected/);assert.ok(!logs.includes('private-'));assert.ok(!logs.includes(access));
+});

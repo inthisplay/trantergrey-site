@@ -88,8 +88,14 @@ export default {
         return authResponse;
       }
       if (url.pathname !== '/mcp') return json({ name: 'TranterGrey personal MCP', endpoint: '/mcp' }, url.pathname === '/' ? 200 : 404);
+      // Log only an allowlisted protocol method, never request data or callback credentials.
+      if(request.method === 'POST') {
+        const rpc=await request.clone().json().catch(()=>null) as {method?:unknown}|null;
+        const method=typeof rpc?.method==='string' && ['initialize','server/discover','events/list','events/subscribe','events/unsubscribe'].includes(rpc.method) ? rpc.method : 'other';
+        console.info(JSON.stringify({diagnostic:'mcp_events',stage:'transport_received',method}));
+      }
       const actor = await authorized(request, env);
-      if (!actor) { const limited = await enforceRateLimit(env, 'mcp', 'anonymous', peer(request), 60); return limited || challenge(env); }
+      if (!actor) { console.info(JSON.stringify({diagnostic:'mcp_events',stage:'authentication_rejected'})); const limited = await enforceRateLimit(env, 'mcp', 'anonymous', peer(request), 60); return limited || challenge(env); }
       const limited = await enforceRateLimit(env, 'mcp', 'authenticated', actor.id, 300); if (limited) return limited;
       if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
       const server = createServer(env, actor, await authorizedSession(request, env));
