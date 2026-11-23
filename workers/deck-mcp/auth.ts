@@ -68,6 +68,14 @@ export async function authorized(request: Request, env: TrialEnvironment) {
   return mcpActor();
 }
 
+// Called after authorized() succeeds; retain the OAuth family so event delivery
+// stops on that specific connection's revocation, not merely actor revocation.
+export async function authorizedSession(request: Request, env: TrialEnvironment) {
+  const bearer=request.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9-]+)$/)?.[1];
+  if(!bearer)return undefined;
+  return (await get<Token>(env,'token',await digest(bearer)))?.family;
+}
+
 async function activeInvitation(env: TrialEnvironment, id: string) {
   return env.MCP_AUTH.prepare('SELECT id,email,nickname FROM mcp_invitations WHERE id=? AND redeemed_at IS NOT NULL AND revoked_at IS NULL').bind(id).first<{ id: string; email: string; nickname: string }>();
 }
@@ -107,7 +115,7 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
     const transaction = random();
     const cookieName = consentCookieName(transaction);
     await put(env, 'pending', await digest(transaction), grant, 600);
-    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect TranterGrey personal MCP</title><body><main><h1>Connect TranterGrey personal MCP</h1><p>This connection can read Deck cards and history, move and create cards, add comments, read videos and public share links, link videos to cards, and read and manage Client HQ clients, notes and to-dos, including deleting items. These actions affect <strong>live TranterGrey data</strong>.</p><p>This connection stays authorized until revoked. ChatGPT can renew access automatically without asking you to sign in every hour. With a teammate invitation, actions are recorded under the name assigned to that invitation. Keep your code private; it grants access as that person.</p><form method="post" action="/authorize"><input type="hidden" name="transaction" value="${escape(transaction)}"><label>Access code <input name="access_code" type="password" required autocomplete="off"></label><p><button type="submit">Allow TranterGrey personal MCP access</button></p></form><p>Close this window to cancel. Never enter your Google or ChatGPT password here.</p></main></body></html>`;
+    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect TranterGrey personal MCP</title><body><main><h1>Connect TranterGrey personal MCP</h1><p>This connection can read Deck cards and history, move and create cards, add comments, read videos and public share links, subscribe to new Mux asset events, link videos to cards, and read and manage Client HQ clients, notes and to-dos, including deleting items. These actions affect <strong>live TranterGrey data</strong>.</p><p>This connection stays authorized until revoked. ChatGPT can renew access automatically without asking you to sign in every hour. With a teammate invitation, actions are recorded under the name assigned to that invitation. Keep your code private; it grants access as that person.</p><form method="post" action="/authorize"><input type="hidden" name="transaction" value="${escape(transaction)}"><label>Access code <input name="access_code" type="password" required autocomplete="off"></label><p><button type="submit">Allow TranterGrey personal MCP access</button></p></form><p>Close this window to cancel. Never enter your Google or ChatGPT password here.</p></main></body></html>`;
     // Browser form POSTs need their same-site Origin; no-referrer makes it opaque (null).
     // same-origin still suppresses referrers when redirecting back to ChatGPT.
     // form-action also governs redirects in browsers: allow only the validated callback.

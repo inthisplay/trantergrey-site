@@ -1,5 +1,6 @@
 // Owner-only production smoke check. Exercises OAuth and read tools; does not modify business records.
 import assert from 'node:assert/strict';
+import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -26,6 +27,12 @@ const client=new Client({name:'tg-owner-readonly-smoke',version:'0.2.0'});
 try {
   await client.connect(new StreamableHTTPClientTransport(new URL(origin+'/mcp'),{requestInit:{headers:{Authorization:`Bearer ${access_token}`}}}));
   const {tools}=await client.listTools();assert.equal(tools.length,24);console.log('Discovered 24 authenticated tools.');
+  // This SDK version strips unknown capability keys on the client side.
+  // Verify the extension on the raw wire, then use an explicit result schema.
+  const initialized=await request('/mcp',{method:'POST',headers:{Authorization:`Bearer ${access_token}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'event-discovery-smoke',version:'1'}}})});
+  assert.equal(initialized.status,200);assert.deepEqual((await initialized.json()).result.capabilities.events,{});
+  const events=await client.request({method:'events/list',params:{}},z.object({events:z.array(z.object({name:z.string()}))}));
+  assert.deepEqual(events.events.map(e=>e.name),['mux.asset.ready']);console.log('Authenticated event capability and discovery: passed');
   async function call(name,args={}) { const r=await client.callTool({name,arguments:args});assert.ok(!r.isError,`${name} failed`);console.log(`${name}: passed`);return r.structuredContent; }
   const columns=await call('list_deck_columns');
   const cards=await call('search_deck_cards',{limit:1});

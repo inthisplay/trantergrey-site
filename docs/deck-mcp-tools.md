@@ -64,7 +64,7 @@ Apply `migrations/0053_mcp_item_requests.sql` to TG_DATA before this Worker vers
 - Editing card titles/assignees/due dates, archiving/deleting cards, attachments and card checklist steps.
 - Uploading/editing/deleting videos or enabling public playback.
 - External calendar event creation, calendar synchronization, or general business analytics beyond recorded card moves.
-- Automated video/card verification requests, notifications, PWA push subscriptions, and background monitoring.
+- Automated video/card verification requests, notifications, PWA push subscriptions, and server-owned background card checks. A subscribed Dot can receive new-asset events and perform user-directed follow-up.
 - Per-user Google sign-in and team permissions.
 
 ## Verification
@@ -130,3 +130,13 @@ read-only checks, including comment reads, refresh rotation and revocation.
 All 28 integration tests, TypeScript, Worker dry run and website release checks
 passed. The signed event subscription/delivery layer and 24-hour verification
 queue are a documented follow-up, not part of this comment-reader release.
+
+
+## New asset event connection — v0.7
+
+The 24 tools are unchanged. One MCP event, `mux.asset.ready`, is advertised
+alongside tools. Rescan the plugin/server to discover it, then ask Dot to
+subscribe and specify its behavior. Installing or rescanning does not itself
+subscribe. Existing `tg:personal` connections work; no scope expansion.
+See [MCP event contract and operations](mcp-events.md) for lifetime, callback
+verification, revocation, retry limits and deployment prerequisites.

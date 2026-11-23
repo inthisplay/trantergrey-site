@@ -156,13 +156,17 @@ concurrent edits. An association returned by video/card tools is distinct from
 an asset appearing in a comment. No schema migration or OAuth scope change is
 needed; refresh plugin metadata/new chat to discover the added tool.
 
-### Planned event-driven verification (not implemented)
+## Mux events for Dot
 
-Use a verified Mux asset-ready webhook to enqueue one check per asset, due
-24 hours later. Deduplicate retries without resetting the grace period. Deliver
-a signed MCP event to a subscribed Dot when due; Dot reads current client/card
-and all relevant comment pages, and requests verification only for unresolved
-work. Persist delivery attempts and stable event IDs, cancel deleted assets,
-and avoid repeat nudges. MCP Events subscription/verification/delivery and the
-server-side delay queue still require implementation and a real Dot end-to-end
-test. Existing comment tools alone do not enable background monitoring.
+The MCP endpoint now supports `events/list`, `events/subscribe`, and
+`events/unsubscribe` in addition to its 24 tools. See
+[the event contract](mcp-events.md). This is a native MCP subscription protocol,
+not a second REST subscription API or an admin UI feature: callback verification
+and OAuth connection identity are required. Existing API read endpoints remain
+how a subscriber retrieves current business data.
+
+The verified Pages Mux webhook durably records `video.asset.ready` and fans out
+`mux.asset.ready` to active subscribers. Delivery starts immediately; the server
+contains no 24-hour delay, card-check schedule, matching policy or notification
+rule. Dot owns those instructions. The minute-level Worker trigger only drains
+pending deliveries/retries; it never scans videos or comments.

@@ -21,3 +21,9 @@ Examples:
 This connection changes live data. The new `tg:personal` scope replaces `deck:create`; old tokens and outstanding grants cannot acquire expanded permissions. There is no trial deadline. Access tokens last one hour and ChatGPT can renew them automatically with rotating refresh tokens. Reconnect once after upgrading from the trial to receive a refresh token; subsequent normal renewals require no sign-in. Owner use is attributed to “ChatGPT personal MCP”; teammate use is attributed to the name assigned to the invitation. These labels do not verify the recipient’s ChatGPT identity. Teammate codes expire after seven days unused, can be redeemed once, and can be revoked independently in Admin Access.
 
 See `docs/deck-mcp-tools.md` for the exact tool inventory and limitations. The manifests contain no credentials. No public-directory submission or teammate distribution has been performed.
+
+
+One MCP event is also available: `mux.asset.ready`. Rescan this server and ask
+Dot to subscribe. Dot controls timing and notifications; the app only delivers
+asset IDs when new videos become ready. No historical replay; no automatic
+subscription on installation. See `docs/mcp-events.md` for the event contract.

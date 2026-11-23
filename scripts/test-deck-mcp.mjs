@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const temp = await mkdtemp(join(tmpdir(), 'tg-deck-mcp-'));
-await build({ entryPoints: ['workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+await build({ entryPoints: ['workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/_lib/mcp-events.ts', 'functions/api/webhooks/mux.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
 const worker = (await import(pathToFileURL(join(temp, 'workers/deck-mcp/index.mjs')))).default;
 const { onRequestPost } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards.mjs')));
 const { onRequest: manageConnections } = await import(pathToFileURL(join(temp, 'functions/api/admin/mcp-connections.mjs')));
@@ -22,18 +22,23 @@ const { onRequest: healthApi } = await import(pathToFileURL(join(temp, 'function
 const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/comments.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
 const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
-const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8');
+const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8') + await readFile('workers/deck-mcp/events-schema.sql','utf8');
+const {enqueueMuxReady,deliverEvents}=await import(pathToFileURL(join(temp,'functions/_lib/mcp-events.mjs')));
+const {onRequestPost:muxWebhook}=await import(pathToFileURL(join(temp,'functions/api/webhooks/mux.mjs')));
 const hash = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('base64url');
 
 function binding(db) {
+  let batchTail=Promise.resolve();
   return { prepare(sql) {
     let values = [];
     const s = { bind(...v) { values = v; return s; }, async first() { return db.prepare(sql).get(...values) ?? null; }, async all() { return { results: db.prepare(sql).all(...values) }; }, async run() { return db.prepare(sql).run(...values); } };
     return s;
   }, async batch(statements) {
+    const previous=batchTail;let release;batchTail=new Promise(resolve=>{release=resolve;});await previous;
     db.exec('BEGIN');
     try { const result = []; for (const s of statements) result.push(await s.run()); db.exec('COMMIT'); return result; }
     catch (e) { db.exec('ROLLBACK'); throw e; }
+    finally {release();}
   } };
 }
 function fixture(t) {
@@ -444,7 +449,7 @@ test('admin UI shares item commands and failed audit rolls back REST creation',a
 test('global rate limiter blocks bursts, isolates actors, rolls windows and cleans expired storage',async t=>{
   const f=fixture(t);const dateNow=Date.now;let time=1800000000000;Date.now=()=>time;t.after(()=>{Date.now=dateNow;});
   const responses=await Promise.all(Array.from({length:7},()=>enforceRateLimit(f.env,'api','test','actor-a',3)));
-  assert.equal(responses.filter(Boolean).length,4);assert.equal(responses[3].status,429);assert.equal(responses[3].headers.get('retry-after'),'60');
+  assert.equal(responses.filter(Boolean).length,4);assert.equal(responses.find(Boolean).status,429);assert.equal(responses.find(Boolean).headers.get('retry-after'),'60');
   assert.equal(await enforceRateLimit(f.env,'api','test','actor-b',3),null);
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM integration_events WHERE category='rate_limited'").get().n,1);
   assert.ok(!JSON.stringify(f.db.prepare('SELECT * FROM integration_rate_limits').all()).includes('actor-a'));
@@ -524,4 +529,136 @@ test('comment extraction flags malformed content and never guesses IDs from text
   const{data:[comment]}=await response.json();assert.deepEqual(comment.assetIds,[]);assert.deepEqual(comment.playbackIds,['unknownPlayback']);assert.deepEqual(comment.unresolvedPlaybackIds,['unknownPlayback']);assert.deepEqual(comment.warnings,['invalid_structured_content']);assert.deepEqual(comment.watchLinks,['https://trantergrey.com/watch/u/a-project']);assert.ok(!comment.text.includes('scriptOnly'));assert.ok(!JSON.stringify(comment).includes('?token='));
   f.db.prepare('UPDATE production_local_comments SET body_html=?,body_json=NULL').run('x'.repeat(200001));
   const large=await readComments({request,env:f.env,params:{id:'card'}});const entry=(await large.json()).data[0];assert.ok(entry.warnings.includes('comment_content_truncated'));assert.ok(entry.warnings.includes('comment_text_truncated'));assert.equal(entry.text.length,50000);
+});
+
+const eventSecret='whsec_'+Buffer.alloc(32,7).toString('base64');
+const subscriptionParams=(url='https://chatgpt.com/backend-api/mcp-events/test')=>({name:'mux.asset.ready',arguments:{},delivery:{mode:'webhook',url,secret:eventSecret}});
+const readyEvent=(asset='newAsset')=>({id:crypto.randomUUID(),created_at:new Date().toISOString(),data:{id:asset}});
+async function eventClient(f) {
+  const token=await f.token();
+  const rpc=async(method,params)=>{
+    const r=await f.fetch('/mcp',{method:'POST',headers:{authorization:`Bearer ${token.access}`,'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,...(params?{params}:{})})});
+    return r.json();
+  };
+  return {rpc,token};
+}
+function receiver(t,handler=()=>new Response(null,{status:204})) {
+  const previous=globalThis.fetch, calls=[];
+  globalThis.fetch=async(url,init)=>{
+    assert.equal(new URL(url).hostname,'chatgpt.com');assert.equal(init.redirect,'error');
+    const body=JSON.parse(init.body);calls.push({url,init,body});
+    if(body.type==='verification')return Response.json({challenge:body.challenge});
+    return handler(url,init,body);
+  };
+  t.after(()=>{globalThis.fetch=previous;});return calls;
+}
+async function validEventSignature(call,secret=eventSecret) {
+  const h=call.init.headers;
+  const key=await crypto.subtle.importKey('raw',Buffer.from(secret.slice(6),'base64'),{name:'HMAC',hash:'SHA-256'},false,['verify']);
+  const message=`${h['webhook-id']}.${h['webhook-timestamp']}.${call.init.body}`;
+  for(const signed of h['webhook-signature'].split(' ')) if(await crypto.subtle.verify('HMAC',key,Buffer.from(signed.slice(3),'base64'),new TextEncoder().encode(message)))return true;
+  return false;
+}
+test('MCP advertises an event and authenticates discovery, subscription and unsubscribe',async t=>{
+  const f=fixture(t),{rpc}=await eventClient(f),calls=receiver(t);
+  const init=await rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'events-test',version:'1'}});
+  assert.deepEqual(init.result.capabilities.events,{});
+  const list=await rpc('events/list',{});assert.equal(list.result.events[0].name,'mux.asset.ready');assert.equal(list.result.events[0].inputSchema.additionalProperties,false);
+  const anonymous=await f.fetch('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'events/list'})});assert.equal(anonymous.status,401);
+  const first=await rpc('events/subscribe',subscriptionParams());assert.ok(first.result?.id,JSON.stringify(first));assert.equal(first.result.cursor,null);
+  assert.equal(calls.length,1);assert.equal(calls[0].body.type,'verification');assert.ok(await validEventSignature(calls[0]));
+  const repeated=await rpc('events/subscribe',subscriptionParams());assert.equal(repeated.result.id,first.result.id);assert.equal(calls.length,1,'Verified callbacks are briefly cached');
+  assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_subscriptions').get().n,1);
+  const {secret,...delivery}=subscriptionParams().delivery;
+  const stop={name:'mux.asset.ready',arguments:{},delivery};
+  assert.deepEqual((await rpc('events/unsubscribe',stop)).result,{});assert.deepEqual((await rpc('events/unsubscribe',stop)).result,{});
+  assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_subscriptions').get().n,0);
+});
+test('event callbacks reject SSRF targets, invalid keys, filters and failed challenge responses',async t=>{
+  const f=fixture(t),{rpc}=await eventClient(f),calls=receiver(t);
+  for(const url of ['http://chatgpt.com/callback','https://127.0.0.1/callback','https://chatgpt.com.evil.test/callback','https://chatgpt.com@localhost/callback','https://chatgpt.com:8443/callback','https://chatgpt.com/callback#fragment'])assert.equal((await rpc('events/subscribe',subscriptionParams(url))).error.code,-32602);
+  assert.equal((await rpc('events/subscribe',{...subscriptionParams(),arguments:{client:'BMW'}})).error.code,-32602);
+  assert.equal((await rpc('events/subscribe',{...subscriptionParams(),cursor:'old-event'})).error.code,-32602);
+  for(const secret of ['weak','whsec_YQ==','whsec_'+'a'.repeat(99)])assert.equal((await rpc('events/subscribe',{...subscriptionParams(),delivery:{...subscriptionParams().delivery,secret}})).error.code,-32602);
+  assert.equal(calls.length,0);
+  for(const response of [()=>Response.json({challenge:'wrong'}),()=>new Response(null,{status:302,headers:{location:'https://127.0.0.1'}}),()=>new Response('x'.repeat(5000))]) {
+    globalThis.fetch=async()=>response();assert.equal((await rpc('events/subscribe',subscriptionParams())).error.code,-32015);
+  }
+  assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_subscriptions').get().n,0);
+  assert.ok(!JSON.stringify(f.db.prepare('SELECT * FROM integration_events').all()).includes(eventSecret));
+});
+test('ready-event fan-out is atomic, deduplicated per asset, future-only and immediately due',async t=>{
+  const f=fixture(t),{rpc}=await eventClient(f),calls=receiver(t);
+  await enqueueMuxReady(f.env,readyEvent('beforeSubscription'));
+  await rpc('events/subscribe',subscriptionParams());
+  const event=readyEvent();await enqueueMuxReady(f.env,event);await enqueueMuxReady(f.env,event);await enqueueMuxReady(f.env,readyEvent());
+  assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_deliveries').get().n,1);
+  assert.ok(f.auth.prepare('SELECT next_attempt FROM mcp_event_deliveries').get().next_attempt<=Date.now()/1000);
+  await Promise.all([deliverEvents(f.env),deliverEvents(f.env)]);
+  const received=calls.filter(c=>!c.body.type);assert.equal(received.length,1);assert.ok(await validEventSignature(received[0]));
+  assert.deepEqual(received[0].body.data,{assetId:'newAsset'});assert.equal(received[0].body.cursor,null);assert.equal(received[0].init.headers['webhook-id'],received[0].body.eventId);
+  await enqueueMuxReady(f.env,event);await deliverEvents(f.env);assert.equal(calls.filter(c=>!c.body.type).length,1);
+  f.auth.exec("CREATE TRIGGER fail_fanout BEFORE INSERT ON mcp_event_deliveries BEGIN SELECT RAISE(ABORT,'private-db-message'); END;");
+  await assert.rejects(enqueueMuxReady(f.env,readyEvent('rollback')));assert.equal(f.auth.prepare("SELECT COUNT(*) n FROM mcp_mux_events WHERE asset_id='rollback'").get().n,0);
+});
+test('event retries preserve identity, recover leases and stop at bounded attempts or permanent rejection',async t=>{
+  const f=fixture(t),{rpc}=await eventClient(f);let status=503;const calls=receiver(t,()=>new Response(null,{status}));
+  await rpc('events/subscribe',subscriptionParams());await enqueueMuxReady(f.env,readyEvent());await deliverEvents(f.env);
+  let row=f.auth.prepare('SELECT * FROM mcp_event_deliveries').get();assert.equal(row.state,'pending');assert.equal(row.attempts,1);assert.ok(row.next_attempt>Date.now()/1000);
+  await deliverEvents(f.env);assert.equal(calls.filter(c=>!c.body.type).length,1);
+  f.auth.exec('UPDATE mcp_event_deliveries SET next_attempt=0,lease_until=0');status=204;await deliverEvents(f.env);
+  const delivered=calls.filter(c=>!c.body.type);assert.equal(delivered.length,2);assert.equal(delivered[0].body.eventId,delivered[1].body.eventId);assert.ok(await validEventSignature(delivered[1]));
+  await enqueueMuxReady(f.env,readyEvent('exhaust'));f.auth.exec("UPDATE mcp_event_deliveries SET attempts=9,lease_until=1 WHERE state='pending'");status=503;await deliverEvents(f.env);
+  assert.equal(f.auth.prepare("SELECT state FROM mcp_event_deliveries WHERE attempts=10").get().state,'failed');
+  await enqueueMuxReady(f.env,readyEvent('oversized'));status=413;await deliverEvents(f.env);assert.equal(f.auth.prepare("SELECT COUNT(*) n FROM mcp_event_deliveries WHERE state='failed'").get().n,2);
+  await enqueueMuxReady(f.env,readyEvent('gone'));status=410;await deliverEvents(f.env);assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_subscriptions').get().n,0);assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_deliveries').get().n,0);
+});
+test('subscription expiry, rotation and isolation survive new requests and connection revocation',async t=>{
+  const f=fixture(t),a=await eventClient(f),b=await eventClient(f),calls=receiver(t);
+  const sub=await a.rpc('events/subscribe',{...subscriptionParams(),ttlMs:120000});assert.ok(Date.parse(sub.result.refreshBefore)<=Date.now()+120000);
+  await b.rpc('events/unsubscribe',subscriptionParams());assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_subscriptions').get().n,1,'Other OAuth families cannot unsubscribe');
+  const rotated='whsec_'+Buffer.alloc(32,9).toString('base64');
+  const refresh=await a.rpc('events/subscribe',{...subscriptionParams(),ttlMs:null,delivery:{...subscriptionParams().delivery,secret:rotated}});assert.equal(refresh.result.id,sub.result.id);assert.ok(refresh.result.refreshBefore);
+  await enqueueMuxReady(f.env,readyEvent());await deliverEvents(f.env);const event=calls.find(c=>!c.body.type);assert.ok(await validEventSignature(event));assert.ok(await validEventSignature(event,rotated));
+  await enqueueMuxReady(f.env,readyEvent('pending'));await f.form('/revoke',{token:a.token.refresh,client_id:a.token.grant.client_id});await deliverEvents(f.env);assert.equal(calls.filter(c=>!c.body.type).length,1);
+  await b.rpc('events/subscribe',subscriptionParams());await enqueueMuxReady(f.env,readyEvent('expires'));f.auth.exec('UPDATE mcp_event_subscriptions SET expires_at=0');await deliverEvents(f.env);assert.equal(calls.filter(c=>!c.body.type).length,1);
+});
+test('event errors are redacted and subscription quotas are enforced',async t=>{
+  const f=fixture(t),{rpc}=await eventClient(f);receiver(t);
+  for(let i=0;i<10;i++)assert.ok((await rpc('events/subscribe',subscriptionParams('https://chatgpt.com/callback/'+i))).result);
+  assert.ok((await rpc('events/subscribe',subscriptionParams('https://chatgpt.com/callback/extra'))).error);
+  f.auth.exec("CREATE TRIGGER fail_subscription BEFORE INSERT ON mcp_event_subscriptions BEGIN SELECT RAISE(ABORT,'PRIVATE DATABASE TOKEN'); END;");
+  const error=await rpc('events/subscribe',subscriptionParams('https://chatgpt.com/callback/0'));assert.equal(error.error.code,-32603);assert.ok(!JSON.stringify(error).includes('PRIVATE'));
+});
+
+test('Mux webhook verifies bounded signed input and persists only ready events before acknowledgment',async t=>{
+  const f=fixture(t);f.env.MUX_WEBHOOK_SIGNING_SECRET='fixture-mux-secret';
+  f.db.exec('CREATE TABLE mux_library_browse_state(id TEXT,refreshed_at TEXT)');
+  const tasks=[];const call=async(body,options={})=>{
+    const timestamp=options.timestamp??Math.floor(Date.now()/1000);
+    const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(f.env.MUX_WEBHOOK_SIGNING_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+    const sig=Buffer.from(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(`${timestamp}.${body}`))).toString('hex');
+    const result=await muxWebhook({request:new Request('https://deck.test/api/webhooks/mux',{method:'POST',headers:{'mux-signature':`t=${timestamp},v1=${options.bad?'bad':sig}`},body}),env:f.env,waitUntil:p=>tasks.push(p)});
+    await Promise.all(tasks.splice(0));return result;
+  };
+  const event={type:'video.asset.ready',...readyEvent()};
+  assert.equal((await call(JSON.stringify(event),{bad:true})).status,401);
+  assert.equal((await call(JSON.stringify(event),{timestamp:1})).status,401);
+  assert.equal((await call('bad-json')).status,400);
+  assert.equal((await call('x'.repeat(1048577))).status,413);
+  assert.equal((await call(JSON.stringify({type:'video.asset.ready',data:{id:'bad id'}}))).status,400);
+  assert.equal((await call(JSON.stringify({type:'video.upload.created'}))).status,200);
+  assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_mux_events').get().n,0);
+  assert.equal((await call(JSON.stringify(event))).status,200);assert.equal((await call(JSON.stringify(event))).status,200);
+  assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_mux_events').get().n,1);
+  f.auth.exec("CREATE TRIGGER webhook_storage_failure BEFORE INSERT ON mcp_mux_events BEGIN SELECT RAISE(ABORT,'PRIVATE'); END;");
+  const failure=await call(JSON.stringify({type:'video.asset.ready',...readyEvent('storageFailure')}));assert.equal(failure.status,503);assert.ok(!(await failure.text()).includes('PRIVATE'));
+});
+test('invitation revocation stops event delivery even while its OAuth session exists',async t=>{
+  const f=fixture(t);const{rpc,token}=await eventClient(f),calls=receiver(t);
+  await rpc('events/subscribe',subscriptionParams());
+  const invitation='fixture-invitation';f.auth.prepare('INSERT INTO mcp_invitations(id,email,nickname,code_hash,created_at,expires_at,redeemed_at) VALUES(?,?,?,?,?,?,?)').run(invitation,'fixture@example.test','Fixture','unused','now',253402300799,'now');
+  f.auth.prepare("UPDATE oauth_records SET data=json_set(data,'$.invitationId',?) WHERE kind='session'").run(invitation);
+  await enqueueMuxReady(f.env,readyEvent());f.auth.prepare('UPDATE mcp_invitations SET revoked_at=? WHERE id=?').run('now',invitation);
+  await deliverEvents(f.env);assert.equal(calls.filter(c=>!c.body.type).length,0);assert.equal(f.auth.prepare('SELECT COUNT(*) n FROM mcp_event_subscriptions').get().n,0);
 });

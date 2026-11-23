@@ -14,5 +14,5 @@
     { "binding": "MCP_AUTH", "database_name": "trantergrey-deck-mcp-trial-auth", "database_id": "964917e4-e007-4b5f-9d8c-c1d2c202795d" }
   ],
   "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false, "head_sampling_rate": 1 }, "traces": { "enabled": true, "head_sampling_rate": 0.01 } },
-  "triggers": { "crons": ["17 5 * * *"] }
+  "triggers": { "crons": ["17 5 * * *", "* * * * *"] }
 }

@@ -31,6 +31,7 @@ export type AdminEnvironment = {
   // Optional machine credential for the read-only Production Board API.
   PRODUCTION_API_TOKEN?: string;
   TG_DATA: { prepare(query: string): Statement; batch(statements: Statement[]): Promise<unknown> };
+  MCP_AUTH?: AdminEnvironment['TG_DATA'];
   PRODUCTION_ARCHIVE?: PrivateBucket;
   MEDIA_OPTIMIZER?: { fetch(url: string, init?: RequestInit): Promise<Response> };
 };
