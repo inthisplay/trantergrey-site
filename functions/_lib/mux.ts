@@ -221,7 +221,7 @@ export async function createMuxDirectUpload(env: AdminEnvironment, title: string
   if (!safeTitle) throw new Error('A video title is required.');
   const upload = await muxFetch<{ id?: string; url?: string }>(env, 'uploads', {
     method: 'POST',
-    body: JSON.stringify({ cors_origin: corsOrigin, new_asset_settings: { playback_policies: ['public'], video_quality: 'plus', meta: { title: safeTitle } } }),
+    body: JSON.stringify({ cors_origin: corsOrigin, new_asset_settings: { playback_policies: ['public'], video_quality: 'plus', max_resolution_tier: '2160p', meta: { title: safeTitle } } }),
   });
   if (!upload?.id || !upload.url) throw new Error('Mux did not return an upload URL.');
   return { id: upload.id, url: upload.url };

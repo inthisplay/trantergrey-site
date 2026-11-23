@@ -244,3 +244,8 @@ field through the shared reader. Receipt tracking and live upload polling remain
 session-only website features because file transfer and replacement administration
 are not scoped integration capabilities. No new upload/write tool or grant is
 introduced. See `mux-library-maintenance.md` for persistence and readiness limits.
+
+New session-only direct uploads now request a maximum resolution tier of 2160p
+(4K), with Plus quality unchanged. Existing assets and archive imports are not
+modified. Scoped API/MCP video reads retain their contracts and report the asset's
+resolution using existing fields; upload creation remains admin-only.

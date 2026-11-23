@@ -55,3 +55,13 @@ indeterminate states, reload recovery, temporary outages and automatic readiness
 Live library bundle hashes matched the isolated build; anonymous progress reads
 were denied. Read-only production MCP/OAuth renewal and revocation checks passed.
 No live business mutations or full-length production upload were used for testing.
+
+## New direct uploads: up to 4K
+
+New destinations created by `/api/admin/mux-uploads` explicitly request
+`max_resolution_tier: "2160p"`, retaining Plus quality and the existing public
+playback policy. This includes new files uploaded through the replacement flow;
+no existing asset is upgraded or replaced automatically. Lower-resolution sources
+retain their available resolution. Archive imports use a separate path and retain
+their existing settings. No migration is needed. This enables organic timing tests;
+it does not guarantee faster processing for every source format.

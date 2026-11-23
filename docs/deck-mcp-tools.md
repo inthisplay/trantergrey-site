@@ -173,3 +173,6 @@ pollers. Only transcoding has a numeric percentage; other phases return null.
 Upload receipt tracking remains session-only UI functionality alongside the
 existing admin-only uploads/replacements. Tool inventory, scopes and authentication
 are unchanged; no plugin refresh or reconnect is required for this additive output.
+
+Future website direct uploads allow up to 4K (2160p), retaining Plus quality.
+No MCP tool, scope or read contract changes; existing assets are untouched.

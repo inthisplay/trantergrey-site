@@ -96,3 +96,24 @@ test('wait stops on real failure, expired authentication and unmount', async t =
   const controller = new AbortController(); controller.abort();
   await assert.rejects(client.waitForUpload('upload1', controller.signal, () => {}), { name: 'AbortError' });
 });
+
+test('new direct uploads request 4K while preserving Plus quality, playback policy and title', async t => {
+  const { env } = fixture(t);
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    requests++;
+    assert.equal(String(url), 'https://api.mux.com/video/v1/uploads');
+    assert.equal(init.method, 'POST');
+    assert.deepEqual(JSON.parse(init.body), {
+      cors_origin: 'https://test',
+      new_asset_settings: { playback_policies: ['public'], video_quality: 'plus', max_resolution_tier: '2160p', meta: { title: '4K timing test' } },
+    });
+    return Response.json({ data: { id: 'upload4K', url: 'https://upload.example.test/fixture' } });
+  });
+  const response = await api.onRequestPost({
+    request: new Request('https://test/api/admin/mux-uploads', { method: 'POST', headers: { cookie: 'tg_admin=test', 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '  4K timing test  ' }) }), env, waitUntil() {},
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { id: 'upload4K', url: 'https://upload.example.test/fixture' });
+  assert.equal(requests, 1, 'only creates an upload destination; no existing asset mutation');
+});
