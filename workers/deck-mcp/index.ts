@@ -1,3 +1,4 @@
+import { enforceRateLimit, peer, operationLabel, recordIntegrationEvent, cleanupIntegrationHealth } from '../../functions/_lib/integration-health';
 import { mcpActor } from './identity';
 import type { ApiActor } from '../../functions/_lib/internal-api';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -11,15 +12,17 @@ const instructions = 'TranterGrey personal MCP manages live Deck cards, videos a
 const securitySchemes = [{ type: 'oauth2', scopes: ['tg:personal'] }];
 
 export function createServer(env: TrialEnvironment, actor: ApiActor = mcpActor()) {
-  const server = new McpServer({ name: 'trantergrey-deck-trial', version: '0.4.0' }, { instructions });
+  const server = new McpServer({ name: 'trantergrey-deck-trial', version: '0.5.0' }, { instructions });
   server.registerTool('list_deck_columns', {
     title: 'List Deck columns', description: 'Get active Deck column names and IDs before creating a card. Does not read existing cards.',
     inputSchema: {}, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }, _meta: { securitySchemes },
   }, async () => {
+    try {
     const rows = await env.TG_DATA.prepare(`SELECT c.source_id AS id, COALESCE(o.name,c.name) AS name FROM production_columns c
       LEFT JOIN production_column_overrides o ON o.column_source_id=c.source_id WHERE COALESCE(o.archived,0)=0 ORDER BY c.position,c.source_id`).all();
     const result = { columns: rows.results };
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+    } catch { await recordIntegrationEvent(env, 'mcp', 'list_deck_columns', 'server_error', 500); return { isError: true, content: [{ type: 'text' as const, text: 'Unable to list columns.' }] }; }
   });
   server.registerTool('create_deck_card', {
     title: 'Create a Deck card', description: 'Create a real card in the live TranterGrey Deck for a user-requested campaign. Requires an active column ID from list_deck_columns. Title and client are separate fields. Does not assign people or set due dates. Reuse requestId with identical arguments when retrying to avoid duplicates.',
@@ -37,6 +40,7 @@ export function createServer(env: TrialEnvironment, actor: ApiActor = mcpActor()
       const result = { ...card, url: `${env.DECK_ORIGIN}/app/deck?card=${encodeURIComponent(card.id)}` };
       return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
     } catch (error) {
+      if (!(error instanceof CardInputError)) await recordIntegrationEvent(env, 'mcp', 'create_deck_card', 'server_error', 500);
       return { isError: true, content: [{ type: 'text', text: error instanceof CardInputError ? error.message : 'Unable to create the card. Retry using the SAME requestId and card details.' }] };
     }
   });
@@ -46,13 +50,18 @@ export function createServer(env: TrialEnvironment, actor: ApiActor = mcpActor()
 
 export default {
   async fetch(request: Request, env: TrialEnvironment): Promise<Response> {
-    if (!authenticationEnabled(env)) return json({ error: 'authentication_not_configured' }, 503);
+    if (!authenticationEnabled(env)) { await recordIntegrationEvent(env, 'mcp', 'configuration', 'server_error', 503); return json({ error: 'authentication_not_configured' }, 503); }
     const url = new URL(request.url);
     if (url.origin !== env.MCP_ORIGIN) return json({ error: 'invalid_host' }, 403);
     const origin = request.headers.get('origin');
     if (origin && origin !== env.MCP_ORIGIN && origin !== 'https://chatgpt.com') return json({ error: 'invalid_origin' }, 403);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': origin || 'https://chatgpt.com', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, MCP-Protocol-Version', 'Access-Control-Expose-Headers': 'WWW-Authenticate', Vary: 'Origin' } });
     try {
+      const operation = operationLabel(url.pathname);
+      if (['register','authorize','token','revoke','mcp'].includes(operation)) {
+        const limit = await enforceRateLimit(env, 'mcp', operation, peer(request), operation === 'register' ? 20 : operation === 'authorize' ? 60 : 1200);
+        if (limit) return limit;
+      }
       // Limit both JSON MCP messages and OAuth form bodies before parsing.
       if (request.method === 'POST') {
         if (Number(request.headers.get('content-length')) > 32768) return json({ error: 'request_too_large' }, 413);
@@ -68,10 +77,14 @@ export default {
         request = new Request(request.url, { method: 'POST', headers: request.headers, body });
       }
       const authResponse = await oauth(request, env);
-      if (authResponse) return authResponse;
+      if (authResponse) {
+        if (url.pathname === '/authorize' && request.method === 'POST' && authResponse.status >= 400 && authResponse.status < 500) await recordIntegrationEvent(env, 'mcp', 'authorize', 'auth_rejected', authResponse.status);
+        return authResponse;
+      }
       if (url.pathname !== '/mcp') return json({ name: 'TranterGrey personal MCP', endpoint: '/mcp' }, url.pathname === '/' ? 200 : 404);
       const actor = await authorized(request, env);
-      if (!actor) return challenge(env);
+      if (!actor) { const limited = await enforceRateLimit(env, 'mcp', 'anonymous', peer(request), 60); return limited || challenge(env); }
+      const limited = await enforceRateLimit(env, 'mcp', 'authenticated', actor.id, 300); if (limited) return limited;
       if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
       const server = createServer(env, actor);
       const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
@@ -80,11 +93,15 @@ export default {
       finally { await server.close(); }
     } catch {
       // Never echo database errors, access codes, tokens, or request bodies.
-      return json({ error: 'request_failed' }, 500);
+      const reference = await recordIntegrationEvent(env, 'mcp', operationLabel(url.pathname), 'server_error', 500);
+      return json({ error: 'request_failed', reference }, 500, { 'X-Request-Id': reference });
     }
   },
   async scheduled(_event: unknown, env: TrialEnvironment) {
+    try {
+    await cleanupIntegrationHealth(env);
     await env.MCP_AUTH.prepare('DELETE FROM oauth_records WHERE expires_at <= ?').bind(Math.floor(Date.now() / 1000)).run();
     await env.MCP_AUTH.prepare("DELETE FROM oauth_records WHERE kind IN ('refresh','token') AND json_extract(data,'$.family') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM oauth_records s WHERE s.kind='session' AND s.id=json_extract(oauth_records.data,'$.family'))").run();
+    } catch { await recordIntegrationEvent(env, 'mcp', 'scheduled_cleanup', 'server_error', 500); throw new Error('Integration cleanup failed'); }
   },
 };

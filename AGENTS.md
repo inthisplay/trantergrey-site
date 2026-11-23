@@ -22,8 +22,9 @@ support. Presentation-only changes do not need new endpoints or tools.
   interfaces. Keep their contracts, inventory, examples and limitations current.
 - Put reusable validation and business commands in shared server modules. UI/API
   and MCP adapters should call the same commands instead of duplicating database
-  writes or relying on browser automation. Existing MCP-specific item commands
-  are a known exception; reuse/extract them when adding equivalent REST behavior.
+  writes or relying on browser automation. Client item commands live in
+  `functions/_lib/client-items.ts`; preserve partial edits, rich content and
+  expectedUpdatedAt conflict checks across all adapters.
 - Production HTTP endpoints live in Cloudflare Pages `functions/api`, not the
   Next.js `app/api` routes excluded from the static export. MCP is a separate
   Worker in `workers/deck-mcp`; deploying one does not deploy the other.
@@ -67,3 +68,5 @@ Changes to MCP tool schemas/descriptions may require a plugin metadata refresh
 and a new chat. Scope/authentication changes may require reconnecting. Explain
 these steps rather than treating server deployment as proof the user's existing
 chat has received the updated tools.
+
+Integration requests must retain shared rate limiting and privacy-safe error monitoring. Never log request bodies, authorization URLs, tokens, raw exceptions or business record contents. Keep HTTP and MCP tool-level failures visible in Connection health; preserve the owner-only monitoring endpoint.

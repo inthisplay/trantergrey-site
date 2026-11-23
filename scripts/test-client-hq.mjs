@@ -24,6 +24,7 @@ test('Drive thumbnails use edge-compatible redirects and reject unsafe destinati
     assert.equal(await handlers.driveLib.driveThumbnail('token','https://lh3.googleusercontent.com/preview'),null);
   }finally{globalThis.fetch=original;}
 });
+const itemRequestMigration=await readFile('migrations/0053_mcp_item_requests.sql','utf8');
 const logoMigration=await readFile('migrations/0049_client_logos.sql','utf8');
 const migration=await readFile('migrations/0026_client_hq.sql','utf8');
 const richNoteMigration=(await readFile('migrations/0028_client_note_rich_text.sql','utf8'))+(await readFile('migrations/0029_client_note_editor_json.sql','utf8'))+(await readFile('migrations/0030_client_todo_completed_at.sql','utf8'))+(await readFile('migrations/0031_client_drive_connection.sql','utf8'))+(await readFile('migrations/0032_client_drive_extra_folders.sql','utf8'))+(await readFile('migrations/0033_client_drive_pins.sql','utf8'))+(await readFile('migrations/0034_client_activity.sql','utf8'));
@@ -163,7 +164,7 @@ test('Deck editor notes retain Mux embeds and reject unsafe URLs',async()=>{
     await hq({...item,title:'Updated review'});
     assert.equal(db.prepare('SELECT body_json FROM client_workspace_items WHERE id=?').get(item.id).body_json,body_json);
     value[1].href='javascript:alert(1)';
-    assert.equal((await hq({...item,body_json:JSON.stringify(value)})).status,400);
+    assert.equal((await hq({...db.prepare('SELECT * FROM client_workspace_items WHERE id=?').get(item.id),body_json:JSON.stringify(value)})).status,400);
   } finally { db.close(); }
 });
 test('rich notes retain formatting safely and legacy text remains literal',async()=>{
@@ -192,10 +193,15 @@ function fixture(){
     CREATE TABLE mux_video_projects(id TEXT,value TEXT);
     CREATE TABLE mux_library_browse_state(id TEXT,refreshed_at TEXT,refresh_id TEXT);
     CREATE TABLE mux_library_browse_assets(asset_id TEXT,client TEXT,refresh_id TEXT);
-  `);db.exec(migration);db.exec(richNoteMigration);db.exec(logoMigration);
+  `);db.exec(migration);db.exec(richNoteMigration);db.exec(itemRequestMigration);db.exec(logoMigration);
   const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let values=[];const s={bind(...args){values=args;return s;},async first(){return db.prepare(sql).get(...values)??null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){const r=db.prepare(sql).run(...values);return {meta:{changes:r.changes}};}};return s;},async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
   const request=(path='',body,auth=true)=>new Request('https://local.test/api/admin/'+path,{method:body?'POST':'GET',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(body?{'Content-Type':'application/json',Origin:'https://local.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
-  const hq=(body,path='client-hq',auth=true)=>handlers.hq.onRequest({env,request:request(path,body,auth)});
+  // Model the current UI contract: creation IDs persist for a retry; edits carry
+  // the version read by the caller (delete fixtures fetch it explicitly here).
+  const hq=(body,path='client-hq',auth=true)=>{
+    if(body?.workspace_id) body={...body,...(!body.id?{requestId:body.requestId||crypto.randomUUID()}:{expectedUpdatedAt:body.expectedUpdatedAt||body.updated_at||(body.action==='delete'?db.prepare('SELECT updated_at FROM client_workspace_items WHERE id=?').get(body.id)?.updated_at:undefined)})};
+    return handlers.hq.onRequest({env,request:request(path,body,auth)});
+  };
   return {db,env,request,hq};
 }
 test('migration gives existing and legacy-created clients stable IDs; no status or second client list',async()=>{const {db}=fixture();try{
@@ -282,7 +288,7 @@ test('client activity isolates clients and paginates merged Deck and workspace h
  await hq({workspace_id:client,kind:'todo',title:'Client task'});
  const item=db.prepare('SELECT * FROM client_workspace_items WHERE workspace_id=?').get(client);
  await hq({...item,completed:1});
- await hq({...item,completed:0});
+ await hq({...db.prepare('SELECT * FROM client_workspace_items WHERE id=?').get(item.id),completed:0});
  await hq({workspace_id:other,kind:'note',title:'Other private note'});
  const api=(query,auth=true)=>handlers.history.onRequestGet({env,request:request('production-board/history?'+query,undefined,auth)});
  assert.equal((await api(`client=${client}`,false)).status,401);
@@ -316,7 +322,7 @@ test('internal Client HQ enforces scopes, returns envelopes, and attributes inte
     assert.equal((await api({kind:'todo',title:'Blocked',workspace_id:id})).status,403);
     assert.equal(db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n,0);
     db.prepare('UPDATE api_integration_credentials SET scopes_json=?').run('["clients:read","clients:write"]');
-    assert.equal((await api({kind:'todo',title:'API task',workspace_id:id})).status,200);
+    assert.equal((await api({kind:'todo',title:'API task',workspace_id:id,requestId:crypto.randomUUID()})).status,200);
     assert.equal(db.prepare('SELECT actor FROM client_activity').get().actor,'HQ integration');
     const detail=await (await api(undefined,undefined,'?id='+id)).json();assert.equal(detail.data.items[0].title,'API task');
     const missing=await api(undefined,undefined,'?id=missing');assert.equal(missing.status,404);assert.equal((await missing.json()).error.code,'client_hq_failed');

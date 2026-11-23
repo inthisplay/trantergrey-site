@@ -44,7 +44,7 @@ export async function apiActor(request: Request, env: AdminEnvironment): Promise
   const credential = await env.TG_DATA.prepare('SELECT id, name, scopes_json FROM api_integration_credentials WHERE id = ? AND secret_hash = ? AND revoked_at IS NULL')
     .bind(match[1], await hash(value)).first<Credential>();
   if (!credential) return null;
-  void env.TG_DATA.prepare('UPDATE api_integration_credentials SET last_used_at = ? WHERE id = ?').bind(new Date().toISOString(), credential.id).run();
+  await env.TG_DATA.prepare('UPDATE api_integration_credentials SET last_used_at = ? WHERE id = ?').bind(new Date().toISOString(), credential.id).run();
   return { type: 'integration', id: credential.id, name: credential.name, email: null, scopes: scopes(credential.scopes_json) };
 }
 

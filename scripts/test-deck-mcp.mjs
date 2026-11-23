@@ -10,12 +10,17 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const temp = await mkdtemp(join(tmpdir(), 'tg-deck-mcp-'));
-await build({ entryPoints: ['workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+await build({ entryPoints: ['workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/api/admin/integration-health.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
 const worker = (await import(pathToFileURL(join(temp, 'workers/deck-mcp/index.mjs')))).default;
 const { onRequestPost } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards.mjs')));
 const { onRequest: manageConnections } = await import(pathToFileURL(join(temp, 'functions/api/admin/mcp-connections.mjs')));
+const { onRequest: clientHQApi } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/client-hq.mjs')));
+const { onRequest: clientHQAdmin } = await import(pathToFileURL(join(temp, 'functions/api/admin/client-hq.mjs')));
+const { integrationRequest } = await import(pathToFileURL(join(temp, 'functions/_lib/integration-request.mjs')));
+const { enforceRateLimit, cleanupIntegrationHealth } = await import(pathToFileURL(join(temp, 'functions/_lib/integration-health.mjs')));
+const { onRequest: healthApi } = await import(pathToFileURL(join(temp, 'functions/api/admin/integration-health.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
-const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
+const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8');
 const hash = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('base64url');
 
@@ -390,4 +395,86 @@ test('expired or revoked invitations cannot be redeemed; revoke after consent bl
   await api({action:'revoke-invitation',id:pending.invitation.id});
   const exchange={grant_type:'authorization_code',code:new URL(approved.headers.get('location')).searchParams.get('code'),client_id:g.client_id,code_verifier:g.verifier,redirect_uri:g.parameters.redirect_uri,resource:g.parameters.resource};
   assert.equal((await f.form('/token',exchange)).status,400);
+});
+
+function sessionRequest(f, body, path='/api/internal/v1/client-hq', owner=true) {
+  const email=owner?'tyler@trantergrey.com':'taylor@trantergrey.com';
+  f.db.prepare('INSERT INTO admin_sessions VALUES(?,?,?,?)').run(crypto.randomUUID(),'unused',email,'2000');
+  f.db.prepare('INSERT INTO admin_sessions VALUES(?,?,?,?)').run('shared-session','Taylor',email,'9999');
+  return new Request('https://deck.test'+path,{method:body===undefined?'GET':'POST',headers:{cookie:'tg_admin=shared-session',origin:'https://deck.test','content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+}
+test('HTTP and MCP share rich-note preservation, conflict checks, validation and deletion',async t=>{
+  const f=fixture(t); const {access}=await f.token();
+  const call=async(name,args)=>(await(await f.fetch('/mcp',{method:'POST',headers:{authorization:`Bearer ${access}`,'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json()).result;
+  const http=body=>clientHQApi({request:sessionRequest(f,body),env:f.env});
+  const rich=JSON.stringify([{type:'paragraph',children:[{text:'Keep this formatting',bold:true}]}]);
+  const create={workspace_id:'bmw',kind:'note',title:'Rich note',body:'',body_format:'html',body_json:rich,requestId:crypto.randomUUID()};
+  const made=await http(create); assert.equal(made.status,200);const {data:{id}}=await made.json();
+  const retry=await http(create);assert.equal(retry.status,200);assert.equal((await retry.json()).data.id,id);
+  assert.equal((await http({...create,title:'Changed retry'})).status,409);
+  let item=f.db.prepare('SELECT * FROM client_workspace_items WHERE id=?').get(id);
+  assert.equal(item.body_json,rich);assert.match(item.body,/<strong>/);
+  const stale=item.updated_at;
+  const edited=await call('update_client_item',{clientId:'bmw',itemId:id,title:'MCP title',expectedUpdatedAt:stale});assert.equal(edited.isError,undefined);
+  assert.equal((await http({workspace_id:'bmw',id,title:'stale website',expectedUpdatedAt:stale})).status,409);
+  assert.equal((await http({workspace_id:'bmw',id,title:'missing version'})).status,428);
+  item=f.db.prepare('SELECT * FROM client_workspace_items WHERE id=?').get(id);assert.equal(item.body_json,rich);
+  const current=item.updated_at;
+  assert.equal((await http({workspace_id:'bmw',id,expectedUpdatedAt:current,due_on:'2026-02-30'})).status,400);
+  assert.equal((await http({workspace_id:'bmw',id,expectedUpdatedAt:current,assignee:'Nobody'})).status,400);
+  // The normal website submits the full rich note including completed:0.
+  assert.equal((await http({...item,title:'Website edit',expectedUpdatedAt:current})).status,200);
+  const conflict=await call('update_client_item',{clientId:'bmw',itemId:id,title:'stale MCP',expectedUpdatedAt:current});assert.equal(conflict.isError,true);
+  item=f.db.prepare('SELECT * FROM client_workspace_items WHERE id=?').get(id);assert.equal(item.title,'Website edit');assert.equal(item.body_json,rich);
+  assert.equal((await http({workspace_id:'bmw',id,action:'delete',expectedUpdatedAt:stale})).status,409);
+  assert.equal((await http({workspace_id:'bmw',id,action:'delete',expectedUpdatedAt:item.updated_at})).status,200);
+  const noResurrection=await http(create);assert.equal(noResurrection.status,200);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n,0);
+});
+test('admin UI shares item commands and failed audit rolls back REST creation',async t=>{
+  const f=fixture(t);
+  const args={workspace_id:'bmw',kind:'todo',title:'Contract',due_on:'2026-12-01',assignee:'Taylor',requestId:crypto.randomUUID()};
+  const http=body=>clientHQAdmin({request:sessionRequest(f,body,'/api/admin/client-hq'),env:f.env});
+  f.db.exec("CREATE TRIGGER fail_item_audit BEFORE INSERT ON client_activity BEGIN SELECT RAISE(ABORT,'private-error-payload'); END;");
+  await assert.rejects(http(args)); assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n,0);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM mcp_item_requests').get().n,0);
+  f.db.exec('DROP TRIGGER fail_item_audit');const created=await http(args);assert.equal(created.status,200);const{id}=await created.json();
+  let item=f.db.prepare('SELECT * FROM client_workspace_items WHERE id=?').get(id);
+  f.db.exec('DELETE FROM admin_team_directory');
+  const completed=await http({...item,completed:1,expectedUpdatedAt:item.updated_at});assert.equal(completed.status,200,'Historical assignment can be retained');
+  item=f.db.prepare('SELECT * FROM client_workspace_items WHERE id=?').get(id);assert.equal(item.completed,1);assert.ok(item.completed_at);assert.equal(item.due_on,'2026-12-01');
+});
+test('global rate limiter blocks bursts, isolates actors, rolls windows and cleans expired storage',async t=>{
+  const f=fixture(t);const dateNow=Date.now;let time=1800000000000;Date.now=()=>time;t.after(()=>{Date.now=dateNow;});
+  const responses=await Promise.all(Array.from({length:7},()=>enforceRateLimit(f.env,'api','test','actor-a',3)));
+  assert.equal(responses.filter(Boolean).length,4);assert.equal(responses[3].status,429);assert.equal(responses[3].headers.get('retry-after'),'60');
+  assert.equal(await enforceRateLimit(f.env,'api','test','actor-b',3),null);
+  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM integration_events WHERE category='rate_limited'").get().n,1);
+  assert.ok(!JSON.stringify(f.db.prepare('SELECT * FROM integration_rate_limits').all()).includes('actor-a'));
+  time+=60000;assert.equal(await enforceRateLimit(f.env,'api','test','actor-a',3),null);
+  time+=31*86400000;await cleanupIntegrationHealth(f.env);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM integration_rate_limits').get().n,0);
+});
+test('MCP limits public registration and authenticated requests without changing tool permissions',async t=>{
+  const f=fixture(t);const {access}=await f.token();
+  for(let i=1;i<20;i++)assert.equal((await f.fetch('/register',{method:'POST',body:JSON.stringify({redirect_uris:['https://chatgpt.com/connector_platform_oauth_redirect']})})).status,201);
+  const denied=await f.fetch('/register',{method:'POST',body:'{}'});assert.equal(denied.status,429);assert.ok(Number(denied.headers.get('retry-after'))>0);
+  await enforceRateLimit(f.env,'mcp','authenticated','chatgpt-personal-mcp',300);
+  f.db.exec('UPDATE integration_rate_limits SET hits=300');
+  const blocked=await f.fetch('/mcp',{method:'POST',headers:{authorization:`Bearer ${access}`},body:'{}'});assert.equal(blocked.status,429);
+});
+test('API middleware monitors caught and uncaught failures without recording secrets',async t=>{
+  const f=fixture(t);const request=sessionRequest(f,undefined,'/api/internal/v1/cards/private-client-name?code=SECRET');
+  const run=next=>integrationRequest({request,env:f.env,next});
+  const response=await run(async()=>{throw new Error('SECRET token=TOPSECRET');});assert.equal(response.status,503);assert.ok(response.headers.get('x-request-id'));
+  const handled=await run(async()=>Response.json({error:'SECRET database details'},{status:502}));assert.equal(handled.status,502);assert.ok(!(await handled.text()).includes('SECRET'));
+  const events=f.db.prepare('SELECT * FROM integration_events').all();assert.equal(events.length,2);assert.equal(events[0].operation,'cards/detail');assert.ok(!JSON.stringify(events).includes('SECRET'));assert.ok(!JSON.stringify(events).includes('private-client-name'));
+  const invalid=await run(async()=>Response.json({error:'Bad input'},{status:400}));assert.equal(invalid.status,400);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM integration_events').get().n,2);
+  f.db.exec('DROP TABLE integration_rate_limits');const failClosed=await run(async()=>Response.json({ok:true}));assert.equal(failClosed.status,503);
+});
+test('monitoring catches MCP HTTP-200 tool failures and is owner-only',async t=>{
+  const f=fixture(t);const{access}=await f.token();
+  f.db.exec("CREATE TRIGGER fail_audit_health BEFORE INSERT ON production_card_activity BEGIN SELECT RAISE(ABORT,'SECRET'); END;");
+  const response=await f.fetch('/mcp',{method:'POST',headers:{authorization:`Bearer ${access}`,'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'create_deck_card',arguments:{title:'secret title',columnSourceId:'ideas',requestId:crypto.randomUUID()}}})});assert.equal(response.status,200);assert.equal((await response.json()).result.isError,true);
+  const event=f.db.prepare('SELECT * FROM integration_events').get();assert.equal(event.operation,'create_deck_card');assert.ok(!JSON.stringify(event).includes('secret title'));
+  assert.equal((await healthApi({request:new Request('https://deck.test/api/admin/integration-health'),env:f.env})).status,401);
+  assert.equal((await healthApi({request:sessionRequest(f,undefined,'/api/admin/integration-health',false),env:f.env})).status,403);
+  f.db.exec('DELETE FROM admin_sessions');const read=await healthApi({request:sessionRequest(f,undefined,'/api/admin/integration-health'),env:f.env});assert.equal(read.status,200);assert.equal((await read.json()).events.length,1);
 });

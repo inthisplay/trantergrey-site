@@ -1,3 +1,4 @@
+import { recordIntegrationEvent, operationLabel } from '../../functions/_lib/integration-health';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { withApiActor, type ApiActor } from '../../functions/_lib/internal-api';
@@ -14,7 +15,7 @@ import { onRequestGet as videoCards } from '../../functions/api/internal/v1/vide
 import { onRequestGet as videoWorkspace } from '../../functions/api/internal/v1/videos/workspace';
 import { onRequest as clientHQ } from '../../functions/api/internal/v1/client-hq';
 import { publicWatchData } from '../../functions/_lib/mux-public';
-import { createItem, changeItem, ToolError } from './client-items';
+import { createItem, changeItem, ToolError } from '../../functions/_lib/client-items';
 import { deckReport } from './reports';
 import type { TrialEnvironment } from './auth';
 
@@ -35,6 +36,7 @@ export function registerTools(server: McpServer, env: TrialEnvironment, actor: A
     const request = new Request(url, options.body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options.body) });
     const response = await withApiActor(request, actor, () => handler({ request, env, params: { id: options.id || '' } }));
     const result = await response.json() as { error?: { code?: string; message?: string }; data?: unknown };
+    if (response.status >= 500) await recordIntegrationEvent(env, 'mcp', operationLabel(url.pathname), 'server_error', response.status);
     if (!response.ok) throw new ToolError(response.status >= 500 ? 'Backend unavailable. Read current state before retrying a write.' : result.error?.message || 'Request failed.');
     return result;
   }
@@ -49,7 +51,7 @@ export function registerTools(server: McpServer, env: TrialEnvironment, actor: A
     }, async (input) => {
       try { const result = await run(z.object(schema).parse(input)); const structuredContent = result && typeof result === 'object' && !Array.isArray(result) ? result as Record<string, unknown> : { data: result };
         return { content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }], structuredContent };
-      } catch (error) { return { isError: true, content: [{ type: 'text' as const, text: error instanceof ToolError ? error.message : 'Operation failed. For writes, verify current state before retrying; reuse the original requestId where supported.' }] }; }
+      } catch (error) { if (!(error instanceof ToolError) && !(error instanceof z.ZodError)) await recordIntegrationEvent(env, 'mcp', name, 'server_error', 500); return { isError: true, content: [{ type: 'text' as const, text: error instanceof ToolError ? error.message : 'Operation failed. For writes, verify current state before retrying; reuse the original requestId where supported.' }] }; }
     });
   }
   tool('search_deck_cards', 'Find live (not deleted) Deck cards by title/client/column or modification date. Includes archived cards. Resolve ambiguous names with the user; never guess IDs. Follow nextCursor for more results.', { query: z.string().max(240).optional(), client: z.string().max(120).optional(), columnId: id.optional(), updatedAfter: z.iso.datetime({ offset: true }).optional(), ...page }, input => api(cards, 'cards', { query: input }));

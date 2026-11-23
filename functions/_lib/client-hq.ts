@@ -1,8 +1,11 @@
 import { clientActivity } from './client-activity';
-import { sanitizeClientNote, readClientNoteValue, clientNoteHtml } from '../../lib/client-note';
+import { createItem, changeItem, ClientItemError } from './client-items';
+import type { ApiActor } from './internal-api';
+import { adminSession } from './admin';
 import type { AdminEnvironment } from './admin';
 type Context = { request: Request; env: AdminEnvironment };
-export async function clientHQResponse({ request, env }: Context, actorName?: string) {
+export async function clientHQResponse({ request, env }: Context, actor?: ApiActor) {
+  const actorName = actor?.name;
   const headers = { 'Cache-Control': 'private, no-store' };
   if (request.method === 'GET') {
     const id = new URL(request.url).searchParams.get('id');
@@ -58,40 +61,28 @@ export async function clientHQResponse({ request, env }: Context, actorName?: st
     }
   }
   const workspace = str('workspace_id',100);
-  if (!await env.TG_DATA.prepare('SELECT id FROM client_directory WHERE id=?').bind(workspace).first()) return Response.json({error:'Client not found.'},{status:404});
-  const before=id ? await env.TG_DATA.prepare('SELECT kind,title,completed FROM client_workspace_items WHERE id=? AND workspace_id=?').bind(id,workspace).first<{kind:string;title:string;completed:number}>() : null;
-  if(id && !before)return Response.json({error:'Item not found.'},{status:404});
-  let mutation;
-  if (b.action === 'delete') {
-    mutation=env.TG_DATA.prepare('DELETE FROM client_workspace_items WHERE id=? AND workspace_id=?').bind(id,workspace);
-  } else {
-    const title = str('title',240), kind = b.kind === 'note' ? 'note' : 'todo';
-    if (!title) return Response.json({error:'Enter a title.'},{status:400});
-    const due = str('due_on',10);
-    let bodyFormat = kind === 'note' && b.body_format === 'html' ? 'html' : 'text';
-    const rawBody = str('body',50000);
-    let content = bodyFormat === 'html' ? sanitizeClientNote(rawBody) : rawBody;
-    let bodyJson: string | null = null;
-    if(kind === 'note' && typeof b.body_json === 'string') {
-      try { readClientNoteValue(b.body_json); bodyJson=b.body_json; content=clientNoteHtml({body_json:bodyJson}); bodyFormat='html'; }
-      catch(error) { return Response.json({error:error instanceof Error ? error.message : 'Invalid note content.'},{status:400}); }
+  const session = actor ? null : await adminSession(request, env);
+  const identity: ApiActor = actor || { type: 'user', id: session?.email || 'admin', name: session?.name || 'Admin', email: session?.email || null, scopes: new Set() };
+  try {
+    const fields: { title?: string; body?: string; assignee?: string; dueOn?: string; bodyFormat?: 'text' | 'html'; bodyJson?: string | null } = {};
+    for (const [wire, key] of [['title','title'],['body','body'],['assignee','assignee'],['due_on','dueOn']] as const) {
+      if (wire in b) { if (typeof b[wire] !== 'string') throw new ClientItemError(`Invalid ${wire}.`); fields[key] = b[wire] as string; }
     }
-    const assignee=str('assignee',120);
-    const existing=id ? await env.TG_DATA.prepare('SELECT assignee FROM client_workspace_items WHERE id=? AND workspace_id=?').bind(id,workspace).first<{assignee:string}>() : null;
-    // Existing historical assignments may be retained during a completion toggle;
-    // every new/changed assignment must come from the current team directory.
-    if(assignee && assignee!==existing?.assignee){
-      const team=await env.TG_DATA.prepare('SELECT nickname FROM admin_team_directory').all<{nickname:string}>();
-      if(assignee.split(',').some(name=>!team.results.some(member=>member.nickname===name.trim())))return Response.json({error:'Choose assignees from the team directory.'},{status:400});
+    if ('body_format' in b) { if (b.body_format !== 'html' && b.body_format !== 'text') throw new ClientItemError('Invalid body format.'); fields.bodyFormat = b.body_format; }
+    if ('body_json' in b) { if (b.body_json !== null && typeof b.body_json !== 'string') throw new ClientItemError('Invalid note content.'); fields.bodyJson = b.body_json as string | null; }
+    if (b.action !== undefined && b.action !== 'delete') throw new ClientItemError('Unknown action.');
+    if (b.action === 'delete' && !id) throw new ClientItemError('Choose an item to delete.');
+    if (id) {
+      if ('completed' in b && ![0,1,true,false].includes(b.completed as number | boolean)) throw new ClientItemError('Invalid completion state.');
+      const result = await changeItem(env, request, { ...fields, clientId: workspace, itemId: id, expectedUpdatedAt: typeof b.expectedUpdatedAt === 'string' ? b.expectedUpdatedAt : '',
+        ...('completed' in b ? { completed: b.completed === 1 || b.completed === true } : {}), remove: b.action === 'delete' }, identity);
+      return Response.json({ ok: true, ...result }, { headers });
     }
-    if(due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return Response.json({error:'Enter a valid due date.'},{status:400});
-    if(id) mutation=env.TG_DATA.prepare(`UPDATE client_workspace_items SET title=?,body=?,body_format=?,body_json=?,
-      completed_at=CASE WHEN kind!='todo' OR ?=0 THEN NULL WHEN completed=1 THEN COALESCE(completed_at,?) ELSE ? END,
-      completed=?,due_on=?,assignee=?,updated_at=? WHERE id=? AND workspace_id=?`).bind(title,content,bodyFormat,bodyJson,b.completed === 1 ? 1 : 0,now,now,b.completed === 1 ? 1 : 0,due,str('assignee',120),now,id,workspace);
-    else mutation=env.TG_DATA.prepare('INSERT INTO client_workspace_items(id,workspace_id,kind,title,body,body_format,body_json,completed,due_on,assignee,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),workspace,kind,title,content,bodyFormat,bodyJson,0,due,str('assignee',120),now);
+    if (b.kind !== 'todo' && b.kind !== 'note') throw new ClientItemError('Choose a note or to-do.');
+    const result = await createItem(env, request, { ...fields, clientId: workspace, kind: b.kind, title: fields.title || '', requestId: typeof b.requestId === 'string' ? b.requestId : '' }, identity);
+    return Response.json({ ok: true, ...result }, { headers });
+  } catch (error) {
+    if (error instanceof ClientItemError) return Response.json({ error: error.message }, { status: error.status, headers });
+    throw error;
   }
-  const kind=before?.kind || (b.kind==='note'?'note':'todo');
-  const action=b.action==='delete'?`${kind}_deleted`:!id?`${kind}_created`:kind==='todo' && before?.completed!==(b.completed===1?1:0)?b.completed===1?'todo_completed':'todo_reopened':`${kind}_updated`;
-  await env.TG_DATA.batch([mutation!,await clientActivity(request,env,workspace,action,b.action==='delete'?before!.title:str('title',240),'updates',actorName)]);
-  return Response.json({ok:true},{headers});
 }

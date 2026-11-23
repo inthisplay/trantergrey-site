@@ -8,7 +8,7 @@ export async function onRequest(context: { request: Request; env: AdminEnvironme
   if (actor instanceof Response) return actor;
   if (!['GET', 'POST'].includes(request.method)) return apiError('method_not_allowed', 'Use GET or POST.', 405);
   try {
-    const response = await clientHQResponse(context, actor.name);
+    const response = await clientHQResponse(context, actor);
     const payload = await response.json().catch(() => null) as { error?: string } | null;
     if (!response.ok) return apiError('client_hq_failed', payload?.error || 'Unable to update Client HQ.', response.status);
     return apiData(payload, undefined, response.status);

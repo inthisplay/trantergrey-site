@@ -106,3 +106,11 @@ Validation: 20 isolated tests cover owner-only management, single-use redemption
 Deployed v0.4 Worker `f41a3175-b874-4690-b017-66c13fa57a79` and production Pages `c06a0d19` on November 21, 2026. The additive invitation schema is applied. Production OAuth renewal, all 13 read tools, and smoke-session revocation passed; no live business records were changed. Anonymous management API access returns 401 and Admin Access redirects to login.
 
 The copied setup prompt includes a stepwise walkthrough, exact OAuth settings, code lifecycle and permissions, all 23 tool names and limits, symptom-specific troubleshooting, and a redacted escalation checklist. ChatGPT UI/eligibility guidance links to official sources and requires verification when uncertain; it does not promise plan availability or automatic installation. The prompt contains no invitation secret.
+
+## Shared commands and monitoring — v0.5
+
+All 23 tools and full teammate permissions remain intact. Client item mutations now live in `functions/_lib/client-items.ts`, shared with admin and internal HTTP handlers. HTTP clients must provide a create requestId or edit/delete expectedUpdatedAt; the website supplies them. Existing MCP inputs, retry records and connections remain compatible. Rich-text website notes survive partial MCP edits. Explicit MCP body replacement remains plain text.
+
+Migration 0054 in TG_DATA enables shared rate limits and sanitized error history. Admin Access → Connection health shows recent API/MCP failures and rate-limit events. Limits, retention, privacy boundaries and HTTP migration details are documented in `docs/internal-api.md`. Deploy both Pages and the Worker; no reauthorization or permission changes are required. Monitoring does not send notifications or continuously probe uptime.
+
+Deployed November 22, 2026: Worker `3ec42532-f14f-441e-ae8f-cef7bc88cc03`, production Pages `4ab02b2d`, and TG_DATA migration 0054. All 26 MCP/integration tests and 26 Client HQ tests passed, along with TypeScript, website release checks, Worker dry-run and health-panel browser checks. Production OAuth renewal, all 13 read tools, and smoke-connection revocation passed. Anonymous API/health access is denied; no production business mutations were used for testing.
