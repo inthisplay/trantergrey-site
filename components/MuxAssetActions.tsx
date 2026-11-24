@@ -1,6 +1,8 @@
 'use client';
 
 import { waitForUpload, processingLabel, type ProcessingProgress } from '@/lib/mux-upload-status';
+import { useThumbnailPreview } from './useThumbnailPreview';
+import { thumbnailFrameTime } from '@/lib/thumbnail-preview';
 import { MuxProcessingProgress } from './MuxProcessingProgress';
 
 import { UiIcon } from '@/components/UiIcon';
@@ -53,7 +55,7 @@ export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, st
   const [replacementProgress, setReplacementProgress] = useState<ReplacementProgress | null>(null);
   const [downloadRequested, setDownloadRequested] = useState(false);
   const [renditions, setRenditions] = useState(staticRenditions);
-  const [selectedThumbnailTime, setSelectedThumbnailTime] = useState(thumbnailTime);
+  const [selectedThumbnailTime, setSelectedThumbnailTime] = useState(thumbnailFrameTime(thumbnailTime, duration));
   const [savedThumbnail, setSavedThumbnail] = useState(thumbnailUrl);
   const [publicDownloadsEnabled, setPublicDownloadsEnabled] = useState(downloadsEnabled);
   const pageSlug = projectSlug;
@@ -65,7 +67,9 @@ export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, st
   const unbrandedPath = `/watch/u/${pageSlug || assetId}`;
   const [publicUrl, setPublicUrl] = useState(sharePath);
   const [unbrandedUrl, setUnbrandedUrl] = useState(unbrandedPath);
-  const previewThumbnail = useMemo(() => playbackId ? muxThumbnailUrl(playbackId, selectedThumbnailTime) : savedThumbnail, [playbackId, savedThumbnail, selectedThumbnailTime]);
+  const requestedThumbnail = useMemo(() => playbackId ? muxThumbnailUrl(playbackId, selectedThumbnailTime) : savedThumbnail, [playbackId, savedThumbnail, selectedThumbnailTime]);
+
+  const thumbnailPreview = useThumbnailPreview(requestedThumbnail);
 
   useEffect(() => {
     setPublicUrl(new URL(sharePath, window.location.origin).toString());
@@ -132,6 +136,7 @@ export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, st
     setDownloadRequested(true);
   };
   const saveThumbnail = async () => {
+    if (!thumbnailPreview.ready) return;
     setBusy('thumbnail');
     setMessage(null);
     try {
@@ -229,9 +234,12 @@ export function MuxAssetActions({ assetId, title, playbackId, playbackPolicy, st
     </section>
     <section className="mux-replace-action"><small>Replace video</small><p>Upload a revision without changing the shareable page. The superseded Mux asset is deleted when the swap finishes.</p><input ref={replaceInput} className="visually-hidden" type="file" accept="video/*,.mov,.mp4,.m4v,.webm,.avi,.mkv" onChange={(event) => { void replaceVideo(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /><button className="primary" type="button" onClick={() => replaceInput.current?.click()} disabled={Boolean(busy)}>{busy === 'replace' ? 'Replacing…' : 'Replace video'}</button>{replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? `Upload received · ${processingLabel(replacementProgress.processing)}` : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><MuxProcessingProgress uploadPercent={replacementProgress.stage === 'uploading' ? replacementProgress.progress : undefined} processing={replacementProgress.processing} /><small>Keep this tab open until the replacement is applied.</small>{replacementProgress.stage !== 'uploading' && <span className="mux-replacement-spinner" aria-hidden="true" />}</div>}</section>
     <section className="mux-thumbnail-action"><small>Thumbnail</small><p>Choose the frame used throughout the video library.</p>
-      {previewThumbnail && <img src={previewThumbnail} alt="Selected thumbnail frame" />}
-      <div className="mux-thumbnail-time"><input aria-label="Thumbnail frame time" type="range" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /><label><input type="number" min="0" max={Math.max(duration, 1)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(Number(event.target.value))} /> sec</label></div>
-      <button type="button" onClick={saveThumbnail} disabled={Boolean(busy) || !playbackId}>{busy === 'thumbnail' ? 'Saving…' : 'Save thumbnail'}</button>
+      <div className="mux-thumbnail-preview" aria-busy={!thumbnailPreview.ready && !thumbnailPreview.error}>
+        {thumbnailPreview.displayed ? <img src={thumbnailPreview.displayed} alt={thumbnailPreview.ready ? 'Selected thumbnail frame' : 'Previous thumbnail frame while the selected frame loads'} /> : <div className="mux-thumbnail-placeholder">{thumbnailPreview.error ? 'Preview unavailable' : 'Loading preview…'}</div>}
+      </div>
+      {!thumbnailPreview.ready && <p className="mux-thumbnail-preview-status" role="status">{thumbnailPreview.error ? 'This frame could not load. Try again or choose another spot.' : 'Loading selected frame…'}{thumbnailPreview.error && <button type="button" onClick={thumbnailPreview.retry}>Retry preview</button>}</p>}
+      <div className="mux-thumbnail-time"><input aria-label="Thumbnail frame time" type="range" min="0" max={thumbnailFrameTime(duration, duration)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(thumbnailFrameTime(Number(event.target.value), duration))} /><label><input type="number" min="0" max={thumbnailFrameTime(duration, duration)} step="0.1" value={selectedThumbnailTime} onChange={(event) => setSelectedThumbnailTime(thumbnailFrameTime(Number(event.target.value), duration))} /> sec</label></div>
+      <button type="button" onClick={saveThumbnail} disabled={Boolean(busy) || !playbackId || !thumbnailPreview.ready}>{busy === 'thumbnail' ? 'Saving…' : 'Save thumbnail'}</button>
     </section>
     <section><small>Download</small><p>Mux prepares the MP4 only when someone asks for it.</p><button className="primary" type="button" onClick={download} disabled={Boolean(busy) || downloadRequested}>{downloadRequested || busy === 'download' ? 'Preparing…' : 'Download'}</button></section>
     <section><small>Public download</small><p>{publicDownloadsEnabled ? 'Visitors can request an MP4 from the public video page.' : 'The download button is hidden on the public video page.'}</p><button type="button" onClick={togglePublicDownloads} disabled={Boolean(busy)}>{busy === 'public-downloads' ? 'Updating…' : publicDownloadsEnabled ? 'Disable downloads' : 'Enable downloads'}</button></section>

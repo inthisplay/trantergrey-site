@@ -1,9 +1,13 @@
 'use client';
 
+import { createMuxLibraryRefresh, excludeDeletedMuxAssets } from '@/lib/mux-library-refresh';
+import { MuxUploadDeckPicker } from './MuxUploadDeckPicker';
+import { MuxUploadTitle } from './MuxUploadTitle';
 import { MuxRecentUploadsBar } from './MuxRecentUploadsBar';
 import { useMuxUploadTracking } from './useMuxUploadTracking';
 import { MuxProcessingProgress } from './MuxProcessingProgress';
-import { waitForUpload, processingLabel, type ProcessingProgress } from '@/lib/mux-upload-status';
+import { UploadRequestError, uploadFailureMessage, terminalUploadMessage, isTerminalUploadStatus, transferMuxFile, type UploadPhase } from '@/lib/mux-upload-errors';
+import { confirmInterruptedTransfer, UploadStatusError, waitForUpload, processingLabel, type ProcessingProgress } from '@/lib/mux-upload-status';
 
 import { VideoArchive } from './VideoArchive';
 
@@ -35,7 +39,7 @@ type LibraryDisplayItem =
   | { kind: 'project'; project: VideoProject; assets: MatchedMuxLibraryAsset[]; representative: MatchedMuxLibraryAsset };
 type LibraryDropTarget = { kind: 'asset' | 'collection' | 'project'; id: string };
 type PendingLibraryDrop = { sources: MatchedMuxLibraryAsset[]; target: MatchedMuxLibraryAsset };
-type UploadState = { id: string; name: string; title: string; client: string; tags: string; variantLabel: string; assetId?: string; uploadId?: string; processing?: ProcessingProgress | null; progress: number; state: 'uploading' | 'processing' | 'complete' | 'error'; error?: string; saving?: boolean; thumbnailFailed?: boolean };
+type UploadState = { id: string; name: string; title: string; client: string; tags: string; variantLabel: string; assetId?: string; uploadId?: string; processing?: ProcessingProgress | null; progress: number; state: 'uploading' | 'processing' | 'complete' | 'error'; error?: string; notice?: string; saving?: boolean; thumbnailFailed?: boolean };
 type UploadDestination = 'solo' | 'collection';
 type UploadRatioGroup = { id: string; title: string; uploadIds: string[] };
 type DuplicateRatioWarning = { title: string; uploadIds: string[] } | null;
@@ -274,6 +278,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const [facets, setFacets] = useState<LibraryFacets | null>(null);
   const loadMoreSentinel = useRef<HTMLDivElement>(null);
   const libraryRequestSequence = useRef(0);
+  const [cacheRefresh] = useState(createMuxLibraryRefresh);
+  const [cacheRefreshWarning, setCacheRefreshWarning] = useState('');
+  const confirmedDeletedIds = useRef(new Set<string>());
   const [refreshingLibrary, setRefreshingLibrary] = useState(false);
   const [locallyProcessingAssetIds, setLocallyProcessingAssetIds] = useState<string[]>([]);
   const [uploads, setUploads] = useState<UploadState[]>([]);
@@ -285,17 +292,20 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const tracking = useMuxUploadTracking((uploadId, status) => {
     setUploads(rows => rows.map(row => row.uploadId === uploadId ? {
       ...row, processing: status.processing, assetId: status.assetId || row.assetId,
-      state: status.ready ? 'complete' : ['errored', 'cancelled', 'timed_out'].includes(status.status || '') ? 'error' : 'processing',
-      error: ['errored', 'cancelled', 'timed_out'].includes(status.status || '') ? 'Upload received, but Mux could not prepare playback.' : row.error,
+      state: status.ready ? 'complete' : isTerminalUploadStatus(status.status) ? 'error' : 'processing',
+      error: terminalUploadMessage(status.status) || row.error,
     } : row));
     if (status.assetId) setAssets(rows => rows?.map(asset => asset.id === status.assetId && !status.ready ? { ...asset, status: status.status || asset.status, processing: status.processing } : asset) ?? null);
     if (status.ready) { setLocallyProcessingAssetIds(ids => ids.filter(id => id !== status.assetId)); void refreshLibrary(); }
-  });
+  }, (uploadId, notice) => setUploads(rows => rows.map(row => row.uploadId === uploadId ? { ...row, notice } : row)));
   const [isDraggingUpload, setIsDraggingUpload] = useState(false);
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [uploadDrawerOpen, setUploadDrawerOpen] = useState(false);
   const [uploadClient, setUploadClient] = useState('');
   const [uploadTags, setUploadTags] = useState('');
+  const [uploadTagsOpen, setUploadTagsOpen] = useState(false);
+  const [uploadDeckOpen, setUploadDeckOpen] = useState(false);
+  const [uploadDeckAdded, setUploadDeckAdded] = useState('');
   const [uploadDestination, setUploadDestination] = useState<UploadDestination>('solo');
   const [uploadCollectionName, setUploadCollectionName] = useState('');
   const [uploadCollectionId, setUploadCollectionId] = useState('');
@@ -352,6 +362,8 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     const requestSequence = ++libraryRequestSequence.current;
     setRefreshingLibrary(true);
     try {
+      await cacheRefresh.ensure().then(() => setCacheRefreshWarning('')).catch(() => setCacheRefreshWarning('The Mux cache could not be refreshed. Displayed videos may be out of date.'));
+      if (requestSequence !== libraryRequestSequence.current) return;
       let response: Response | undefined;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
@@ -375,11 +387,11 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       if (!response.ok) throw new Error(payload.error || 'Unable to open the Mux library.');
       if (requestSequence !== libraryRequestSequence.current) return;
       if (cursor === null) {
-        setAssets((current) => [...new Map([...(current ?? []).filter((asset) => selectedIdsRef.current.includes(asset.id)), ...(payload.assets ?? [])].map((asset) => [asset.id, asset])).values()]); setMatchedAssetIds(payload.pageAssetIds ?? []);
+        setAssets((current) => excludeDeletedMuxAssets([...new Map([...(current ?? []).filter((asset) => selectedIdsRef.current.includes(asset.id)), ...(payload.assets ?? [])].map((asset) => [asset.id, asset])).values()], confirmedDeletedIds.current)); setMatchedAssetIds((payload.pageAssetIds ?? []).filter(id => !confirmedDeletedIds.current.has(id)));
         setProjects(payload.projects ?? []); setCollections(payload.collections ?? []); setFacets(payload.facets ?? null);
       } else {
-        setAssets((current) => [...new Map([...(current ?? []), ...(payload.assets ?? [])].map((asset) => [asset.id, asset])).values()]);
-        setMatchedAssetIds((current) => [...new Set([...current, ...(payload.pageAssetIds ?? [])])]);
+        setAssets((current) => excludeDeletedMuxAssets([...new Map([...(current ?? []), ...(payload.assets ?? [])].map((asset) => [asset.id, asset])).values()], confirmedDeletedIds.current));
+        setMatchedAssetIds((current) => [...new Set([...current, ...(payload.pageAssetIds ?? [])])].filter(id => !confirmedDeletedIds.current.has(id)));
       }
       setResultTotal(payload.total ?? 0); setNextCursor(payload.nextCursor ?? null);
       setError('');
@@ -505,32 +517,46 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     const initialTitle = file.name.replace(/\.[^.]+$/, '');
     setUploads((current) => [...current, { id, name: file.name, title: initialTitle, client: plan.client, tags: plan.tags.join(', '), variantLabel: uploadVariantLabel(file.name), progress: 0, state: 'uploading' }]);
     const update = (patch: Partial<UploadState>) => setUploads((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+    let phase: UploadPhase = 'prepare';
+    let received = false;
     try {
-      const response = await fetch('/api/admin/mux-uploads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: file.name.replace(/\.[^.]+$/, '') }) });
-      const payload = await jsonResponse<{ id?: string; url?: string; error?: string }>(response);
-      if (!response.ok || !payload.url || !payload.id) throw new Error(payload.error || 'Could not prepare that upload.');
-      await new Promise<void>((resolve, reject) => {
-        const request = new XMLHttpRequest();
-        request.upload.onprogress = (event) => { if (event.lengthComputable) update({ progress: Math.round((event.loaded / event.total) * 100) }); };
-        request.onerror = () => reject(new Error('The upload was interrupted. Please try again.'));
-        request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error(`Mux rejected the upload (${request.status}).`));
-        request.open('PUT', payload.url!);
-        request.send(file);
-      });
-      // Once Mux assigns an asset ID, it can be saved into a project while
-      // encoding continues. Background tracking owns readiness updates.
-      update({ uploadId: payload.id, progress: 100, state: 'processing' });
+      const response = await fetch('/api/admin/mux-uploads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: initialTitle }) });
+      if (!response.ok) throw new UploadRequestError('prepare', response.status);
+      const payload = await jsonResponse<{ id?: string; url?: string }>(response);
+      if (!payload.url || !payload.id) throw new UploadRequestError('prepare');
+      phase = 'transfer';
+      update({ uploadId: payload.id });
+      try {
+        await transferMuxFile(file, payload.url, progress => update({ progress }));
+      } catch (transferError) {
+        // A lost response can follow a successful transfer. Check before advising
+        // another upload; an unconfirmed transfer must not be called received.
+        update({ notice: 'Checking whether Mux received the file · wait before retrying.' });
+        const status = await confirmInterruptedTransfer(payload.id, transferError, uploadController.current?.signal);
+        update({ assetId: status.assetId! });
+      }
+      received = true;
+      phase = 'status';
+      update({ progress: 100, state: 'processing', notice: undefined });
       tracking.track(payload.id, file.name);
-      const assetId = await waitForMuxAsset(payload.id, false);
-      await saveUploadMetadata(assetId, plan);
+      const assetId = await waitForUpload(payload.id, uploadController.current!.signal, status => {
+        update({ assetId: status.assetId || undefined, processing: status.processing, state: status.ready ? 'complete' : isTerminalUploadStatus(status.status) ? 'error' : 'processing' });
+      }, false, notice => update({ notice }));
+      // Preserve the asset ID even if a subsequent metadata request fails.
       update({ assetId, progress: 100 });
-      setLocallyProcessingAssetIds((current) => current.includes(assetId) ? current : [...current, assetId]);
+      phase = 'metadata';
+      await saveUploadMetadata(assetId, plan);
+      setLocallyProcessingAssetIds(current => current.includes(assetId) ? current : [...current, assetId]);
       window.setTimeout(() => void refreshLibrary(), 2500);
-      // Readiness is tracked independently, including after details are saved.
-      // Do not hold the batch open or turn a long encode into an upload error.
       return assetId;
     } catch (reason) {
-      update({ state: 'error', error: reason instanceof Error ? reason.message : 'Could not upload that file.' });
+      if (uploadController.current?.signal.aborted) return null;
+      const message = reason instanceof UploadStatusError ? reason.message : uploadFailureMessage(phase, reason instanceof UploadRequestError ? reason.status : undefined);
+      if (received && phase === 'status') {
+        // Access/status-check errors do not mean the transferred file failed.
+        setUploads(rows => rows.map(row => row.id === id ? { ...row, notice: row.state === 'error' ? undefined : message, error: row.state === 'error' ? message : row.error } : row));
+      } else if (received) update({ error: message, notice: undefined });
+      else update({ state: 'error', error: message, notice: undefined });
       return null;
     }
   }
@@ -622,6 +648,9 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     setDuplicateRatioWarning(null);
     setUploadClient('');
     setUploadTags('');
+    setUploadTagsOpen(false);
+    setUploadDeckOpen(false);
+    setUploadDeckAdded('');
     setTagPickerUploadId('');
     setUploadDrawerOpen(true);
     const plan: UploadPlan = { client: '', tags: [], grouping: 'none', name: '', collectionId: '' };
@@ -731,7 +760,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       setWorkspaceMessage(`Saved upload details for ${readyUploads.length} ${readyUploads.length === 1 ? 'video' : 'videos'}${failedCount ? `. ${failedCount} failed upload${failedCount === 1 ? ' was' : 's were'} skipped.` : '.'}`);
       await refreshLibrary();
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Could not save these video details.';
+      const message = `Upload details were not fully saved. Do not upload the videos again; retry Save upload details. ${reason instanceof TypeError ? 'The connection or service may be unavailable.' : reason instanceof Error ? reason.message : ''}`;
       setUploads((current) => current.map((upload) => ({ ...upload, saving: false, error: message })));
       setWorkspaceMessage(message);
     } finally { setSavingUploadDetails(false); }
@@ -1139,13 +1168,13 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
         const removeAssets = await fetch('/api/admin/mux-assets/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetIds: deleteCollectionAssets.map((asset) => asset.id), detachFromPages: true }) });
         const assetPayload = await jsonResponse<{ deleted?: string[]; error?: string }>(removeAssets);
         if (!removeAssets.ok || !assetPayload.deleted) throw new Error(assetPayload.error || 'The collection was removed, but its videos could not be deleted.');
-        const deleted = new Set(assetPayload.deleted);
-        setAssets((current) => current?.filter((asset) => !deleted.has(asset.id)) ?? null);
+        confirmDeletedAssets(assetPayload.deleted);
       }
       setCollections((current) => current.filter((collection) => collection.id !== deleteCollection.id));
       setProjects((current) => current.filter((project) => !project.collectionIds.includes(deleteCollection.id)));
       setDeleteCollectionId('');
       setWorkspaceMessage(`Deleted “${deleteCollection.name}” and ${deleteCollectionAssets.length} ${deleteCollectionAssets.length === 1 ? 'video' : 'videos'} from Mux.`);
+      await refreshLibrary();
     } catch (reason) { setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not delete this collection and its videos.'); }
     finally { setSavingCollection(false); }
   }
@@ -1164,9 +1193,10 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const response = await fetch('/api/admin/mux-assets/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetIds: [asset.id], detachFromPages: true }) });
       const payload = await jsonResponse<{ deleted?: string[]; error?: string }>(response);
       if (!response.ok || !payload.deleted) throw new Error(payload.error || 'Could not delete that video.');
-      setAssets((current) => current?.filter((item) => item.id !== asset.id) ?? null);
+      confirmDeletedAssets(payload.deleted);
       setDeleteAssetId('');
       setWorkspaceMessage(`Deleted “${asset.title}” from Mux.`);
+      await refreshLibrary();
     } catch (reason) { setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not delete that video.'); }
     finally { setSavingAssetId(''); }
   }
@@ -1318,9 +1348,10 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       const assetPayload = await jsonResponse<{ deleted?: string[]; error?: string }>(removeAssets);
       if (!removeAssets.ok || !assetPayload.deleted) throw new Error(assetPayload.error || 'The video page was removed, but its Mux files could not be deleted.');
       setProjects((current) => current.filter((project) => project.id !== deleteProject.id));
-      setAssets((current) => current?.filter((asset) => !assetPayload.deleted?.includes(asset.id)) ?? null);
+      confirmDeletedAssets(assetPayload.deleted);
       setDeleteProjectId('');
       setWorkspaceMessage(`Deleted “${deleteProject.title}” and its ratio versions from Mux.`);
+      await refreshLibrary();
     } catch (reason) {
       setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not delete this video.');
     } finally {
@@ -1602,16 +1633,24 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     setBulkAction('client');
   }
 
+  function confirmDeletedAssets(ids: string[]) {
+    ids.forEach(id => confirmedDeletedIds.current.add(id));
+    libraryRequestSequence.current += 1;
+    setAssets(current => current ? excludeDeletedMuxAssets(current, confirmedDeletedIds.current) : null);
+    setMatchedAssetIds(current => current.filter(id => !confirmedDeletedIds.current.has(id)));
+    setSelectedIds(current => current.filter(id => !confirmedDeletedIds.current.has(id)));
+  }
+
   async function deleteSelected() {
     setSaving('delete'); setWorkspaceMessage('');
     try {
       const response = await fetch('/api/admin/mux-assets/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetIds: selectedIds, detachFromPages: true }) });
       const payload = await jsonResponse<{ deleted?: string[]; error?: string }>(response);
       if (!response.ok || !payload.deleted) throw new Error(payload.error || 'Could not delete the selected videos.');
-      const deleted = new Set(payload.deleted);
-      setAssets((current) => current?.filter((asset) => !deleted.has(asset.id)) ?? null);
+      confirmDeletedAssets(payload.deleted);
       setBulkAction(null); setSelectedIds([]); setSelectionMode(false);
       setWorkspaceMessage(`Deleted ${payload.deleted.length} ${payload.deleted.length === 1 ? 'video' : 'videos'} from Mux.`);
+      await refreshLibrary();
     } catch (reason) { setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not delete the selected videos.'); }
     finally { setSaving(''); }
   }
@@ -1657,13 +1696,14 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
   const errorLogLink = <p><a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">Open Cloudflare to view error logs <UiIcon name="external" /></a><br /><small>Select trantergrey-site-git <UiIcon name="forward" /> current deployment <UiIcon name="forward" /> View details <UiIcon name="forward" /> Functions. Start live logs, then click Try again here to capture the error.</small></p>;
 
   if (error && !assets) return <div className="admin-empty" role="alert"><p>{error}</p><button type="button" disabled={refreshingLibrary} onClick={() => void refreshLibrary()}>{refreshingLibrary ? 'Retrying…' : 'Try again'}</button>{errorLogLink}</div>;
-  if (!assets) return <p className="admin-empty">Reading the Mux library…</p>;
+  if (!assets) return <p className="admin-empty">Refreshing the Mux cache and loading videos…</p>;
 
   const sharedMatchingCollections = collections.filter((collection) => collection.name.toLowerCase().includes(uploadCollectionName.trim().toLowerCase())).slice(0, 8);
   const sharedSuggestedTags = tagSuggestions(uploadTags);
   const ratioGroupByUploadId = new Map(uploadRatioGroups.flatMap((group) => group.uploadIds.map((uploadId) => [uploadId, group])));
 
   return <>
+    {cacheRefreshWarning && <div className="admin-empty" role="alert"><p>{cacheRefreshWarning}</p><button type="button" disabled={refreshingLibrary} onClick={() => { setRefreshingLibrary(true); void cacheRefresh.retry().catch(() => {}).then(() => refreshLibrary()); }}>Retry cache refresh</button></div>}
     {error && <div className="admin-empty" role="alert"><p>The library could not refresh. Showing the last loaded videos. {error}</p><button type="button" disabled={refreshingLibrary} onClick={() => void refreshLibrary()}>{refreshingLibrary ? 'Retrying…' : 'Try again'}</button>{errorLogLink}</div>}
     {workspaceMessage && <div className="mux-workspace-message" role="status" aria-live="polite">{workspaceMessage}</div>}
     {replacementProgress && <div className="mux-replacement-progress" role="status" aria-live="polite"><div><span>Replacing{replacementProgress.total > 1 ? ` ${replacementProgress.current} of ${replacementProgress.total}` : ''}</span><strong>{replacementProgress.stage === 'uploading' ? `${replacementProgress.progress}% uploaded` : replacementProgress.stage === 'processing' ? `Upload received · ${processingLabel(replacementProgress.processing)}` : 'Updating video page'}</strong></div><p title={replacementProgress.fileName}>{replacementProgress.fileName}</p><MuxProcessingProgress uploadPercent={replacementProgress.stage === 'uploading' ? replacementProgress.progress : undefined} processing={replacementProgress.processing} /><small>Keep this tab open until the replacement is applied.</small></div>}
@@ -1674,7 +1714,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       <input ref={uploadInput} className="mux-upload-input" type="file" accept="video/*,.m4v,.mkv" multiple onChange={chooseUpload} />
       <div><p>Upload to Mux</p><h2>Drop videos here.</h2><span>Direct to Mux.</span></div>
       <button type="button" onClick={() => uploadInput.current?.click()}>Choose videos</button>
-      {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map(upload => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? 'Uploading · keep this tab open' : upload.state === 'error' ? 'Upload needs attention' : upload.state === 'complete' ? 'Ready to play · save your details' : 'Upload received · save your details while playback is prepared'}</b>{(upload.state === 'uploading' || upload.state === 'processing') && <MuxProcessingProgress uploadPercent={upload.state === 'uploading' ? upload.progress : undefined} processing={upload.processing} />}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
+      {uploads.length > 0 && <div className="mux-upload-queue" aria-live="polite">{uploads.map(upload => <div key={upload.id} className={upload.state}><span>{upload.name}</span><b>{upload.state === 'uploading' ? 'Uploading · keep this tab open' : upload.state === 'error' ? 'Upload needs attention' : upload.state === 'complete' ? 'Ready to play · save your details' : 'Upload received · save your details while playback is prepared'}</b>{(upload.state === 'uploading' || upload.state === 'processing') && <MuxProcessingProgress uploadPercent={upload.state === 'uploading' ? upload.progress : undefined} processing={upload.processing} />}{upload.notice && <small role="status">{upload.notice}</small>}{upload.error && <small>{upload.error}</small>}</div>)}</div>}
 
     </section>
     <MuxRecentUploadsBar items={tracking.items.filter(item => !uploads.some(upload => upload.uploadId === item.uploadId))} dismiss={tracking.dismiss} />
@@ -1682,28 +1722,31 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
     {uploadDrawerOpen && <aside className={`mux-upload-drawer${uploads.length >= 8 ? ' mux-upload-drawer-large' : uploads.length >= 4 ? ' mux-upload-drawer-wide' : ''}`} aria-label="Upload details">
       <header><div><p>Uploads in progress</p><h2>{uploads.length} {uploads.length === 1 ? 'video' : 'videos'}</h2></div><button type="button" onClick={() => setUploadDrawerOpen(false)} aria-label="Close upload details"><UiIcon name="close" /></button></header>
       <div className="mux-upload-drawer-body">
-        <fieldset><legend>Where should these go?</legend><label><input type="radio" checked={uploadDestination === 'solo'} onChange={() => setUploadDestination('solo')} />Keep as solo videos</label><label><input type="radio" checked={uploadDestination === 'collection'} onChange={() => setUploadDestination('collection')} />Add to collection</label></fieldset>
+        <fieldset className="mux-upload-destination"><legend className="sr-only">Upload destination</legend>{(['solo', 'collection'] as const).map(destination => <label key={destination} className={uploadDestination === destination ? 'selected' : ''}><input type="radio" name="upload-destination" checked={uploadDestination === destination} onChange={() => setUploadDestination(destination)} /><span className="mux-upload-choice-check" aria-hidden="true">{uploadDestination === destination && <UiIcon name="check" />}</span><strong>{destination === 'solo' ? 'Solo' : 'Collection'}</strong><small>{destination === 'solo' ? uploads.length === 1 ? 'This is a standalone video' : 'These are standalone videos' : uploads.length === 1 ? 'This belongs to a collection' : 'These belong to a collection'}</small></label>)}</fieldset>
         <section className="mux-upload-shared-details">
           {uploadDestination === 'collection' && <label className="mux-upload-client-picker"><span>Add to collection</span><input value={uploadCollectionName} onFocus={() => setCollectionPickerOpen(true)} onBlur={() => window.setTimeout(() => setCollectionPickerOpen(false), 150)} onChange={(event) => { setUploadCollectionName(event.target.value); setUploadCollectionId(''); setCollectionPickerOpen(true); }} placeholder="Search or add a collection" />{collectionPickerOpen && <div role="listbox">{sharedMatchingCollections.map((collection) => <button type="button" role="option" key={collection.id} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadCollectionName(collection.name); setUploadCollectionId(collection.id); setCollectionPickerOpen(false); }}>{collection.name}</button>)}{uploadCollectionName.trim() && !sharedMatchingCollections.some((collection) => collection.name.toLowerCase() === uploadCollectionName.trim().toLowerCase()) && <button type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadCollectionId(''); setCollectionPickerOpen(false); }}>Create “{uploadCollectionName.trim()}”</button>}</div>}</label>}
-          <fieldset className="mux-upload-ratio-option"><legend>Multiple ratios included?</legend><label className="mux-upload-ratio-toggle"><input type="checkbox" checked={uploadRatiosIncluded} onChange={(event) => { setUploadRatiosIncluded(event.target.checked); setSelectedUploadIds([]); }} /><span>Group selected uploads as ratio variations</span></label></fieldset>
-          <div className="mux-upload-client-picker"><span>Client (applied when you save upload details)</span><ClientPicker value={uploadClient} clients={assignmentClients} onChange={setUploadClient} onClientsChanged={() => void refreshLibrary()} /></div>
-          <label><span>Tags</span><input value={uploadTags} onFocus={() => setTagPickerUploadId('shared')} onBlur={() => window.setTimeout(() => setTagPickerUploadId((current) => current === 'shared' ? '' : current), 150)} onChange={(event) => { setUploadTags(event.target.value); setTagPickerUploadId('shared'); }} placeholder="Campaign, social" /></label>
-          {tagPickerUploadId === 'shared' && <div className="mux-upload-tag-suggestions"><button className="mux-upload-tag-dismiss" type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setTagPickerUploadId('')}>Done with tags <UiIcon name="close" /></button>{sharedSuggestedTags.map((tag) => <button type="button" key={tag} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadTags((current) => acceptTag(current, tag)); setTagPickerUploadId('shared'); }}>{tag}</button>)}</div>}
+          <label className="mux-upload-ratio-switch"><span><strong>Ratio Group</strong><small id="mux-upload-ratio-description">Group together multiple sizes of the same video</small></span><input type="checkbox" role="switch" aria-label="Ratio Group" aria-describedby="mux-upload-ratio-description" checked={uploadRatiosIncluded} onChange={event => { setUploadRatiosIncluded(event.target.checked); setSelectedUploadIds([]); }} /><i aria-hidden="true" /></label>
+          <div className="mux-upload-client-picker"><span>Client</span><ClientPicker value={uploadClient} clients={assignmentClients} onChange={setUploadClient} onClientsChanged={() => void refreshLibrary()} /></div>
+          <button type="button" className="mux-upload-text-link" aria-expanded={uploadTagsOpen} aria-controls="mux-upload-tags" onClick={() => setUploadTagsOpen(open => !open)}>{uploadTagsOpen ? '− Tags' : '+ Tags'}</button>
+          {uploadTagsOpen && <label id="mux-upload-tags"><span className="sr-only">Tags</span><input autoFocus value={uploadTags} onFocus={() => setTagPickerUploadId('shared')} onBlur={() => window.setTimeout(() => setTagPickerUploadId((current) => current === 'shared' ? '' : current), 150)} onChange={(event) => { setUploadTags(event.target.value); setTagPickerUploadId('shared'); }} placeholder="Campaign, social" /></label>}
+          {uploadTagsOpen && tagPickerUploadId === 'shared' && <div className="mux-upload-tag-suggestions"><button className="mux-upload-tag-dismiss" type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setTagPickerUploadId('')}>Done with tags <UiIcon name="close" /></button>{sharedSuggestedTags.map((tag) => <button type="button" key={tag} onMouseDown={(event) => event.preventDefault()} onClick={() => { setUploadTags((current) => acceptTag(current, tag)); setTagPickerUploadId('shared'); }}>{tag}</button>)}</div>}
         </section>
         {uploadRatiosIncluded && <section className="mux-upload-ratio-builder"><div><p>Ratio groups</p><span>Select related uploads below, then give the set one shared title.</span></div><div className="mux-upload-ratio-controls"><label><span>Shared title</span><input value={ratioGroupTitle} onChange={(event) => setRatioGroupTitle(event.target.value)} placeholder="Campaign video" /></label><button type="button" disabled={selectedUploadIds.length < 2} onClick={() => createRatioGroup(selectedUploadIds, ratioGroupTitle)}>Group selected</button></div>{uploadRatioGroups.length > 0 && <div className="mux-upload-ratio-groups">{uploadRatioGroups.map((group) => <div key={group.id}><strong>{group.title}</strong><span>{group.uploadIds.length} ratios</span><button type="button" onClick={() => removeRatioGroup(group.id)}>Remove</button></div>)}</div>}</section>}
         {uploads.map((upload) => {
           const ratioGroup = ratioGroupByUploadId.get(upload.id);
           const selectable = uploadRatiosIncluded && !ratioGroup;
           return <article className={`mux-upload-card${selectedUploadIds.includes(upload.id) ? ' selected' : ''}`} key={upload.id}>
-            {selectable ? <button className="mux-upload-card-select" type="button" onClick={() => toggleUploadForRatioGroup(upload.id)} aria-pressed={selectedUploadIds.includes(upload.id)} aria-label={`${selectedUploadIds.includes(upload.id) ? 'Deselect' : 'Select'} ${upload.title}`}><div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : 'Mux preparing preview'}</span>}<i>{selectedUploadIds.includes(upload.id) ? <UiIcon name="check" /> : <UiIcon name="plus" />}</i></div></button> : <div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : 'Mux preparing preview'}</span>}</div>}
-            {ratioGroup ? <p className="mux-upload-ratio-title">{ratioGroup.title} · ratio variation</p> : <label><span>Title</span><input value={upload.title} onChange={(event) => updateUpload(upload.id, { title: event.target.value })} /></label>}
+            {selectable ? <button className="mux-upload-card-select" type="button" onClick={() => toggleUploadForRatioGroup(upload.id)} aria-pressed={selectedUploadIds.includes(upload.id)} aria-label={`${selectedUploadIds.includes(upload.id) ? 'Deselect' : 'Select'} ${upload.title}`}><div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : upload.state === 'error' ? 'Preview unavailable' : 'Mux preparing preview'}</span>}<i>{selectedUploadIds.includes(upload.id) ? <UiIcon name="check" /> : <UiIcon name="plus" />}</i></div></button> : <div className="mux-upload-card-preview">{upload.assetId && assetsById.get(upload.assetId)?.thumbnailUrl && !upload.thumbnailFailed ? <img src={assetsById.get(upload.assetId)?.thumbnailUrl || ''} alt="" onError={() => updateUpload(upload.id, { thumbnailFailed: true })} /> : <span>{upload.state === 'uploading' ? `${upload.progress}%` : upload.state === 'error' ? 'Preview unavailable' : 'Mux preparing preview'}</span>}</div>}
+            {ratioGroup ? <p className="mux-upload-ratio-title">{ratioGroup.title} · ratio variation</p> : <MuxUploadTitle title={upload.title} onChange={title => updateUpload(upload.id, { title })} />}
             <p>{upload.state === 'uploading' ? 'Keep this tab open until transfer finishes.' : upload.state === 'error' ? 'Upload needs attention' : upload.state === 'complete' ? 'Ready to play · save your details' : 'Upload received · save your details, then you can leave.'}</p>{(upload.state === 'uploading' || upload.state === 'processing') && <MuxProcessingProgress uploadPercent={upload.state === 'uploading' ? upload.progress : undefined} processing={upload.processing} />}
-            {upload.error && <small role="alert">{upload.error}</small>}
+            {upload.notice && <small role="status">{upload.notice}</small>}{upload.error && <small role="alert">{upload.error}</small>}
           </article>;
         })}
+        <div className="mux-upload-deck-option">{uploadDeckAdded ? <small role="status">Added to {uploadDeckAdded}</small> : <button className="mux-upload-text-link" type="button" disabled={!uploads.length || uploads.some(upload => !upload.assetId || upload.state === 'error')} onClick={() => setUploadDeckOpen(true)}>+ Add to Deck</button>}{uploads.some(upload => !upload.assetId) && <small> Available once the files are received.</small>}</div>
       </div>
       <footer><button type="button" onClick={() => setUploadDrawerOpen(false)}>Keep browsing</button><button className="primary" type="button" disabled={savingUploadDetails || uploads.some((upload) => upload.state === 'uploading') || !uploads.some((upload) => upload.assetId)} onClick={requestSaveUploadDetails}>{savingUploadDetails ? 'Saving…' : 'Save upload details'}</button></footer>
     </aside>}
+    {uploadDeckOpen && <MuxUploadDeckPicker client={uploadClient} videos={uploads.filter(upload => upload.assetId).map(upload => ({ id: upload.assetId!, thumbnailUrl: assetsById.get(upload.assetId!)?.thumbnailUrl, playerUrl: assetsById.get(upload.assetId!)?.playerUrl, duration: assetsById.get(upload.assetId!)?.duration, title: uploadRatioGroups.find(group => group.uploadIds.includes(upload.id))?.title || upload.title, client: uploadClient.trim() || upload.client }))} onClose={() => setUploadDeckOpen(false)} onAdded={title => { setUploadDeckAdded(title); setUploadDeckOpen(false); }} />}
     {clientReminderOpen && <div className="client-reminder-modal" role="dialog" aria-modal="true" aria-labelledby="upload-client-reminder-title"><div className="client-reminder-panel"><p>One last detail</p><h2 id="upload-client-reminder-title">Leave this upload without a client?</h2><span>Adding a client now keeps this video easy to find later. You can still save it without one.</span><div className="client-reminder-picker"><ClientPicker value={uploadClient} clients={assignmentClients} onChange={setUploadClient} onClientsChanged={() => void refreshLibrary()} placeholder="Search or add a client" /></div><div className="client-reminder-actions"><button type="button" onClick={() => { setClientReminderOpen(false); void saveUploadDetails(); }}>Save without client</button><button className="primary" type="button" disabled={!uploadClient.trim()} onClick={() => { setClientReminderOpen(false); void saveUploadDetails(); }}>Save client</button></div></div></div>}
     {duplicateRatioWarning && <div className="mux-bulk-modal" role="dialog" aria-modal="true" onMouseDown={() => setDuplicateRatioWarning(null)}><div onMouseDown={(event) => event.stopPropagation()}><button className="mux-bulk-modal-close" type="button" onClick={() => setDuplicateRatioWarning(null)} aria-label="Close"><UiIcon name="close" /></button><div className="mux-bulk-delete"><p>Duplicate ratio</p><h3>Group these anyway?</h3><span>Two or more selected videos appear to share the same ratio. You can cancel and adjust the selection, or continue with this ratio group.</span><div className="mux-collection-delete-actions"><button type="button" onClick={() => setDuplicateRatioWarning(null)}>Cancel</button><button className="danger" type="button" onClick={() => createRatioGroup(duplicateRatioWarning.uploadIds, duplicateRatioWarning.title, true)}>Continue</button></div></div></div></div>}
     <div className="mux-library-toolbar">

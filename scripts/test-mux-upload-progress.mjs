@@ -7,7 +7,8 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 
 const temp = await mkdtemp(join(tmpdir(), 'tg-mux-progress-'));
-await build({ entryPoints: ['lib/mux-upload-status.ts', 'functions/api/admin/mux-uploads.ts', 'functions/_lib/mux.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+await build({ entryPoints: ['lib/mux-upload-errors.ts', 'lib/mux-upload-status.ts', 'functions/api/admin/mux-uploads.ts', 'functions/_lib/mux.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+const diagnostics = await import(pathToFileURL(join(temp, 'lib/mux-upload-errors.mjs')));
 const client = await import(pathToFileURL(join(temp, 'lib/mux-upload-status.mjs')));
 const api = await import(pathToFileURL(join(temp, 'functions/api/admin/mux-uploads.mjs')));
 const mux = await import(pathToFileURL(join(temp, 'functions/_lib/mux.mjs')));
@@ -116,4 +117,67 @@ test('new direct uploads request 4K while preserving Plus quality, playback poli
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { id: 'upload4K', url: 'https://upload.example.test/fixture' });
   assert.equal(requests, 1, 'only creates an upload destination; no existing asset mutation');
+});
+
+
+test('status outages report wait guidance and clear it after recovery', async t => {
+  let calls = 0;
+  const notices = [];
+  t.mock.method(globalThis, 'setTimeout', fn => { queueMicrotask(fn); return 1; });
+  t.mock.method(globalThis, 'clearTimeout', () => {});
+  t.mock.method(globalThis, 'fetch', async () => ++calls === 1 ? new Response('', { status: 503 }) : Response.json({ assetId: 'asset1', ready: true, status: 'ready' }));
+  assert.equal(await client.waitForUpload('upload1', new AbortController().signal, () => {}, true, notice => notices.push(notice)), 'asset1');
+  assert.match(notices[0], /Wait.*received.*automatically.*Do not upload/);
+  assert.equal(notices.at(-1), undefined);
+});
+
+test('terminal states distinguish processing failure, cancellation and expiration', () => {
+  for (const status of ['error', 'errored']) assert.match(diagnostics.terminalUploadMessage(status), /Mux processing failed.*re-export or retry/);
+  assert.match(diagnostics.terminalUploadMessage('timed_out'), /expired.*library.*retry/);
+  assert.match(diagnostics.terminalUploadMessage('cancelled'), /cancelled.*will not continue/);
+  for (const status of ['waiting', 'preparing', 'ready', undefined]) assert.equal(diagnostics.terminalUploadMessage(status), undefined);
+});
+
+test('phase messages do not confuse received videos with failed transfers', () => {
+  assert.match(diagnostics.uploadFailureMessage('prepare', 401), /sign in again.*No video data/);
+  assert.match(diagnostics.uploadFailureMessage('prepare', 503), /not started.*HTTP 503.*Retry/);
+  assert.match(diagnostics.uploadFailureMessage('transfer'), /could not confirm.*Check the library before retrying/);
+  assert.match(diagnostics.uploadFailureMessage('transfer', 403), /Mux returned HTTP 403.*fresh upload/);
+  assert.match(diagnostics.uploadFailureMessage('metadata'), /received.*Do not upload.*Save upload details/);
+});
+
+test('transfer helper separates HTTP rejection from an unconfirmed network failure', async t => {
+  const original = globalThis.XMLHttpRequest;
+  t.after(() => { if (original) globalThis.XMLHttpRequest = original; else delete globalThis.XMLHttpRequest; });
+  let outcome = 'network';
+  globalThis.XMLHttpRequest = class {
+    upload = {}; status = 0;
+    open(method, url) { assert.equal(method, 'PUT'); assert.equal(url, 'https://upload.example.test'); }
+    send() {
+      this.upload.onprogress({ lengthComputable: true, loaded: 25, total: 100 });
+      if (outcome === 'network') this.onerror();
+      else if (outcome === 'abort') this.onabort();
+      else { this.status = Number(outcome); this.onload(); }
+    }
+  };
+  const progress = [];
+  const transfer = () => diagnostics.transferMuxFile({}, 'https://upload.example.test', n => progress.push(n));
+  await assert.rejects(transfer(), e => e.phase === 'transfer' && e.status === undefined);
+  outcome = '403'; await assert.rejects(transfer(), e => e.status === 403);
+  outcome = 'abort'; await assert.rejects(transfer(), e => e.phase === 'transfer');
+  outcome = '200'; await transfer();
+  assert.deepEqual(progress, [25, 25, 25, 25]);
+});
+
+
+test('lost transfer responses recover only when Mux confirms an asset exists', async t => {
+  const original = new Error('transfer response lost');
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ assetId: 'asset1', ready: false, status: 'preparing' }));
+  assert.equal((await client.confirmInterruptedTransfer('upload1', original)).assetId, 'asset1');
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ assetId: null, ready: false, status: 'waiting' }));
+  await assert.rejects(client.confirmInterruptedTransfer('upload1', original), e => e === original);
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 502 }));
+  await assert.rejects(client.confirmInterruptedTransfer('upload1', original), e => e === original);
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ assetId: null, ready: false, status: 'timed_out' }));
+  await assert.rejects(client.confirmInterruptedTransfer('upload1', original), /Upload expired/);
 });

@@ -2,19 +2,20 @@
 
 import { createPortal } from 'react-dom';
 import type { TrackedUpload } from './useMuxUploadTracking';
+import { isTerminalUploadStatus, terminalUploadMessage } from '@/lib/mux-upload-errors';
 import { processingLabel } from '@/lib/mux-upload-status';
 import styles from './MuxRecentUploadsBar.module.css';
 
 export function MuxRecentUploadsBar({ items, dismiss }: { items: TrackedUpload[]; dismiss: (id: string) => void }) {
   if (!items.length || typeof document === 'undefined') return null;
-  const failed = (item: TrackedUpload) => ['errored', 'cancelled', 'timed_out'].includes(item.status?.status || '');
-  const pending = items.filter(item => !item.status?.ready && !failed(item));
+  const failed = (item: TrackedUpload) => isTerminalUploadStatus(item.status?.status);
+  const pending = items.filter(item => !item.status?.ready && !failed(item) && !item.stopped);
   const readyCount = items.filter(item => item.status?.ready).length;
   const attentionCount = items.filter(item => failed(item) || item.notice).length;
   const single = items.length === 1 ? items[0] : null;
   const title = single ? single.name : `${items.length} recent uploads`;
   const status = single
-    ? single.notice || (single.status?.ready ? 'Ready to play' : failed(single) ? 'Processing failed' : processingLabel(single.status?.processing))
+    ? single.notice || (single.status?.ready ? 'Ready to play' : failed(single) ? terminalUploadMessage(single.status?.status) : processingLabel(single.status?.processing))
     : [pending.length ? `${pending.length} processing` : '', readyCount ? `${readyCount} ready` : '', attentionCount ? `${attentionCount} need attention` : ''].filter(Boolean).join(' · ');
   const percent = pending.length === 1 ? pending[0].status?.processing?.percent ?? undefined : undefined;
   return createPortal(<div className={styles.bar} aria-label="Recent upload status">

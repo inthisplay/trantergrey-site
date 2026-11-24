@@ -1,5 +1,8 @@
 'use client';
 
+import { WatchDownloadIcon, WatchShareIcon } from './WatchActionIcons';
+import { WatchHeaderActions } from './WatchHeader';
+
 import { MuxProcessingProgress } from './MuxProcessingProgress';
 import type { ProcessingProgress } from '@/lib/mux-upload-status';
 
@@ -342,7 +345,7 @@ function variantFromRatioParam(variants: SoloVideoVariant[], value: string | nul
   })?.assetId ?? null;
 }
 
-export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = false, compact = false }: { title: string; variants: SoloVideoVariant[]; standaloneHref?: string; unbranded?: boolean; compact?: boolean }) {
+export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = false, compact = false, headerActions = false }: { title: string; variants: SoloVideoVariant[]; standaloneHref?: string; unbranded?: boolean; compact?: boolean; headerActions?: boolean }) {
   const [selectedId, setSelectedId] = useState(unbranded ? variants[0]?.assetId ?? '' : variants.length > 1 ? 'all' : variants[0]?.assetId ?? '');
   const [downloadState, setDownloadState] = useState<'idle' | 'preparing'>('idle');
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
@@ -525,7 +528,7 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
   }
 
 
-  return <div className={`solo-video-player${showingAll ? ' ratio-group-layout' : ' single-video-layout has-actions'}${unbranded ? ' unbranded-player' : ''}${compact ? ' compact-player' : ''}`} style={{'--video-aspect-ratio':numericAspectRatio(selected.aspectRatio)} as CSSProperties & {'--video-aspect-ratio':number}}>
+  return <div className={`solo-video-player${showingAll ? ' ratio-group-layout' : ' single-video-layout has-actions'}${unbranded ? ' unbranded-player' : ''}${compact ? ' compact-player' : ''}${headerActions ? ' has-header-actions' : ''}`} style={{'--video-aspect-ratio':numericAspectRatio(selected.aspectRatio)} as CSSProperties & {'--video-aspect-ratio':number}}>
     {notice && <div className={`solo-video-notification ${noticeKind}`} role="status" aria-live="polite"><span>{notice}</span>{downloadState === 'preparing' && noticeKind === 'info' && <span className="solo-download-preparing" role="progressbar" aria-label="Preparing download"><span /></span>}</div>}
     {!unbranded && variants.length > 1 && <div className="solo-video-ratios" aria-label="Choose a video ratio">
       <span>View ratio</span>
@@ -536,22 +539,17 @@ export function SoloVideoPlayer({ title, variants, standaloneHref, unbranded = f
       const tile = ratioGroupLayout.tiles[index];
       return <Fragment key={variant.assetId}><div className={`solo-video-stage ratio-group-tile ratio-group-tile-${selectorLabel(variant).toLowerCase()}${variant.assetId === audioVariantId ? ' ratio-group-tile-primary' : ''}${cssAspectRatio(variant.aspectRatio) === '9 / 16' ? ' portrait' : ''}`} style={tile ? { left: `${tile.left}px`, top: `${tile.top}px`, width: `${tile.width}px`, height: `${tile.height}px` } : undefined}><div style={{ aspectRatio: cssAspectRatio(variant.aspectRatio) }}><MuxVideoPlayer status={variant.status} processing={variant.processing} assetId={variant.assetId} playbackId={variant.playbackId} poster={variant.thumbnailUrl} title={`${title} — ${selectorLabel(variant)}`} muted={variant.assetId !== audioVariantId} keyboardShortcuts={variant.assetId === audioVariantId} onVideoElement={registerSyncedVideo} /></div></div></Fragment>;
     })}</div> : <div className={`solo-video-stage${isPortrait ? ' portrait' : ''}`} style={{width:soloSize.width,height:soloSize.height}}><div><MuxVideoPlayer status={selected.status} processing={selected.processing} key={selected.playbackId} assetId={selected.assetId} playbackId={selected.playbackId} poster={selected.thumbnailUrl} title={`${title} — ${selectorLabel(selected)}`} autoPlay={Boolean(standaloneHref && variants.length === 1)} /></div></div>}</div>
-    <div className="solo-video-actions">
+    <WatchHeaderActions enabled={headerActions}><div className="solo-video-actions">
       <div className="solo-video-action-buttons">
         <button type="button" disabled={downloadState === 'preparing'} onClick={copyUrl}>
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <circle cx="18" cy="5" r="2.5" />
-            <circle cx="6" cy="12" r="2.5" />
-            <circle cx="18" cy="19" r="2.5" />
-            <path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5" />
-          </svg>
+          <WatchShareIcon />
           <span>{copyState === 'copied' ? 'Copied!' : unbranded ? 'Share' : 'Copy URL'}</span>
         </button>
         {unbranded && <button type="button" disabled={downloadState === 'preparing'} onClick={() => void copyEmbed()}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" /></svg><span>Embed</span></button>}
         {downloadVariants.length > 0 && <div className="solo-download-picker"><button type="button" disabled={downloadState === 'preparing'} aria-haspopup="menu" aria-expanded={downloadMenuOpen} onClick={() => setDownloadMenuOpen((open) => !open)}>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M5 20h14" /></svg><span>{downloadState === 'preparing' ? 'Preparing…' : 'Download'}</span>
+          <WatchDownloadIcon /><span>{downloadState === 'preparing' ? 'Preparing…' : 'Download'}</span>
         </button>{downloadMenuOpen && <div className="solo-download-menu" role="menu" aria-label="Download quality">{downloadVariants.length > 1 && <div className="solo-download-menu-group solo-download-menu-all" role="group" aria-label="Download all ratios"><span>Download all</span>{downloadAllQualities.map((quality) => <button type="button" role="menuitem" key={quality} onClick={() => void getAllDownloads(quality)}>{quality === 'highest' ? 'Highest available' : quality}</button>)}</div>}{downloadVariants.map((variant) => <div className="solo-download-menu-group" role="group" aria-label={`${selectorLabel(variant)} quality`} key={variant.assetId}>{downloadVariants.length > 1 && <span>{selectorLabel(variant)}</span>}{availableDownloadQualities(variant.maxResolution).map((quality) => <button type="button" role="menuitem" key={quality} onClick={() => void getDownload(variant, quality)}>{quality === 'highest' ? 'Highest available' : quality}</button>)}</div>)}</div>}</div>}
       </div>
-    </div>
+    </div></WatchHeaderActions>
   </div>;
 }

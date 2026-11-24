@@ -1,3 +1,4 @@
+import { terminalUploadMessage, uploadFailureMessage } from './mux-upload-errors';
 export type ProcessingProgress = { state: string; percent: number | null };
 export type UploadStatus = { assetId: string | null; ready: boolean; status?: string; processing?: ProcessingProgress | null };
 
@@ -23,15 +24,18 @@ export async function readUploadStatus(uploadId: string, signal?: AbortSignal): 
 
 // A long encode or temporary outage is not an upload failure. Only explicit
 // terminal states stop this wait. Callers abort when their component unmounts.
-export async function waitForUpload(uploadId: string, signal: AbortSignal, onStatus: (status: UploadStatus) => void, readyOnly = true) {
+export async function waitForUpload(uploadId: string, signal: AbortSignal, onStatus: (status: UploadStatus) => void, readyOnly = true, onNotice?: (notice: string | undefined) => void) {
   while (!signal.aborted) {
     try {
       const status = await readUploadStatus(uploadId, signal);
+      onNotice?.(undefined);
       onStatus(status);
-      if (['errored', 'error', 'cancelled', 'timed_out'].includes(status.status || '')) throw new UploadStatusError('Mux could not process this file. Check the source video before retrying.');
+      const terminalMessage = terminalUploadMessage(status.status);
+      if (terminalMessage) throw new UploadStatusError(terminalMessage);
       if (status.assetId && (!readyOnly || status.ready)) return status.assetId;
     } catch (error) {
       if (signal.aborted || error instanceof UploadStatusError) throw error;
+      onNotice?.(uploadFailureMessage('status'));
     }
     await new Promise<void>((resolve) => {
       const done = () => { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); };
@@ -40,4 +44,14 @@ export async function waitForUpload(uploadId: string, signal: AbortSignal, onSta
     });
   }
   throw new DOMException('Stopped checking upload', 'AbortError');
+}
+
+
+/** A missing PUT response is ambiguous; only an asset ID confirms receipt. */
+export async function confirmInterruptedTransfer(uploadId: string, transferError: unknown, signal?: AbortSignal): Promise<UploadStatus> {
+  const status = await readUploadStatus(uploadId, signal).catch(() => null);
+  const terminalMessage = terminalUploadMessage(status?.status);
+  if (terminalMessage) throw new UploadStatusError(terminalMessage);
+  if (!status?.assetId) throw transferError;
+  return status;
 }

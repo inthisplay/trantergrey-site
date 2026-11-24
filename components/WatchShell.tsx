@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { WatchDownloadIcon, WatchShareIcon } from './WatchActionIcons';
+import { WatchHeaderActions } from './WatchHeader';
 import { SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
-import { Download, ExternalLink } from 'pixelarticons/react';
+import { ExternalLink } from 'pixelarticons/react';
 import { prepareDownload } from '@/lib/watch-download';
 import { VideoModal, type ModalVideo } from './VideoModal';
 import type { VideoProjectCollection } from '@/lib/video-projects-shared';
@@ -10,13 +12,22 @@ import type { VideoProjectCollection } from '@/lib/video-projects-shared';
 type VideoData = { pending?: boolean; clientLogoUrl?: string | null; title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
 type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
 
-export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlayer = false }: { unbranded?: boolean; linkBase?: string; compactPlayer?: boolean }) {
+export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlayer = false, headerActions = false }: { unbranded?: boolean; linkBase?: string; compactPlayer?: boolean; headerActions?: boolean }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
   const [archiveUrl, setArchiveUrl] = useState('');
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadNotice, setDownloadNotice] = useState('');
+  const [copyNotice, setCopyNotice] = useState('');
+  async function copyCollectionUrl() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopyNotice('Copied!');
+    } catch {
+      setCopyNotice('Could not copy. Copy the URL from your address bar.');
+    }
+  }
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<(ModalVideo & { variants: SoloVideoVariant[]; href: string }) | null>(null);
   const [previewError, setPreviewError] = useState('');
@@ -136,19 +147,22 @@ export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlay
   if (collection) return <section className="solo-video-shell collection-page">
     <header className="solo-collection-header">
       <div className="solo-video-heading"><p className="eyebrow">TranterGrey collection</p><h1>{collection.collection.name}</h1>{collection.collection.description && <p>{collection.collection.description}</p>}</div>
-      {collection.downloadAssetIds.length > 0 && <div className="solo-collection-download">
+      <WatchHeaderActions enabled={headerActions}><div className="solo-collection-download"><div className="solo-video-action-buttons">
+        <button type="button" onClick={() => void copyCollectionUrl()}><WatchShareIcon />{copyNotice === 'Copied!' ? 'Copied!' : 'Copy URL'}</button>
+        {collection.downloadAssetIds.length > 0 && <>
         {archiveUrl ? <a href={archiveUrl} download={`${collection.collection.slug}.zip`}>
-          <Download aria-hidden="true" />
+          <WatchDownloadIcon />
           Save ZIP
         </a> : <button type="button" disabled={downloadPending} onClick={() => void downloadCollection(collection.downloadAssetIds)}>
-          <Download aria-hidden="true" />
+          <WatchDownloadIcon />
           {downloadPending ? 'Preparing…' : 'Download all'}
         </button>}
-        <div role="status">{downloadNotice}</div>
-      </div>}
-    </header>
+        </>}</div>
+        <div role="status">{downloadNotice || copyNotice}</div>
+      </div>
+    </WatchHeaderActions></header>
     {previewError && <p role="alert">{previewError}</p>}
-    {collection.projects.length ? <div className="solo-collection-grid">{collection.projects.map((project) => {
+    {collection.projects.length ? <div className="solo-collection-grid balanced-video-grid">{collection.projects.map((project) => {
       const href = `${linkBase}/${project.slug}`;
       return <article className="solo-collection-card" key={project.id}>
         <a href={href} onClick={(event) => void openPreview(event, project)} aria-haspopup="dialog" aria-busy={loadingSlug === project.slug}>
@@ -179,7 +193,7 @@ export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlay
   </div></section>;
 
   return <section className="solo-video-shell">
-    {video ? <div className="solo-video-presentation"><div className="solo-video-public-media-region"><SoloVideoPlayer title={video.title} variants={video.variants} compact={compactPlayer} /></div><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`${linkBase}/collection/${item.slug}`} key={item.id}>{item.name} <UiIcon name="forward" /></a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
+    {video ? <div className="solo-video-presentation"><div className="solo-video-public-media-region"><SoloVideoPlayer title={video.title} variants={video.variants} compact={compactPlayer} headerActions={headerActions} /></div><div className="solo-video-heading"><p className="eyebrow">TranterGrey film{video.client ? ` / ${video.client}` : ''}</p><h1>{video.title}</h1>{video.description && <p>{video.description}</p>}</div>{video.collections.length > 0 && <nav className="solo-video-collections" aria-label="Video collections"><span>Part of</span>{video.collections.map((item) => <a href={`${linkBase}/collection/${item.slug}`} key={item.id}>{item.name} <UiIcon name="forward" /></a>)}</nav>}</div> : <div className="solo-video-heading"><p className="eyebrow">TranterGrey film</p><h1>{error || 'Opening video…'}</h1></div>}
   </section>;
 }
 

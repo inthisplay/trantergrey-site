@@ -76,7 +76,7 @@
 
 /* Mux workspace appearance preference */
 .mux-admin,.mux-asset-page{background:#171717}.mux-library-actions{display:flex;align-items:center;gap:13px;margin-left:auto}.mux-theme-toggle{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;padding:0;color:rgba(245,242,237,.7);font:500 9px var(--mono);letter-spacing:.07em;text-transform:uppercase;cursor:pointer}.mux-theme-toggle-track{display:flex;align-items:center;width:30px;height:16px;border:1px solid rgba(245,242,237,.52);border-radius:999px;padding:2px;transition:background .2s,border-color .2s}.mux-theme-toggle-track span{display:block;width:10px;height:10px;border-radius:50%;background:currentColor;transition:transform .2s}.mux-theme-toggle[aria-checked='true'] .mux-theme-toggle-track span{transform:translateX(14px)}.mux-theme-toggle:hover,.mux-theme-toggle:focus-visible{color:var(--bright);outline:0}.mux-theme-toggle:hover .mux-theme-toggle-track,.mux-theme-toggle:focus-visible .mux-theme-toggle-track{border-color:currentColor}.mux-asset-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px}.mux-asset-toolbar .admin-back{margin-bottom:24px}
-.mux-admin[data-theme='light'],.mux-asset-page[data-theme='light']{--paper:#171315;--line:rgba(23,19,21,.2);background:#f2f2f2;color:#171315}.mux-theme-workspace[data-theme='light'] .site-header{color:#171315}.mux-theme-workspace[data-theme='light'] .wordmark img{content:url('/assets/tg-logo-dark.png');filter:none}.mux-theme-workspace[data-theme='light'] .mux-theme-toggle{color:rgba(23,19,21,.72)}.mux-theme-workspace[data-theme='light'] .mux-theme-toggle-track{border-color:rgba(23,19,21,.48)}.mux-admin[data-theme='light'] .mux-upload-zone{border-color:#d5c7c0;background:rgba(255,255,255,.46)}.mux-admin[data-theme='light'] .mux-upload-zone:hover,.mux-admin[data-theme='light'] .mux-upload-zone.is-dragging{border-color:var(--bright);background:rgba(178,65,76,.09)}.mux-admin[data-theme='light'] .mux-upload-zone p,.mux-admin[data-theme='light'] .mux-upload-zone span{color:rgba(23,19,21,.58)}.mux-admin[data-theme='light'] .mux-upload-zone h2{color:#171315}.mux-admin[data-theme='light'] .mux-upload-zone>button{border-color:rgba(152,51,61,.65);color:#65232b}.mux-admin[data-theme='light'] .mux-library-toolbar input,.mux-admin[data-theme='light'] .mux-library-toolbar select{border-color:rgba(23,19,21,.28);background:rgba(255,255,255,.65);color:#171315}.mux-admin[data-theme='light'] .mux-library-toolbar label span,.mux-admin[data-theme='light'] .mux-library-result-count,.mux-admin[data-theme='light'] .mux-filter-set>span{color:rgba(23,19,21,.57)}.mux-admin[data-theme='light'] .mux-library-result-count strong{color:#171315}.mux-admin[data-theme='light'] .mux-library-subtoolbar{border-color:rgba(23,19,21,.18);background:transparent}.mux-admin[data-theme='light'] .mux-library-flow:before{background-color:rgba(23,19,21,.16)}.mux-admin[data-theme='light'] .mux-filter-set button,.mux-admin[data-theme='light'] .mux-clear-filters{border-color:rgba(23,19,21,.28);color:rgba(23,19,21,.77)}.mux-admin[data-theme='light'] .mux-library-card-copy h2,.mux-admin[data-theme='light'] .mux-library-time-marker strong{color:#171315}.mux-admin[data-theme='light'] .mux-library-card-meta>b,.mux-admin[data-theme='light'] .mux-library-time-marker small{color:rgba(23,19,21,.59)}.mux-admin[data-theme='light'] .mux-library-time-marker i{background:#f2f2f2;box-shadow:0 0 0 4px #f2f2f2}.mux-admin[data-theme='light'] .mux-library-thumb{background:#e3dbd4;color:rgba(23,19,21,.55)}.mux-admin[data-theme='light'] .mux-collection-stack-frame{border-color:rgba(23,19,21,.22);background:#e3dbd4}.mux-admin[data-theme='light'] .mux-library-hover-actions{background:rgba(255,255,255,.75)}.mux-admin[data-theme='light'] .mux-library-hover-actions a,.mux-admin[data-theme='light'] .mux-library-hover-actions button{border-color:rgba(23,19,21,.44);background:rgba(255,255,255,.92);color:#171315}.mux-admin[data-theme='light'] .mux-library-hover-actions a:hover,.mux-admin[data-theme='light'] .mux-library-hover-actions button:hover{background:var(--bright);color:#fff}.mux-admin[data-theme='light'] .mux-title-edit input,.mux-admin[data-theme='light'] .mux-title-edit button{border-color:rgba(23,19,21,.3);background:#fff;color:#171315}.mux-admin[data-theme='light'] .mux-upload-queue{border-color:rgba(23,19,21,.16)}.mux-admin[data-theme='light'] .mux-upload-queue>div{color:rgba(23,19,21,.74)}.mux-admin[data-theme='light'] .mux-upload-queue>div>i{background:rgba(23,19,21,.16)}.mux-asset-page[data-theme='light'] .mux-asset-sidebar{border-color:rgba(23,19,21,.18)}.mux-asset-page[data-theme='light'] .mux-asset-sidebar span,.mux-asset-page[data-theme='light'] .mux-asset-actions section p{color:rgba(23,19,21,.57)}.mux-asset-page[data-theme='light'] .mux-asset-actions header,.mux-asset-page[data-theme='light'] .mux-asset-actions section{border-color:rgba(23,19,21,.16)}.mux-asset-page[data-theme='light'] .mux-asset-actions button:not(.primary){border-color:rgba(23,19,21,.32);color:#171315}.mux-asset-page[data-theme='light'] .mux-share-action input,.mux-asset-page[data-theme='light'] .mux-thumbnail-time label input{border-color:rgba(23,19,21,.25);background:#fff;color:#171315}
+.mux-admin[data-theme='light'],.mux-asset-page[data-theme='light']{--paper:#171315;--line:rgba(23,19,21,.2);background:#f2f2f2;color:#171315}.mux-theme-workspace[data-theme='light'] .site-header{color:#171315}.mux-theme-workspace[data-theme='light'] .wordmark img{content:url('/assets/tg-logo-dark.png');filter:none}.mux-theme-workspace[data-theme='light'] .mux-theme-toggle{color:rgba(23,19,21,.72)}.mux-theme-workspace[data-theme='light'] .mux-theme-toggle-track{border-color:rgba(23,19,21,.48)}.mux-admin[data-theme='light'] .mux-upload-zone{border-color:#d5c7c0;background:rgba(255,255,255,.46)}.mux-admin[data-theme='light'] .mux-upload-zone:hover,.mux-admin[data-theme='light'] .mux-upload-zone.is-dragging{border-color:var(--bright);background:rgba(178,65,76,.09)}.mux-admin[data-theme='light'] .mux-upload-zone p,.mux-admin[data-theme='light'] .mux-upload-zone span{color:rgba(23,19,21,.58)}.mux-admin[data-theme='light'] .mux-upload-zone h2{color:#171315}.mux-admin[data-theme='light'] .mux-upload-zone>button{border-color:rgba(152,51,61,.65);color:#65232b}.mux-admin[data-theme='light'] .mux-library-toolbar input,.mux-admin[data-theme='light'] .mux-library-toolbar select{border-color:var(--mux-filter-border);background:var(--mux-filter-background);color:#171315}.mux-admin[data-theme='light'] .mux-library-toolbar label span,.mux-admin[data-theme='light'] .mux-library-result-count,.mux-admin[data-theme='light'] .mux-filter-set>span{color:rgba(23,19,21,.57)}.mux-admin[data-theme='light'] .mux-library-result-count strong{color:#171315}.mux-admin[data-theme='light'] .mux-library-subtoolbar{border-color:rgba(23,19,21,.18);background:transparent}.mux-admin[data-theme='light'] .mux-library-flow:before{background-color:rgba(23,19,21,.16)}.mux-admin[data-theme='light'] .mux-filter-set button,.mux-admin[data-theme='light'] .mux-clear-filters{border-color:rgba(23,19,21,.28);color:rgba(23,19,21,.77)}.mux-admin[data-theme='light'] .mux-library-card-copy h2,.mux-admin[data-theme='light'] .mux-library-time-marker strong{color:#171315}.mux-admin[data-theme='light'] .mux-library-card-meta>b,.mux-admin[data-theme='light'] .mux-library-time-marker small{color:rgba(23,19,21,.59)}.mux-admin[data-theme='light'] .mux-library-time-marker i{background:#f2f2f2;box-shadow:0 0 0 4px #f2f2f2}.mux-admin[data-theme='light'] .mux-library-thumb{background:#e3dbd4;color:rgba(23,19,21,.55)}.mux-admin[data-theme='light'] .mux-collection-stack-frame{border-color:rgba(23,19,21,.22);background:#e3dbd4}.mux-admin[data-theme='light'] .mux-library-hover-actions{background:rgba(255,255,255,.75)}.mux-admin[data-theme='light'] .mux-library-hover-actions a,.mux-admin[data-theme='light'] .mux-library-hover-actions button{border-color:rgba(23,19,21,.44);background:rgba(255,255,255,.92);color:#171315}.mux-admin[data-theme='light'] .mux-library-hover-actions a:hover,.mux-admin[data-theme='light'] .mux-library-hover-actions button:hover{background:var(--bright);color:#fff}.mux-admin[data-theme='light'] .mux-title-edit input,.mux-admin[data-theme='light'] .mux-title-edit button{border-color:rgba(23,19,21,.3);background:#fff;color:#171315}.mux-admin[data-theme='light'] .mux-upload-queue{border-color:rgba(23,19,21,.16)}.mux-admin[data-theme='light'] .mux-upload-queue>div{color:rgba(23,19,21,.74)}.mux-admin[data-theme='light'] .mux-upload-queue>div>i{background:rgba(23,19,21,.16)}.mux-asset-page[data-theme='light'] .mux-asset-sidebar{border-color:rgba(23,19,21,.18)}.mux-asset-page[data-theme='light'] .mux-asset-sidebar span,.mux-asset-page[data-theme='light'] .mux-asset-actions section p{color:rgba(23,19,21,.57)}.mux-asset-page[data-theme='light'] .mux-asset-actions header,.mux-asset-page[data-theme='light'] .mux-asset-actions section{border-color:rgba(23,19,21,.16)}.mux-asset-page[data-theme='light'] .mux-asset-actions button:not(.primary){border-color:rgba(23,19,21,.32);color:#171315}.mux-asset-page[data-theme='light'] .mux-share-action input,.mux-asset-page[data-theme='light'] .mux-thumbnail-time label input{border-color:rgba(23,19,21,.25);background:#fff;color:#171315}
 .mux-admin[data-theme='light'] .mux-filter-set button.active{border-color:var(--bright);background:var(--bright);color:#fff}.mux-admin[data-theme='light'] .mux-filter-set button.active span,.mux-admin[data-theme='light'] .mux-filter-set button.active b{color:#fff}
 .mux-asset-page[data-theme='light'] .mux-asset-details{border-color:rgba(23,19,21,.2)}.mux-asset-page[data-theme='light'] .mux-asset-details>div{border-color:rgba(23,19,21,.16)}.mux-asset-page[data-theme='light'] .mux-asset-details dd{color:rgba(23,19,21,.76)}
 .mux-admin:not([data-theme='light']) .mux-library-time-marker strong{color:rgba(245,242,237,.82)}.mux-admin:not([data-theme='light']) .mux-library-time-marker small{color:rgba(245,242,237,.58)}
@@ -399,7 +399,7 @@
 }
 
 .mux-library-toolbar:has(.mux-date-filter) {
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 260px) minmax(190px, 280px);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .mux-date-filter {
@@ -1034,3 +1034,84 @@ textarea.production-inline-title { box-sizing: border-box; min-width: 0; resize:
 
 /* Mobile theme rules must not invert the thumbnail menu icon. */
 @media(max-width:760px){.mux-admin[data-theme] .mux-library-thumb-with-actions>.mux-mobile-actions-toggle>span{background:rgba(8,7,7,.86)!important;color:#fff!important}}
+
+/* Compact upload details: choices, disclosure, and inline titles. */
+.mux-upload-drawer fieldset.mux-upload-destination{grid-template-columns:1fr 1fr;gap:10px;border:0;padding:0}
+.mux-upload-drawer .mux-upload-destination label{position:relative;display:grid;align-content:end;gap:6px;min-height:118px;border:1px solid rgba(245,242,237,.25);border-radius:0;padding:36px 16px 16px;cursor:pointer}
+.mux-upload-drawer .mux-upload-destination label.selected{border-color:currentColor;background:rgba(128,128,128,.08)}
+.mux-upload-destination input,.mux-upload-ratio-switch input{position:absolute;opacity:0;width:1px!important;height:1px}
+.mux-upload-destination label:focus-within{outline:2px solid var(--bright);outline-offset:3px}
+.mux-upload-destination strong{font:500 17px var(--sans)}
+.mux-upload-destination small{font:400 12px/1.4 var(--sans);opacity:.65}
+.mux-upload-drawer .mux-upload-destination .mux-upload-choice-check{position:absolute;top:12px;right:12px;display:grid;place-items:center;width:20px;height:20px;margin:0;border:1px solid currentColor;border-radius:50%;color:inherit}
+.mux-upload-choice-check svg{width:13px;height:13px}
+.mux-upload-destination .selected .mux-upload-choice-check{background:var(--bright);border-color:var(--bright);color:#fff}
+.mux-admin[data-theme='light'] .mux-upload-destination label{border-color:rgba(23,19,21,.25);color:#171315}
+.mux-admin[data-theme='light'] .mux-upload-destination label.selected{border-color:#171315}
+.mux-upload-drawer label.mux-upload-ratio-switch{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;cursor:pointer}
+.mux-upload-drawer .mux-upload-ratio-switch>span{margin:0;color:inherit;font:400 14px var(--sans);letter-spacing:normal;text-transform:none}
+.mux-upload-ratio-switch i{position:relative;flex:none;width:38px;height:22px;border-radius:20px;background:#888;transition:background .15s}
+.mux-upload-ratio-switch i::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:white;transition:transform .15s}
+.mux-upload-ratio-switch input:checked+i{background:var(--bright)}
+.mux-upload-ratio-switch input:checked+i::after{transform:translateX(16px)}
+.mux-upload-ratio-switch input:focus-visible+i{outline:2px solid var(--bright);outline-offset:3px}
+.mux-upload-drawer .mux-upload-client-picker>.shared-client-picker{display:block;border:0;background:transparent;box-shadow:none}
+.mux-upload-drawer .mux-upload-client-picker>span{display:block;margin-bottom:7px;color:var(--bright);font:500 9px var(--mono);letter-spacing:.09em;text-transform:uppercase}
+.mux-upload-drawer .mux-upload-text-link{justify-self:start;border:0;background:transparent;padding:4px 0;color:inherit;font:500 13px var(--sans);cursor:pointer;text-align:left}
+.mux-upload-text-link:hover{text-decoration:underline}
+.mux-upload-title{display:flex;align-items:center;gap:8px;min-width:0}
+.mux-upload-title h3{margin:0;font:500 21px/1.2 var(--sans);letter-spacing:-.03em;overflow-wrap:anywhere}
+.mux-upload-title .mux-title-pencil{flex:none}
+.mux-upload-title:hover .mux-title-pencil,.mux-upload-title:focus-within .mux-title-pencil{opacity:1}
+.mux-upload-deck-option{grid-column:1/-1;border-top:1px solid rgba(128,128,128,.25);padding-top:12px}
+.mux-upload-deck-modal{z-index:1100}
+.mux-upload-deck-modal>div{max-width:520px}
+.mux-upload-deck-results{display:grid;gap:5px;max-height:260px;overflow:auto}
+.mux-upload-deck-results button{display:grid;gap:3px;text-align:left;border:1px solid rgba(128,128,128,.3);border-radius:0;background:transparent;color:inherit;padding:12px;cursor:pointer}
+.mux-upload-deck-results button[aria-pressed='true']{border-color:var(--bright);background:rgba(185,66,79,.08)}
+.mux-upload-deck-results small{color:inherit;opacity:.6}
+
+.mux-upload-ratio-switch>span{display:grid;gap:5px}
+.mux-upload-ratio-switch strong{font-weight:500}
+.mux-upload-ratio-switch small{font:400 12px/1.4 var(--sans);opacity:.65}
+
+.mux-upload-card>small[role]{display:block;font:400 13px/1.5 var(--sans);overflow-wrap:anywhere}
+
+/* Give the library filters one shared field treatment in both themes. */
+.mux-library-toolbar {
+  --mux-filter-border: rgba(245,242,237,.35);
+  --mux-filter-background: rgba(0,0,0,.22);
+  --mux-filter-label: rgba(245,242,237,.55);
+}
+.mux-admin[data-theme='light'] .mux-library-toolbar {
+  --mux-filter-border: rgba(23,19,21,.28);
+  --mux-filter-background: rgba(255,255,255,.65);
+  --mux-filter-label: rgba(23,19,21,.57);
+}
+.mux-library-toolbar>label { min-width: 0; }
+.mux-admin .mux-library-toolbar>label>span,
+.mux-admin .mux-library-toolbar>.mux-date-filter>span {
+  margin: 0; opacity: 1; color: var(--mux-filter-label);
+  font: 500 10px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+}
+.mux-admin .mux-library-toolbar>label>input,
+.mux-admin .mux-library-toolbar>label>select,
+.mux-admin .mux-library-toolbar>.mux-date-filter>.mux-date-trigger {
+  box-sizing: border-box; width: 100%; height: 54px; min-width: 0;
+  border: 1px solid var(--mux-filter-border); border-radius: 0;
+  background: var(--mux-filter-background); color: var(--paper);
+  padding: 15px 17px; font: 400 16px/22px var(--sans);
+  letter-spacing: normal; text-transform: none; box-shadow: none;
+}
+.mux-admin .mux-library-toolbar>label>select { padding-right: 42px; }
+.mux-library-toolbar .mux-select-chevron { height: 54px; }
+.mux-date-trigger>span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mux-admin .mux-library-toolbar>label>input:focus,
+.mux-admin .mux-library-toolbar>label>select:focus,
+.mux-admin .mux-library-toolbar>.mux-date-filter>.mux-date-trigger:focus-visible {
+  border-color: var(--bright); outline: 1px solid var(--bright); outline-offset: 0;
+}
+
+.mux-thumbnail-placeholder{display:grid;place-items:center;width:100%;aspect-ratio:16/9;background:#090909;color:#ccc;font:400 13px var(--sans)}
+.mux-thumbnail-action .mux-thumbnail-preview-status{font:400 12px/1.5 var(--sans)}
+.mux-thumbnail-preview-status button{margin-top:8px}

@@ -249,3 +249,42 @@ New session-only direct uploads now request a maximum resolution tier of 2160p
 (4K), with Plus quality unchanged. Existing assets and archive imports are not
 modified. Scoped API/MCP video reads retain their contracts and report the asset's
 resolution using existing fields; upload creation remains admin-only.
+
+## Upload-details Deck picker
+
+The upload dialog reuses the existing card search and admin rich-comment endpoint
+for an explicit “Add to Deck” action. One selected card receives the whole batch
+as a single comment. Card search follows all cursors and filters the chosen client
+exactly; without a client it shows all non-deleted cards, including archived cards.
+The picker does not publish videos, move cards, or create durable video associations.
+Adding a comment is separate from saving upload metadata. Existing rich-comment
+writes are non-idempotent: the UI prevents double submission and never automatically
+retries an uncertain result; it asks the editor to check the card first. The existing
+10,000-character comment limit also applies to the combined batch.
+
+This is an admin upload workflow using existing operations. API/MCP callers retain
+plain-text comments and idempotent video associations; composing rich video comment
+blocks remains an admin-editor capability. No new endpoint, scope, or tool is added.
+
+Upload diagnostics now distinguish upload setup, file transfer, status polling,
+Mux terminal processing states, and metadata saves in the library UI. A lost
+transfer response triggers one status lookup before advice to retry; receipt is
+only confirmed by a successful transfer response or an existing Mux asset ID.
+Temporary status outages retry automatically and never ask for another upload.
+Client diagnostics expose only the phase and HTTP status, not raw upstream error
+messages or signed upload URLs. No API/MCP contract, logging, or scope changes.
+
+## Library reload and deletion freshness
+
+Each mounted Mux library first calls the existing authenticated
+`POST /api/admin/mux-refresh`, then reads the library. Concurrent initial reads
+share one rebuild; filtering and pagination do not force more rebuilds. A failed
+rebuild shows an out-of-date warning and an explicit retry while allowing cached
+reads. The Refresh cache button reloads the page, using this same path.
+
+Confirmed in-app deletions immediately remove the returned IDs, suppress stale
+in-flight results, and reload the library's cards, groups and counts. Confirmed
+IDs remain excluded for that mounted library. The existing signed Mux webhook
+already invalidates and rebuilds the catalog on asset events, including deletion;
+it does not push updates to an idle browser tab. Reloading reconciles external
+Mux deletions. No API/MCP endpoints or scopes changed.

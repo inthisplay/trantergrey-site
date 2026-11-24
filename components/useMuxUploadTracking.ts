@@ -1,16 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isTerminalUploadStatus, terminalUploadMessage, uploadFailureMessage } from '@/lib/mux-upload-errors';
 import { readUploadStatus, UploadStatusError, type UploadStatus } from '@/lib/mux-upload-status';
 
 export type TrackedUpload = { uploadId: string; name: string; receivedAt: number; status?: UploadStatus; notice?: string; stopped?: boolean };
-export function useMuxUploadTracking(onStatus: (uploadId: string, status: UploadStatus) => void) {
+export function useMuxUploadTracking(onStatus: (uploadId: string, status: UploadStatus) => void, onNotice?: (uploadId: string, notice: string | undefined) => void) {
   const [items, setItems] = useState<TrackedUpload[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [persistent, setPersistent] = useState(true);
   const key = useRef<string | null>(null);
   const current = useRef(items); current.current = items;
   const callback = useRef(onStatus); callback.current = onStatus;
+  const noticeCallback = useRef(onNotice); noticeCallback.current = onNotice;
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
@@ -38,15 +40,18 @@ export function useMuxUploadTracking(onStatus: (uploadId: string, status: Upload
     const poll = async () => {
       for (const item of current.current) {
         if (controller.signal.aborted) return;
-        if (item.stopped || item.status?.ready || ['errored', 'cancelled', 'timed_out'].includes(item.status?.status || '')) continue;
+        if (item.stopped || item.status?.ready || isTerminalUploadStatus(item.status?.status)) continue;
         try {
           const status = await readUploadStatus(item.uploadId, controller.signal);
           if (controller.signal.aborted) return;
-          setItems(rows => rows.map(row => row.uploadId === item.uploadId ? { ...row, status, notice: undefined } : row));
+          setItems(rows => rows.map(row => row.uploadId === item.uploadId ? { ...row, status, notice: terminalUploadMessage(status.status) } : row));
+          noticeCallback.current?.(item.uploadId, undefined);
           callback.current(item.uploadId, status);
         } catch (error) {
           if (controller.signal.aborted) return;
-          setItems(rows => rows.map(row => row.uploadId === item.uploadId ? { ...row, stopped: error instanceof UploadStatusError, notice: error instanceof UploadStatusError ? error.message : 'Connection interrupted. Your upload was received; status will retry automatically.' } : row));
+          const notice = error instanceof UploadStatusError ? error.message : uploadFailureMessage('status');
+          noticeCallback.current?.(item.uploadId, notice);
+          setItems(rows => rows.map(row => row.uploadId === item.uploadId ? { ...row, stopped: error instanceof UploadStatusError, notice } : row));
         }
       }
       timer = setTimeout(poll, 5000);
