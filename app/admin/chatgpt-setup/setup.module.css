@@ -1,0 +1,21 @@
+.guide { max-width: 780px; margin-top: 2rem; font-size: 1rem; line-height: 1.65; color: #f5f2ed; }
+.guide a { color: #9bd9db; text-underline-offset: .2em; }
+.guide a:focus-visible, .guide summary:focus-visible { outline: 2px solid #9bd9db; outline-offset: 4px; }
+.intro { font-size: 1.15rem; margin-bottom: 2rem; }
+.steps { padding-left: 1.7rem; }
+.steps > li { padding: 0 0 1.5rem .6rem; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(245,242,237,.18); }
+.steps > li::marker { color: #9bd9db; font-weight: 700; }
+.guide h2 { font-size: 1.2rem; line-height: 1.4; margin: 0 0 .65rem; }
+.guide p { margin: .6rem 0; }
+.details { padding: 1.2rem; background: #202022; border: 1px solid rgba(245,242,237,.22); border-radius: .5rem; }
+.details > div + div { margin-top: 1rem; }
+.details dt { color: #bcbabb; font-size: .9rem; }
+.details dd { margin: .25rem 0 0; }
+.details code { font-size: .95rem; overflow-wrap: anywhere; user-select: all; }
+.note { color: #bcbabb; font-size: .9rem; }
+.steps strong { overflow-wrap: anywhere; }
+.steps blockquote { margin: 1rem 0; border-left: 3px solid #9bd9db; padding: .7rem 1rem; background: #202022; }
+.help { padding: 1.5rem; border: 1px solid rgba(155,217,219,.4); border-radius: .5rem; }
+.owner { margin-top: 1.5rem; }
+.owner summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 600px) { .details, .help { padding: 1rem; } .steps > li { padding-left: .25rem; } }

@@ -119,6 +119,7 @@ export function AdminMcpConnections() {
   return <section className={`admin-team-directory-panel ${styles.panel}`} aria-labelledby="ai-connections-title">
     <header><div><p className="eyebrow">Private access controls</p><h2 id="ai-connections-title">AI connections</h2></div><button type="button" disabled={busy} onClick={() => { setError(''); void load().catch(e => setError(e.message)); }}>Refresh</button></header>
     <p className="admin-team-directory-intro">Invite teammates to use TranterGrey in ChatGPT. Connections can use 24 core tools and two optional notification tools, including moving cards and editing or deleting client notes and to-dos. Only your owner login can manage invitations here.</p>
+    <p><a className="admin-back" href="/admin/chatgpt-setup">Open the teammate setup guide</a></p>
     {error && <p className="admin-team-directory-error" role="alert">{error}</p>}
     {notice && <p className="admin-team-directory-notice" role="status">{notice}</p>}
     {!data ? <p>{error ? 'Connection controls are unavailable.' : 'Loading AI connections…'}</p> : <>
