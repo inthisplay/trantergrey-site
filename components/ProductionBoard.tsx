@@ -1,4 +1,5 @@
 'use client';
+import { deckCollision, deckDropPlacement } from '@/lib/deck-drag';
 import { filmingDates } from '@/lib/filming-dates';
 import { cardSignal, type CardSignalFields } from '@/lib/card-signal';
 
@@ -11,7 +12,7 @@ import { columnColorStyle } from '@/lib/deck-colors';
 import type { CSSProperties } from 'react';
 import { UiIcon } from '@/components/UiIcon';
 
-import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, MeasuringStrategy, pointerWithin, type CollisionDetection, closestCorners, useDroppable, useDndContext, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, MeasuringStrategy, useDroppable, useDndContext, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -58,10 +59,10 @@ function SortableProductionCard({ card, onOpen, isOpen }: { card: Card; onOpen: 
 
 function ProductionColumn({ column, cards, selectedCardId, collapsedForDrawer, collapsedForCompact, expanded, isCollapsible, isDropTarget, menuOpen, onSelect, onOpenCard, onMenu, onAction }: { column: Column; cards: Card[]; selectedCardId: string; collapsedForDrawer: boolean; collapsedForCompact: boolean; expanded: boolean; isCollapsible: boolean; isDropTarget: boolean; menuOpen: boolean; onSelect: () => void; onOpenCard: (id: string, target?: string) => void; onMenu: () => void; onAction: (action: 'oldest' | 'newest' | 'add' | 'rename' | 'archive' | 'color') => void }) {
   const { measureDroppableContainers } = useDndContext();
-  const { setNodeRef } = useDroppable({ id: column.sourceId, data: { type: 'column', columnSourceId: column.sourceId } });
+  const collapsed = collapsedForDrawer || collapsedForCompact || (isCollapsible && !expanded);
+  const { setNodeRef } = useDroppable({ id: column.sourceId, data: { type: 'column', columnSourceId: column.sourceId, collapsed } });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
-  const collapsed = collapsedForDrawer || collapsedForCompact || (isCollapsible && !expanded);
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
@@ -164,12 +165,6 @@ export function ProductionBoard() {
   const selectedCard = useMemo(() => data?.cards.find((card) => card.id === cardId) || null, [cardId, data]);
   const activeDragCard = useMemo(() => data?.cards.find((card) => card.id === activeDragCardId) || null, [activeDragCardId, data]);
   const mobileDrag = mobileTouchBoard && Boolean(activeDragCard);
-  const mobileCollision: CollisionDetection = (args) => {
-    if (!args.pointerCoordinates) return closestCorners(args);
-    const hits = pointerWithin(args);
-    const cards = hits.filter(hit => hit.id !== args.active.id && args.droppableContainers.find(container => container.id === hit.id)?.data.current?.type === 'card');
-    return cards.length ? cards : hits.some(hit => hit.id === args.active.id) ? hits.filter(hit => hit.id === args.active.id) : hits;
-  };
   const resolvedNewColumnId = newCardColumnId === '1' ? (data?.columns.find(column => column.name.toLowerCase() === 'triage') || data?.columns[0])?.sourceId || '' : newCardColumnId;
   const drawerColumnId = selectedCard?.columnSourceId || resolvedNewColumnId;
   useEffect(() => { if (drawerColumnId) setExpandedColumnId(drawerColumnId); }, [cardId, newCardColumnId, drawerColumnId]);
@@ -259,6 +254,7 @@ export function ProductionBoard() {
   const onDragStart = (event: DragStartEvent) => { setActiveDragCardId(String(event.active.id)); if (mobileTouchBoard) { clearDragOpenTimer(); setMenuColumnId(''); } };
   const onDragOver = (event: DragOverEvent) => {
     const columnSourceId = columnForDropTarget(event); setDropColumnId(columnSourceId);
+    clearDragOpenTimer();
     if (mobileDrag) return;
     const column = data?.columns.find((item) => item.sourceId === columnSourceId);
     if (!column || !activeDragCardId) return;
@@ -270,23 +266,14 @@ export function ProductionBoard() {
   const onDragEnd = (event: DragEndEvent) => {
     prepareReturn(mobileDrag);
     clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId('');
-    if (!data || !event.over || (mobileDrag && event.over.id === event.active.id)) return;
+    if (!data || !event.over || event.over.id === event.active.id || movingCardId) return;
     const card = data.cards.find((item) => item.id === String(event.active.id));
     const columnSourceId = columnForDropTarget(event); if (!card || !columnSourceId) return;
-    const destinationCards = data.cards.filter((item) => item.columnSourceId === columnSourceId && item.id !== card.id).sort(byPosition);
-    const overCardId = String(event.over.id); const overCardIndex = destinationCards.findIndex((item) => item.id === overCardId);
-    let beforeCardId = '';
-    if (overCardIndex >= 0) {
-      const translatedTop = event.active.rect.current.translated?.top ?? event.active.rect.current.initial?.top ?? 0;
-      const overMiddle = event.over.rect.top + event.over.rect.height / 2;
-      if (mobileDrag && card.columnSourceId === columnSourceId) {
-        const originalCards = data.cards.filter(item => item.columnSourceId === columnSourceId).sort(byPosition);
-        const movingDown = originalCards.findIndex(item => item.id === card.id) < originalCards.findIndex(item => item.id === overCardId);
-        beforeCardId = movingDown ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
-      } else {
-        beforeCardId = translatedTop > overMiddle ? destinationCards[overCardIndex + 1]?.id || '' : overCardId;
-      }
-    }
+    const destinationCards = data.cards.filter(item => item.columnSourceId === columnSourceId).sort(byPosition);
+    const rect = event.active.rect.current.translated || event.active.rect.current.initial;
+    const after = Boolean(rect && rect.top + rect.height / 2 > event.over.rect.top + event.over.rect.height / 2);
+    const beforeCardId = deckDropPlacement(destinationCards.map(item => item.id), card.id, String(event.over.id), card.columnSourceId === columnSourceId, after);
+    if (beforeCardId === null) return;
     void moveCard(card, columnSourceId, beforeCardId);
   };
 
@@ -300,7 +287,7 @@ export function ProductionBoard() {
   const gridTemplateColumns = data.columns.map((column) => drawerOpen ? column.sourceId === activeDrawerColumnId ? compactLaneWidth : compactRailWidth : compactBoard ? column.sourceId === activeCompactColumnId ? compactLaneWidth : compactRailWidth : isCollapsible(column) && column.sourceId !== expandedColumnId ? '58px' : 'minmax(0, 1fr)').join(' ');
 
   return <div className={`production-board-layout${drawerOpen ? ' is-drawer-open' : ''}${!drawerOpen ? ` ${activityStyles.layout}` : ''}`}>
-    <DndContext sensors={mobileTouchBoard ? mobileSensors : sensors} collisionDetection={mobileDrag ? mobileCollision : closestCorners} measuring={mobileDrag ? { droppable: { strategy: MeasuringStrategy.Always } } : undefined} autoScroll={mobileDrag ? { canScroll: element => element.classList.contains('production-column-scroll'), threshold: { x: 0, y: 0.2 } } : undefined} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { prepareReturn(mobileDrag); clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
+    <DndContext sensors={mobileTouchBoard ? mobileSensors : sensors} collisionDetection={deckCollision} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} autoScroll={mobileDrag ? { canScroll: element => element.classList.contains('production-column-scroll'), threshold: { x: 0, y: 0.2 } } : undefined} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { prepareReturn(mobileDrag); clearDragOpenTimer(); setDropColumnId(''); setActiveDragCardId(''); }} onDragEnd={onDragEnd}>
       <div ref={boardRef} className={`production-board${mobileTouchBoard ? ` ${mobileDragStyles.touchBoard}` : ''}${mobileDrag ? ` ${mobileDragStyles.dragBoard}` : ''}`} style={{ gridTemplateColumns: mobileDrag ? 'calc(100vw / 3 - 16px) calc(100vw - 32px)' : gridTemplateColumns, ...(mobileDrag ? { gridTemplateRows: `repeat(${Math.max(1, data.columns.length - 1)}, minmax(0, 1fr))` } : {}) }} aria-label="The Deck">{data.columns.map((column) => {
         const collapsedForDrawer = drawerOpen && column.sourceId !== activeDrawerColumnId;
         const collapsedForCompact = mobileDrag ? column.sourceId !== activeDragCard?.columnSourceId : !drawerOpen && compactBoard && column.sourceId !== activeCompactColumnId;
