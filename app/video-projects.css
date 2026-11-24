@@ -291,9 +291,10 @@
   aspect-ratio:var(--video-aspect-ratio,1.777778);
   max-height:var(--media-max-height);
   padding:0;
+  overflow:visible;
 }
 .unbranded-video-frame .solo-video-stage{
-  box-shadow:0 20px 45px rgba(23,25,29,.13),0 5px 15px rgba(23,25,29,.09);
+  box-shadow:0 3px 10px rgba(23,25,29,.16),0 20px 40px -8px rgba(23,25,29,.32),0 48px 90px -16px rgba(23,25,29,.28);
 }
 .unbranded-video-frame .solo-video-actions{
   position:static;
