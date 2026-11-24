@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const temp = await mkdtemp(join(tmpdir(), 'tg-deck-mcp-'));
-await build({ entryPoints: ['functions/_lib/notifications.ts','functions/api/admin/inbox.ts','functions/api/internal/v1/notifications.ts','workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/_lib/mcp-events.ts', 'functions/api/webhooks/mux.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+await build({ entryPoints: ['functions/api/internal/v1/cards/[id]/videos.ts','functions/_lib/notifications.ts','functions/api/admin/inbox.ts','functions/api/internal/v1/notifications.ts','workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/_lib/mcp-events.ts', 'functions/api/webhooks/mux.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
 const worker = (await import(pathToFileURL(join(temp, 'workers/deck-mcp/index.mjs')))).default;
 const { onRequestPost } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards.mjs')));
 const { onRequest: manageConnections } = await import(pathToFileURL(join(temp, 'functions/api/admin/mcp-connections.mjs')));
@@ -20,6 +20,7 @@ const { integrationRequest } = await import(pathToFileURL(join(temp, 'functions/
 const { enforceRateLimit, cleanupIntegrationHealth } = await import(pathToFileURL(join(temp, 'functions/_lib/integration-health.mjs')));
 const { onRequest: healthApi } = await import(pathToFileURL(join(temp, 'functions/api/admin/integration-health.mjs')));
 const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/comments.mjs')));
+const { onRequestPost: linkVideoApi } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/videos.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
 const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8') + await readFile('workers/deck-mcp/events-schema.sql','utf8');
@@ -268,8 +269,40 @@ test('video tools search newest uploads, return public links and refuse private 
     const linked=await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'newvideo'});assert.equal(linked.isError,undefined);assert.equal(linked.structuredContent.data.created,true);
     const replay=await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'newvideo'});assert.equal(replay.structuredContent.data.created,false);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM production_card_activity WHERE event_type='video_linked'").get().n,1);
+    const commentId=linked.structuredContent.data.comment.id;
+    const saved=f.db.prepare('SELECT * FROM production_local_comments WHERE id=?').get(commentId);
+    assert.match(saved.body_html, /<iframe src="https:\/\/player.mux.com\/playnewvideo"/);
+    assert.equal(JSON.parse(saved.body_json)[0].assetId,'newvideo');
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_local_comments').get().n,1);
+    const comments=await call('get_deck_card_comments',{cardId:card.structuredContent.id});
+    assert.ok(comments.structuredContent.data.some(c=>c.assetIds.includes('newvideo')));
+    f.db.prepare("UPDATE production_local_comments SET deleted_at='now',body_html='',body_json=NULL WHERE id=?").run(commentId);
+    const deletedRetry=await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'newvideo'});
+    assert.equal(deletedRetry.structuredContent.data.comment.deleted,true);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_local_comments').get().n,1);
+    assert.equal((await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'privatevideo'})).isError,true);
+    f.db.exec("CREATE TRIGGER fail_video_comment BEFORE INSERT ON production_local_comments BEGIN SELECT RAISE(ABORT,'fixture'); END;");
+    assert.equal((await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'oldvideo'})).isError,true);
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM production_card_video_links WHERE asset_id='oldvideo'").get().n,0);
+    f.db.exec('DROP TRIGGER fail_video_comment');
+    // An existing association gains its missing comment on the next explicit request.
+    f.db.prepare("INSERT INTO production_card_video_links(id,card_id,asset_id,linked_at,linked_by_type,linked_by_id) VALUES('legacy',?,'oldvideo','now','integration','fixture')").run(card.structuredContent.id);
+    const repaired=await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'oldvideo'});
+    assert.equal(repaired.structuredContent.data.created,false);
+    assert.equal(repaired.structuredContent.data.comment.id,'video-link-legacy');
     assert.ok(requests.every(([url,method])=>url.startsWith('https://api.mux.com/video/v1/assets/')&&method==='GET'));
   } finally {globalThis.fetch=originalFetch;}
+});
+
+test('video comment API requires comment scope without expanding association grants', async t => {
+  const f=fixture(t), id=crypto.randomUUID(), secret='a'.repeat(32), token=`tg_${id}_${secret}`;
+  const digest=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))).toString('hex');
+  f.db.prepare('INSERT INTO api_integration_credentials(id,name,secret_hash,scopes_json,created_at) VALUES(?,?,?,?,?)').run(id,'fixture',digest,JSON.stringify(['associations:write']),'now');
+  const invoke=(auth,body)=>linkVideoApi({env:f.env,params:{id:'missing'},request:new Request('https://deck.test/api/internal/v1/cards/missing/videos',{method:'POST',headers:auth?{authorization:`Bearer ${token}`}:{},body:JSON.stringify(body)})});
+  assert.equal((await invoke(false,{assetId:'newvideo',addComment:true})).status,401);
+  assert.equal((await invoke(true,{assetId:'newvideo',addComment:true})).status,403);
+  assert.equal((await invoke(true,{assetId:'newvideo'})).status,404);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_local_comments').get().n,0);
 });
 
 test('previous-scope consent and authorization codes are rejected after expansion', async t => {

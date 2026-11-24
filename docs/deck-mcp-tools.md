@@ -176,3 +176,27 @@ are unchanged; no plugin refresh or reconnect is required for this additive outp
 
 Future website direct uploads allow up to 4K (2160p), retaining Plus quality.
 No MCP tool, scope or read contract changes; existing assets are untouched.
+
+## Playable video comments — November 24, 2026
+
+`link_video_to_card` now requests both the association and a normal rich Mux
+comment using the card editor's renderer. Its arguments and OAuth scopes are
+unchanged; `tg:personal` already includes both required capabilities. Refresh
+plugin metadata/start a new chat to receive the updated description; server
+behavior applies immediately to existing calls. Attribution remains the actual
+authenticated integration identity, not an impersonated human.
+
+HTTP `POST /cards/:cardId/videos` accepts additive `addComment: true`, requiring
+both `associations:write` and `cards:write`. Omitted/false preserves association-only
+behavior and permissions. Existing grants are not broadened. The shared command
+atomically commits the association, comment and audit events. The card/asset pair
+is the durable retry key; the comment ID derives from the stored link ID. Retries
+return the same comment and preserve edits/deletions. `data.comment` contains
+`id` and `deleted` (or null for association-only requests); `created` retains its
+existing meaning of a newly created association. A deleted comment is not restored.
+An old association receives its missing comment on an explicit repeat request;
+there is no automatic historical backfill. Signed/private or unready assets
+without public playback are rejected for comment creation without changing their
+visibility. Missing/deleted cards are rejected. No database migration is required.
+Both Pages and the separate MCP Worker must be deployed. The website continues
+using its existing rich-comment editor; this change reuses its rendering format.
