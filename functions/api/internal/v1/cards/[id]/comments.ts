@@ -1,3 +1,4 @@
+import { videoCommentBody } from '../../../../../_lib/video-comment-body';
 import { readCardComments, CommentReadError } from '../../../../../_lib/card-comments';
 import { apiData, apiError, requireApiScope } from '../../../../../_lib/internal-api';
 import { addProductionComment, escapeHtml } from '../../../../../_lib/production-commands';
@@ -11,8 +12,8 @@ export async function onRequestPost({ request, env, params }: Context): Promise<
   if (!body || typeof body.body !== 'string' || !body.body.trim()) return apiError('invalid_comment', 'Enter a comment.', 400);
   const text = body.body.trim();
   if (text.length > 10_000) return apiError('invalid_comment', 'Enter a comment under 10,000 characters.', 400);
-  try { return apiData(await addProductionComment(env, params.id, { bodyHtml: `<p>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</p>`, bodyJson: JSON.stringify({ text }) }, actor), undefined, 201); }
-  catch (error) { return apiError('comment_create_failed', error instanceof Error ? error.message : 'Unable to add this comment.', 400); }
+  try { const rich = await videoCommentBody(env, text, new URL(request.url).origin); return apiData(await addProductionComment(env, params.id, rich || { bodyHtml: `<p>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</p>`, bodyJson: JSON.stringify({ text }) }, actor), undefined, 201); }
+  catch (error) { return apiError('comment_create_failed', 'Unable to add this comment. Check that any TG video links identify publicly playable assets; use link_video_to_card for a resolved asset.', 400); }
 }
 
 export async function onRequestGet({ request, env, params }: Context): Promise<Response> {

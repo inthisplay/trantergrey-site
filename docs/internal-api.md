@@ -312,3 +312,17 @@ without public playback are rejected for comment creation without changing their
 visibility. Missing/deleted cards are rejected. No database migration is required.
 Both Pages and the separate MCP Worker must be deployed. The website continues
 using its existing rich-comment editor; this change reuses its rendering format.
+
+### Video links submitted through plain comments
+
+The existing comment POST / `add_deck_comment` path also embeds exact first-party
+`/watch/:assetId` and `/watch/u/:assetId` URLs (up to five distinct assets). It
+resolves each asset through Mux and uses the same rich block renderer as the
+editor, preserving accompanying text. External URLs and project/collection
+slugs are not automatically embedded. Private/unplayable assets reject the
+comment without changing visibility. No association is silently created and
+`cards:write` remains sufficient. This append operation remains non-idempotent;
+check comments before retrying uncertain writes. Prefer `link_video_to_card`
+for an explicit asset attachment with durable retry protection. Existing MCP
+arguments and OAuth grants remain unchanged; refresh tool metadata for updated
+guidance. Both Pages and MCP deployments are required.

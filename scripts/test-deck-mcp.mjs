@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const temp = await mkdtemp(join(tmpdir(), 'tg-deck-mcp-'));
-await build({ entryPoints: ['functions/api/internal/v1/cards/[id]/videos.ts','functions/_lib/notifications.ts','functions/api/admin/inbox.ts','functions/api/internal/v1/notifications.ts','workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/_lib/mcp-events.ts', 'functions/api/webhooks/mux.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
+await build({ entryPoints: ['functions/_lib/video-comment-body.ts','functions/api/internal/v1/cards/[id]/videos.ts','functions/_lib/notifications.ts','functions/api/admin/inbox.ts','functions/api/internal/v1/notifications.ts','workers/deck-mcp/index.ts', 'functions/api/internal/v1/cards.ts', 'functions/api/admin/mcp-connections.ts', 'functions/api/internal/v1/client-hq.ts', 'functions/api/admin/client-hq.ts', 'functions/_lib/integration-request.ts', 'functions/_lib/integration-health.ts', 'functions/_lib/mcp-events.ts', 'functions/api/webhooks/mux.ts', 'functions/api/admin/integration-health.ts', 'functions/api/internal/v1/cards/[id]/comments.ts'], bundle: true, platform: 'node', format: 'esm', outbase: '.', outdir: temp, outExtension: { '.js': '.mjs' } });
 const worker = (await import(pathToFileURL(join(temp, 'workers/deck-mcp/index.mjs')))).default;
 const { onRequestPost } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards.mjs')));
 const { onRequest: manageConnections } = await import(pathToFileURL(join(temp, 'functions/api/admin/mcp-connections.mjs')));
@@ -21,6 +21,7 @@ const { enforceRateLimit, cleanupIntegrationHealth } = await import(pathToFileUR
 const { onRequest: healthApi } = await import(pathToFileURL(join(temp, 'functions/api/admin/integration-health.mjs')));
 const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/comments.mjs')));
 const { onRequestPost: linkVideoApi } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/videos.mjs')));
+const { videoCommentBody } = await import(pathToFileURL(join(temp, 'functions/_lib/video-comment-body.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
 const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8') + await readFile('workers/deck-mcp/events-schema.sql','utf8');
@@ -290,8 +291,32 @@ test('video tools search newest uploads, return public links and refuse private 
     const repaired=await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'oldvideo'});
     assert.equal(repaired.structuredContent.data.created,false);
     assert.equal(repaired.structuredContent.data.comment.id,'video-link-legacy');
+    const fallback=await call('add_deck_comment',{cardId:card.structuredContent.id,body:'Review https://deck.test/watch/u/newvideo'});
+    assert.equal(fallback.isError,undefined);
+    const fallbackRow=f.db.prepare('SELECT body_html,body_json FROM production_local_comments WHERE id=?').get(fallback.structuredContent.data.id);
+    assert.match(fallbackRow.body_html,/<iframe/);
+    assert.equal(JSON.parse(fallbackRow.body_json)[1].assetId,'newvideo');
     assert.ok(requests.every(([url,method])=>url.startsWith('https://api.mux.com/video/v1/assets/')&&method==='GET'));
   } finally {globalThis.fetch=originalFetch;}
+});
+
+test('plain comment TG watch links render real video blocks without fetching arbitrary URLs',async t=>{
+  const f=fixture(t); f.env.MUX_TOKEN_ID='fixture';f.env.MUX_TOKEN_SECRET='fixture';
+  const original=globalThis.fetch, requests=[];
+  globalThis.fetch=async url=>{requests.push(String(url));return Response.json({data:{id:'assetOne',status:'ready',created_at:'1793491200',duration:30,playback_ids:[{id:'playOne',policy:'public'}],meta:{title:'A <video>'}}});};
+  try {
+    const rich=await videoCommentBody(f.env,'Please review https://deck.test/watch/u/assetOne','https://deck.test');
+    assert.match(rich.bodyHtml,/<iframe src="https:\/\/player.mux.com\/playOne"/);
+    assert.match(rich.bodyHtml,/Please review/);assert.match(rich.bodyHtml,/A &lt;video&gt;/);
+    assert.equal(JSON.parse(rich.bodyJson)[1].assetId,'assetOne');
+    const count=requests.length;
+    assert.equal(await videoCommentBody(f.env,'https://deck.test.evil.test/watch/assetOne','https://deck.test'),null);
+    assert.equal(await videoCommentBody(f.env,'ordinary comment','https://deck.test'),null);
+    assert.equal(requests.length,count);
+    assert.ok(requests.every(url=>url==='https://api.mux.com/video/v1/assets/assetOne'));
+    globalThis.fetch=async()=>Response.json({data:{id:'privateOne',status:'ready',playback_ids:[{id:'privatePlay',policy:'signed'}]}});
+    await assert.rejects(videoCommentBody(f.env,'https://deck.test/watch/privateOne','https://deck.test'),/no public playable/);
+  } finally {globalThis.fetch=original;}
 });
 
 test('video comment API requires comment scope without expanding association grants', async t => {
