@@ -126,7 +126,7 @@ an online connection. The existing admin route remains `/admin/clients`.
 
 ## Personal MCP adapter
 
-The standalone Worker now exposes 26 tools for the owner and invited teammates; see [the full tool inventory](deck-mcp-tools.md). Existing scoped route handlers are reused in-process via an authenticated request-scoped integration actor. HTTP callers retain normal bearer/session checks. Shared client item commands in `functions/_lib/client-items.ts` provide partial updates, optimistic concurrency and a durable retry ledger (migration 0053) to MCP, the internal API, and the admin website. Calendar reporting reads structured local edit history. These Worker changes do not deploy new main-site REST endpoints automatically.
+The standalone Worker now exposes 28 tools for the owner and invited teammates; see [the full tool inventory](deck-mcp-tools.md). Existing scoped route handlers are reused in-process via an authenticated request-scoped integration actor. HTTP callers retain normal bearer/session checks. Shared client item commands in `functions/_lib/client-items.ts` provide partial updates, optimistic concurrency and a durable retry ledger (migration 0053) to MCP, the internal API, and the admin website. Calendar reporting reads structured local edit history. These Worker changes do not deploy new main-site REST endpoints automatically.
 
 ## Owner-only AI connection management
 
@@ -369,3 +369,39 @@ listing/trashing remains an integration gap. See [Client HQ](client-hq.md#delete
 for retry/audit behavior, version checks, permissions and migration 0056. Shared
 rate limiting and Connection health cover the session endpoint; monitoring contains
 only operation/status metadata. Deploy Pages after the targeted TG_DATA migration.
+
+
+## Client deletion
+
+`GET /clients/:id/deletion` requires `clients:read` and returns a confirmation
+preview: `clientId`, `name`, `expectedVersion`, `notes`, `todos`, `cards`, `muxAssets`,
+`linkedDriveFolders` and `coverage`. Counts are totals, not paginated samples. Cards
+exclude deleted records but include archived/completed cards. Mux IDs are deduplicated
+across saved metadata and the current cached library; external changes require a
+library refresh. These are current associations, not historical reports.
+
+`POST /clients/:id/deletion` requires the new **clients:delete** scope and a JSON
+body `{ "confirmName": "Exact client name", "expectedVersion": "<preview hash>",
+"requestId": "<UUID>" }`. Show counts and confirm the target before submitting.
+The client, CHQ notes/to-dos, extra folder references and cascading workspace
+activity/pins/preferences are removed. Drive files, Mux assets, Deck cards and
+existing client labels remain unchanged. The result reports `deleted`,
+`notesDeleted`, `todosDeleted`, `cardsKept`, `muxAssetsKept`, and `driveFilesKept`.
+
+The server compares a canonical metadata snapshot inside the deletion transaction.
+Stale confirmation returns 409. The deletion and durable audit/retry record commit
+atomically; reuse the same request ID and body after uncertain responses. Request
+IDs are scoped to authenticated actor type/ID, and reuse with other details is 409.
+Confirmed retries cannot delete a new client with the same name. No record content
+or secrets enter monitoring. Bodies are bounded to 4 KiB. Existing scopes are not
+broadened: website sessions receive the capability, scoped credentials must explicitly
+include it, and legacy production tokens do not. MCP uses the same adapter and command
+with separate OAuth consent. Apply only migration 0057 (0056 prerequisite) and deploy
+both services. No unrelated migrations or live deletion tests are needed.
+
+The Mux/Deck shared client picker now treats typing and autocomplete search as a local
+draft. Only selecting an existing client, choosing No client, or explicitly adding a
+new name commits the field. Leaving the field or typing an unmatched name followed
+by Enter does not create a client. Existing API creation/assignment contracts remain
+unchanged. Unrelated Deck edits preserve old client labels without recreating a
+removed Client HQ workspace.

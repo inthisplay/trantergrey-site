@@ -1,4 +1,4 @@
-# TranterGrey personal MCP — 26 tools
+# TranterGrey personal MCP — 28 tools
 
 This is the implemented tool inventory, not a platform tool-count limit. It exposes the existing scoped API plus focused commands for client items and calendar reporting. Admin-only destructive video operations, uploads, and identity administration are not exposed.
 
@@ -33,7 +33,7 @@ Example: “How many Deck cards moved to Done this month?” Resolve Done with `
 
 “Latest” means Mux creation/upload time, not historical production date or approval. The tool never enables public playback. Client abbreviations such as VGA must be resolved from actual results rather than invented aliases. Mux credentials stay only in Worker secrets. Search uses the shared catalog cache; public-link checks fetch the asset from Mux.
 
-## Client HQ — 9 tools
+## Client HQ — 11 tools
 
 | Tool | What it does |
 | --- | --- |
@@ -45,6 +45,8 @@ Example: “How many Deck cards moved to Done this month?” Resolve Done with `
 | `create_client_item` | Creates a to-do or plain-text note with optional assignee/due date; durable requestId. |
 | `update_client_item` | Changes only specified fields, retaining others; explicit body replacement becomes plain text. |
 | `set_client_todo_completed` | Completes/reopens a to-do without losing its other fields. |
+| `preview_client_deletion` | Read the exact workspace deletion counts, linked Mux/card counts, name and expectedVersion before confirmation. |
+| `delete_client` | Delete a confirmed client and its notes/to-dos; preserve Drive files, Deck cards and videos. Requires separately consented `clients:delete`. |
 | `delete_client_item` | Permanently deletes an explicitly selected note or to-do. |
 
 Item updates/deletes require the exact `expectedUpdatedAt` from a fresh workspace read. A concurrent modification rejects the operation. Item creation and its retry ledger/audit commit atomically. A retry after deletion cannot recreate the item. Empty dueOn/assignee explicitly clears those fields. Dates are validated as real calendar dates; assignments use existing team nicknames.
@@ -237,3 +239,29 @@ listing/trashing remains an integration gap. See [Client HQ](client-hq.md#delete
 for retry/audit behavior, version checks, permissions and migration 0056. Shared
 rate limiting and Connection health cover the session endpoint; monitoring contains
 only operation/status metadata. Deploy Pages after the targeted TG_DATA migration.
+
+
+## Client deletion and consent
+
+`preview_client_deletion(clientId)` uses existing `clients:read` access and returns
+notes/to-dos to delete, non-deleted Deck card and distinct saved Mux asset counts to
+keep, exact name, coverage and `expectedVersion`. Show these counts to the person
+and obtain explicit deletion intent before `delete_client`. Mux counts combine
+saved overrides with the current cached library (deduplicated); external Mux
+changes require a library refresh. Archived/completed cards count; deleted cards do not.
+
+`delete_client` requires `clientId`, `confirmName`, `expectedVersion` and a UUID
+`requestId`. The new OAuth scope `clients:delete` is required in addition to
+`tg:personal`; old grants, legacy API tokens and refreshes do not gain it. Refresh
+plugin metadata/start a new chat for the two new tools. Reconnect with explicit
+`clients:delete` consent only if deletion through MCP is wanted. Existing tools and
+persistent renewal keep working. Optional `notifications:send` can be combined with
+the deletion scope. Invitations retain their individual attribution and revocation.
+
+Deletion is atomic with its durable retry/audit record. Concurrent workspace edits
+or changed linked IDs reject stale confirmations. Retrying the same arguments and
+request ID returns the saved result without deleting a newly created replacement.
+Drive trash retry records survive client removal; client-owned notes/to-dos, local
+activity, extra folder links, pins and preferences are removed. No Drive/Mux delete
+calls or Deck mutations occur. Apply migration 0057 to TG_DATA after 0056, then deploy
+Pages and the MCP Worker. Connection health and shared rate limiting remain active.

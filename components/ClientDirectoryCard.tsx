@@ -7,8 +7,9 @@ import { clientLogoUrl } from './ClientLogoSettings';
 import { UiIcon } from './UiIcon';
 import styles from './ClientHQ.module.css';
 
-export function ClientDirectoryCard({client,href,preference,canCustomize,onSave,onArchive}:{
+export function ClientDirectoryCard({client,href,preference,canCustomize,onSave,onArchive,onDelete}:{
  client:{logo_key?:string|null;id:string;name:string;open_todos?:number;archived?:number};href:string;preference?:ClientPreference;canCustomize:boolean;
+ onDelete:()=>void;
  onArchive:(archived:boolean)=>Promise<void>;
  onSave:(patch:Partial<ClientPreference>)=>Promise<void>;
 }) {
@@ -37,6 +38,7 @@ export function ClientDirectoryCard({client,href,preference,canCustomize,onSave,
     </>}
     <p className={styles.sharedPreference}>For everyone</p>
      <button type="button" disabled={saving} onClick={()=>void save({archived:!client.archived})}>{client.archived?'Restore client':'Archive client'}</button>
+    <button type="button" disabled={saving} onClick={()=>{setOpen(false);onDelete();}}>Delete client…</button>
     {saving&&<p role="status">Saving…</p>}{error&&<p role="alert">{error}</p>}
    </div>}
   </div>

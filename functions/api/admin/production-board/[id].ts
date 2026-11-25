@@ -120,7 +120,8 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
     env.TG_DATA.prepare('INSERT INTO production_card_edit_log (id, card_source_id, changed_at, actor, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), card.source_id, editedAt, actor, JSON.stringify(before || {}), JSON.stringify(after)),
   ]);
-  if (client) await registerClient(env, client);
+  // Retaining a legacy label while editing notes must not recreate a deleted CHQ client.
+  if (client && client !== previous.client) await registerClient(env, client);
   return onRequestGet({ request, env, params });
 }
 

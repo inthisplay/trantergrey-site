@@ -1,3 +1,4 @@
+import { onRequest as clientDeletion } from '../../functions/api/internal/v1/clients/[id]/deletion';
 import { recordIntegrationEvent, operationLabel } from '../../functions/_lib/integration-health';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -44,16 +45,19 @@ export function registerTools(server: McpServer, env: TrialEnvironment, actor: A
     const found = await env.TG_DATA.prepare('SELECT p.id FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id=p.source_id WHERE p.id=? AND o.deleted_at IS NULL').bind(cardId).first();
     if (!found) throw new ToolError('Card not found or deleted.');
   }
-  function tool<S extends z.ZodRawShape>(name: string, description: string, schema: S, run: (input: z.infer<z.ZodObject<S>>) => Promise<unknown>, write = false, destructive = false, idempotent = !write) {
+  function tool<S extends z.ZodRawShape>(name: string, description: string, schema: S, run: (input: z.infer<z.ZodObject<S>>) => Promise<unknown>, write = false, destructive = false, idempotent = !write, requiredScope?: string) {
     server.registerTool<z.ZodRawShape, z.ZodRawShape>(name, { title: name.replaceAll('_', ' '), description, inputSchema: schema,
       annotations: { readOnlyHint: !write, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: false },
-      _meta: { securitySchemes: [{ type: 'oauth2', scopes: [personalScope] }] },
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: [personalScope, ...(requiredScope ? [requiredScope] : [])] }] },
     }, async (input) => {
+      if (requiredScope && !actor.scopes.has(requiredScope)) { await recordIntegrationEvent(env, 'mcp', name, 'auth_rejected', 403); return { isError: true, content: [{ type: 'text' as const, text: `Reconnect with ${requiredScope} permission to use this tool. Existing access is unchanged.` }], _meta: { 'mcp/www_authenticate': [`Bearer error="insufficient_scope", scope="tg:personal ${requiredScope}", resource_metadata="${env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`] } }; }
       try { const result = await run(z.object(schema).parse(input)); const structuredContent = result && typeof result === 'object' && !Array.isArray(result) ? result as Record<string, unknown> : { data: result };
         return { content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }], structuredContent };
       } catch (error) { if (!(error instanceof ToolError) && !(error instanceof z.ZodError)) await recordIntegrationEvent(env, 'mcp', name, 'server_error', 500); return { isError: true, content: [{ type: 'text' as const, text: error instanceof ToolError ? error.message : 'Operation failed. For writes, verify current state before retrying; reuse the original requestId where supported.' }] }; }
     });
   }
+  tool('preview_client_deletion', 'Read exact client deletion counts and expectedVersion. Present notes/to-dos to be deleted and linked Mux asset/card counts that will be kept. Counts use saved library data; disclose coverage. Requires explicit confirmation before delete_client.', { clientId: id }, ({clientId}) => api(clientDeletion, 'clients/' + clientId + '/deletion', {id:clientId}));
+  tool('delete_client', 'Permanently delete an explicitly confirmed Client HQ client and its notes/to-dos. Keeps Drive files, Deck cards, Mux assets and their existing labels. First call preview_client_deletion and show its counts; use its exact name/version. Requires clients:delete consent. Reuse requestId and identical arguments after uncertainty.', { clientId:id, confirmName:text, expectedVersion:z.string().regex(/^[a-f0-9]{64}$/), requestId:z.string().uuid() }, ({clientId,...body}) => api(clientDeletion, 'clients/' + clientId + '/deletion', {id:clientId,body}), true, true, true, 'clients:delete');
   tool('search_deck_cards', 'Find live (not deleted) Deck cards by title/client/column or modification date. Includes archived cards. Resolve ambiguous names with the user; never guess IDs. Follow nextCursor for more results.', { query: z.string().max(240).optional(), client: z.string().max(120).optional(), columnId: id.optional(), updatedAfter: z.iso.datetime({ offset: true }).optional(), ...page }, input => api(cards, 'cards', { query: input }));
   tool('get_deck_card', 'Read a live card, notes, assignees, due date, current column and video links. Does not return full comment text.', { cardId: id }, input => api(card, 'cards/' + input.cardId, { id: input.cardId }));
   tool('get_deck_card_activity', 'Read history of a live card: edits, video links, imported events and comment metadata. Comment bodies are not included.', { cardId: id }, async input => { await activeCard(input.cardId); return api(activity, 'cards/' + input.cardId + '/activity', { id: input.cardId }); });

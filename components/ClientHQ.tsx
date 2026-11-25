@@ -1,6 +1,7 @@
 'use client';
 import { ClientLogoSettings, clientLogoUrl } from './ClientLogoSettings';
 import { ClientDirectoryGrid } from './ClientDirectoryGrid';
+import { ClientDeleteDialog } from './ClientDeleteDialog';
 import { ClientDirectoryCard } from './ClientDirectoryCard';
 import { compareClientCards, type ClientPreference } from '@/lib/client-preferences';
 import { DeckActivity } from './DeckActivity';
@@ -25,6 +26,7 @@ export async function hqRequest(url:string,body?:unknown) {
 export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
   const basePath=teamApp?'/app/clients':'/admin/clients';
   const deckPath=teamApp?'/app/deck':'/admin/production';
+  const [deletingClient,setDeletingClient]=useState<string|null>(null);
   const apiPath=teamApp?'/api/internal/v1/client-hq':'/api/admin/client-hq';
   const [clients,setClients]=useState<Client[]>([]),[client,setClient]=useState<Client|null>(null),[items,setItems]=useState<Item[]>([]);
   const [preferences,setPreferences]=useState<Record<string,ClientPreference>>({}),[canCustomize,setCanCustomize]=useState(false);
@@ -63,17 +65,18 @@ export function ClientHQ({teamApp=false}:{teamApp?:boolean}){
     <header className={styles.heading}><div><p className={styles.eyebrow}>{client?'Client workspace':'TranterGrey / Client HQ'}</p><h1>{client?.logo_key && <img className={styles.workspaceLogo} src={clientLogoUrl(client.id,client.logo_key)} alt=""/>}{client?client.name:'Client HQ'}</h1>{!client && <p>A home for every client. Everything you need to keep work moving.</p>}</div>
       {!loading && <button onClick={()=>{setName(client?.name || '');client?setSettings(!settings):setAdding(!adding);}}><UiIcon name={client?'edit':'plus'}/>{client?'Client settings':'Add client'}</button>}
     </header>
+    {deletingClient && <ClientDeleteDialog clientId={deletingClient} onClose={()=>setDeletingClient(null)} onDeleted={()=>{setClients(current=>current.filter(item=>item.id!==deletingClient));setDeletingClient(null);if(client)location.assign(basePath);}}/>}
     {error && <p className={styles.error} role="alert">{error} <button onClick={()=>void run(load)}>Retry</button></p>}
     {(adding || settings) && <form className={styles.editor} onSubmit={e=>{e.preventDefault();void run(async()=>{if(client){await hqRequest('/api/admin/clients',{oldName:client.name,newName:name});setSettings(false);await load();}else{const data=await hqRequest(apiPath,{action:'client',name});location.assign(`${basePath}?client=${data.id}&setup=1`);}});}}>
       <h2>{client?'Client settings':'Add client'}</h2>{client && <ClientLogoSettings client={client} onSaved={logo_key=>setClient(current=>current?{...current,logo_key}:current)}/>}<label>Client name<input autoFocus required maxLength={120} value={name} onChange={e=>setName(e.target.value)}/></label>
       <p>{client?'Renaming updates the shared client name in Deck and Mux.':'This client will be available in Client HQ, Deck, and Mux assignment fields. Choose a Drive folder after creating the workspace.'}</p>
-      <div className={styles.actions}><button disabled={busy} type="submit">{busy?'Saving…':client?'Save name':'Create workspace'}</button><button type="button" onClick={()=>{setAdding(false);setSettings(false);}}>Cancel</button></div>
+      <div className={styles.actions}><button disabled={busy} type="submit">{busy?'Saving…':client?'Save name':'Create workspace'}</button><button type="button" onClick={()=>{setAdding(false);setSettings(false);}}>Cancel</button>{client&&<button type="button" disabled={busy} onClick={()=>setDeletingClient(client.id)}>Delete client…</button>}</div>
     </form>}
     {loading ? <p className={styles.empty}>Opening Client HQ…</p> : !client ? <>
       <ClientDriveConnection/>
       <label className={styles.search}>Find a client<input type="search" placeholder="Search clients…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
       <p className={styles.eyebrow}>{clients.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).length} clients</p>
-      <ClientDirectoryGrid clients={[...clients].sort((a,b)=>compareClientCards(a,b,preferences))} preferences={preferences} query={query} enabled={canCustomize} onReorder={async ids=>{await hqRequest('/api/admin/client-preferences',{action:'reorder',ids});setPreferences(current=>{const next={...current};ids.forEach((id,sortOrder)=>{next[id]={...(next[id]??{pinned:false,color:null}),sortOrder};});return next;});}} renderCard={id=>{const c=clients.find(client=>client.id===id)!;return <ClientDirectoryCard key={c.id} client={c} href={`${basePath}?client=${c.id}`} preference={preferences[c.id]} canCustomize={canCustomize} onArchive={async archived=>{await hqRequest(apiPath,{action:'archive-client',id:c.id,archived});setClients(current=>current.map(item=>item.id===c.id?{...item,archived:archived?1:0}:item));}} onSave={async patch=>{const saved=await hqRequest('/api/admin/client-preferences',{clientId:c.id,...patch});setPreferences(current=>({...current,[c.id]:saved}));}}/>;}}/>
+      <ClientDirectoryGrid clients={[...clients].sort((a,b)=>compareClientCards(a,b,preferences))} preferences={preferences} query={query} enabled={canCustomize} onReorder={async ids=>{await hqRequest('/api/admin/client-preferences',{action:'reorder',ids});setPreferences(current=>{const next={...current};ids.forEach((id,sortOrder)=>{next[id]={...(next[id]??{pinned:false,color:null}),sortOrder};});return next;});}} renderCard={id=>{const c=clients.find(client=>client.id===id)!;return <ClientDirectoryCard key={c.id} client={c} href={`${basePath}?client=${c.id}`} preference={preferences[c.id]} canCustomize={canCustomize} onDelete={()=>setDeletingClient(c.id)} onArchive={async archived=>{await hqRequest(apiPath,{action:'archive-client',id:c.id,archived});setClients(current=>current.map(item=>item.id===c.id?{...item,archived:archived?1:0}:item));}} onSave={async patch=>{const saved=await hqRequest('/api/admin/client-preferences',{clientId:c.id,...patch});setPreferences(current=>({...current,[c.id]:saved}));}}/>;}}/>
       {!clients.some(c=>c.name.toLowerCase().includes(query.toLowerCase())) && <p className={styles.empty}>No matching clients. Add a client to start a workspace.</p>}
     </> : <>
       <details className={styles.related} onToggle={e=>{if(e.currentTarget.open && !related)void run(()=>loadRelated());}}><summary>Linked Deck cards & videos</summary>{related ? <><div className={styles.fields}><div><div className={styles.relatedHeading}><h3>Deck cards</h3><a className={styles.addDeckCard} href={`/admin/production?newCard=1&client=${encodeURIComponent(client.name)}`} aria-label={`Add Deck card for ${client.name}`} title="Add Deck card"><UiIcon name="plus"/>Add card</a></div>{related.cards.map(c=><a key={c.id} href={`${deckPath}?card=${encodeURIComponent(c.id)}`}>{c.title} <UiIcon name="forward"/></a>)}{!related.cards.length && <p>No linked Deck cards.</p>}{relatedPagination('cards')}</div><div><h3>Videos</h3>{related.videos.map(v=><a key={v.id} href={`/admin/mux/${encodeURIComponent(v.id)}`}>{v.title} <UiIcon name="forward"/></a>)}{!related.videos.length && <p>No linked videos.</p>}{relatedPagination('videos')}</div></div></>:<p>Loading linked work…</p>}</details>

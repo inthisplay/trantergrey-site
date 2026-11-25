@@ -145,3 +145,4 @@
 .logoPreview{width:min(180px,100%);height:auto}
 .workspaceLogo{display:inline-block;width:64px;height:64px;margin-right:16px;vertical-align:middle}
 .cardLogo{width:64px;height:64px}
+.clientDeleteDialog{width:min(520px,calc(100vw - 32px));box-sizing:border-box;max-height:calc(100dvh - 40px);overflow:auto;border:1px solid #c9c3bd;padding:28px;background:#f7f5f1;color:#171315}.clientDeleteDialog::backdrop{background:rgba(0,0,0,.55)}.clientDeleteDialog h2{margin:0 0 18px;font:500 26px/1.2 var(--sans);overflow-wrap:anywhere}.clientDeleteDialog p{line-height:1.5}.clientDeleteDialog dl{margin:20px 0}.clientDeleteDialog dl>div{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #ddd6cf;padding:10px 0}.clientDeleteDialog dd{font-weight:700;margin:0}.clientDeleteDialog small{display:block;line-height:1.5;color:#68605c}.clientDeleteDialog .actions{margin-top:24px}.clientDeleteDialog .actions>button:last-child{background:#98333d;color:#fff}

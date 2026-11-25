@@ -14,6 +14,7 @@ export async function recordIntegrationEvent(env: AdminEnvironment, surface: Sur
   return reference;
 }
 export function operationLabel(path: string) {
+  if (/^\/api\/internal\/v1\/clients\/[^/]+\/deletion$/.test(path)) return 'clients/deletion';
   if (/^\/api\/internal\/v1\/cards\/[^/]+\/comments$/.test(path)) return 'cards/comments';
   if (/^\/api\/internal\/v1\/cards\/[^/]+\/move$/.test(path)) return 'cards/move';
   if (/^\/api\/internal\/v1\/cards\/[^/]+\/videos$/.test(path)) return 'cards/videos';

@@ -32,7 +32,7 @@ export async function apiActor(request: Request, env: AdminEnvironment): Promise
   const trusted = trustedActors.get(request);
   if (trusted) return trusted;
   const session = await adminSession(request, env);
-  if (session) return { type: 'user', id: session.email || session.name, name: session.name, email: session.email, scopes: new Set([...allScopes, 'notifications:send']) };
+  if (session) return { type: 'user', id: session.email || session.name, name: session.name, email: session.email, scopes: new Set([...allScopes, 'notifications:send', 'clients:delete']) };
 
   const value = bearer(request);
   if (!value) return null;

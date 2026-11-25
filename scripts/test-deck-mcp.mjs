@@ -23,7 +23,7 @@ const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'fu
 const { onRequestPost: linkVideoApi } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/videos.mjs')));
 const { videoCommentBody } = await import(pathToFileURL(join(temp, 'functions/_lib/video-comment-body.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
-const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0050_production_card_signals', '0035_card_media_gallery', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
+const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0050_production_card_signals', '0035_card_media_gallery', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0056_client_drive_trash_requests','0057_client_deletion','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8') + await readFile('workers/deck-mcp/events-schema.sql','utf8');
 const {enqueueMuxReady,deliverEvents}=await import(pathToFileURL(join(temp,'functions/_lib/mcp-events.mjs')));
 const {onRequestPost:muxWebhook}=await import(pathToFileURL(join(temp,'functions/api/webhooks/mux.mjs')));
@@ -47,12 +47,13 @@ function fixture(t) {
   const db = new DatabaseSync(':memory:'); const auth = new DatabaseSync(':memory:');
   for (const schema of schemas) db.exec(schema);
   auth.exec(authSchema);
-  db.exec(`CREATE TABLE client_directory(name TEXT PRIMARY KEY,created_at TEXT,id TEXT UNIQUE,archived INTEGER DEFAULT 0);
+  db.exec(`CREATE TABLE client_directory(name TEXT PRIMARY KEY,created_at TEXT,id TEXT UNIQUE,archived INTEGER DEFAULT 0,drive_folder_id TEXT);
     CREATE TABLE client_workspace_items(id TEXT PRIMARY KEY,workspace_id TEXT,kind TEXT,title TEXT,body TEXT,body_format TEXT,body_json TEXT,completed INTEGER,due_on TEXT,assignee TEXT,updated_at TEXT,completed_at TEXT);
     CREATE TABLE admin_team_directory(nickname TEXT,email TEXT);
     CREATE TABLE client_drive_extra_folders(client_id TEXT,folder_id TEXT,name TEXT);
     CREATE TABLE client_activity(id TEXT PRIMARY KEY,client_id TEXT,occurred_at TEXT,actor TEXT,action TEXT,category TEXT,summary TEXT);
-    INSERT INTO client_directory VALUES('Taylor BMW','now','bmw',0);
+    INSERT INTO client_directory VALUES('Taylor BMW','now','bmw',0,NULL);
+    CREATE TABLE client_drive_locks(id TEXT PRIMARY KEY,owner TEXT,expires_at TEXT);
     INSERT INTO admin_team_directory VALUES('Taylor','taylor@trantergrey.com');
     CREATE TABLE admin_sessions(id TEXT,user_name TEXT,user_email TEXT,expires_at TEXT);
     INSERT INTO production_columns(source_id,name,position,imported_at) VALUES ('ideas','Ideas',1,'now'),('production','Production',2,'now'),('archived','Archived',3,'now');
@@ -121,13 +122,13 @@ test('separate consent tabs survive retries and clear only their own cookie', as
   assert.equal((await submit(first, first.cookie)).status, 400);
 });
 
-test('real MCP client discovers 26 tools and creates one audited card across retries', async t => {
+test('real MCP client discovers 28 tools and creates one audited card across retries', async t => {
   const f = fixture(t); const { access } = await f.token();
   const client = new Client({ name: 'deck-test', version: '1.0' });
   const transport = new StreamableHTTPClientTransport(new URL(f.env.MCP_ORIGIN + '/mcp'), { requestInit: { headers: { Authorization: `Bearer ${access}` } }, fetch: (url, options) => f.fetch(url, options) });
   await client.connect(transport);
   try {
-    const tools = await client.listTools(); assert.equal(tools.tools.length, 26); assert.equal(new Set(tools.tools.map(x => x.name)).size, 26); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
+    const tools = await client.listTools(); assert.equal(tools.tools.length, 28); assert.equal(new Set(tools.tools.map(x => x.name)).size, 28); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
     const columns = await client.callTool({ name: 'list_deck_columns', arguments: {} });
     assert.deepEqual(columns.structuredContent.columns, [{ id: 'ideas', name: 'Ideas' }, { id: 'production', name: 'Production' }]);
     const args = { title: 'Mabra fall campaign — MCP test', client: 'Mabra', columnSourceId: 'ideas', notes: '<script>alert(1)</script>', requestId: crypto.randomUUID() };
@@ -898,4 +899,24 @@ test('card search exposes paginated chip data and excludes deleted updates', asy
   assert.equal(card.muxAddedAt, '2026-11-23');
   assert.equal(card.galleryAddedAt, null);
   assert.equal(rows.find(row => row.id === ids[1]).attention, null);
+});
+
+test('client deletion requires separate consent, exposes counts, retries safely and preserves renewal scope',async t=>{
+ const f=fixture(t);
+ f.db.exec(await readFile('migrations/0005_mux_library.sql','utf8'));
+ f.db.exec(await readFile('migrations/0019_mux_library_browse_index.sql','utf8'));
+ async function connect(scope){const token=await f.token(undefined,scope);const client=new Client({name:'client-delete-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(f.env.MCP_ORIGIN+'/mcp'),{requestInit:{headers:{Authorization:`Bearer ${token.access}`}},fetch:(url,options)=>f.fetch(url,options)}));t.after(()=>client.close());return {token,call:(name,args)=>client.callTool({name,arguments:args})};}
+ const old=await connect('tg:personal');
+ const preview=(await old.call('preview_client_deletion',{clientId:'bmw'})).structuredContent.data;
+ assert.equal(preview.name,'Taylor BMW');assert.equal(preview.cards,0);assert.equal(preview.muxAssets,0);
+ const input={clientId:'bmw',confirmName:preview.name,expectedVersion:preview.expectedVersion,requestId:crypto.randomUUID()};
+ assert.equal((await old.call('delete_client',input)).isError,true);
+ const broaden=await f.form('/token',{grant_type:'refresh_token',refresh_token:old.token.refresh,client_id:old.token.grant.client_id,resource:f.env.MCP_ORIGIN+'/mcp',scope:'tg:personal clients:delete'});
+ assert.equal(broaden.status,400);
+ const enabled=await connect('tg:personal clients:delete notifications:send');
+ const result=await enabled.call('delete_client',input);assert.equal(result.isError,undefined);assert.equal(result.structuredContent.data.deleted,true);
+ assert.equal((await enabled.call('delete_client',input)).structuredContent.data.replayed,true);
+ assert.equal(f.db.prepare("SELECT COUNT(*) n FROM client_directory WHERE id='bmw'").get().n,0);
+ const refreshed=await f.form('/token',{grant_type:'refresh_token',refresh_token:enabled.token.refresh,client_id:enabled.token.grant.client_id,resource:f.env.MCP_ORIGIN+'/mcp'});
+ assert.equal(refreshed.status,200);assert.equal((await refreshed.json()).scope,'tg:personal clients:delete notifications:send');
 });

@@ -86,3 +86,33 @@ scope is broadened. The remaining integration gap is file listing/trashing; addi
 it requires a separately consented Drive capability and appropriate read tools.
 The endpoint uses shared rate limiting and privacy-safe Connection health monitoring.
 Only Pages needs deployment; no MCP tool or Worker change is required.
+
+
+## Delete a client
+
+The client card menu and Client settings offer **Delete client…** on the website
+and PWA. The confirmation loads fresh totals for notes/to-dos to delete and linked
+Mux assets/Deck cards to keep. Empty accidental clients can be removed directly
+through this confirmation. The modal clearly preserves Google Drive files, cards,
+videos and their existing client labels. Its Mux count uses saved library data;
+refresh the Mux library first if changes were made externally. Archived/completed
+Deck cards count; deleted cards do not.
+
+Deletion removes the shared directory entry, CHQ notes/to-dos, local activity,
+extra folder references and client preferences/pins. It does not delete stored
+logo objects, Drive folders/files or media. A fresh client with the same name gets
+a new identity; because media labels are name-based, it may show that existing
+linked work. The deletion audit/retry ledger is retained outside the workspace.
+Migration 0057 also removes the client foreign key from Drive trash retry records
+so those retained records cannot block client deletion. Completed trash retries
+cannot be used to trash a restored file again.
+
+The shared API/MCP command checks explicit `clients:delete` permission, confirms
+name and metadata version, and commits deletion with its retry audit atomically.
+See [the API contract](internal-api.md#client-deletion) for exact fields and coverage.
+Old integration grants are unchanged; deletion through MCP needs metadata refresh
+and a new connection consent. No live client is deleted as a release test.
+
+The shared Mux/Deck client picker keeps typed text local until the user selects an
+existing option or explicitly clicks Add. Blurring a partial name cancels that search
+rather than saving it as a new client. Choosing No client explicitly clears assignment.

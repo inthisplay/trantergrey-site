@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 const dir=await mkdtemp(join(tmpdir(),'tg-client-hq-'));
 const handlers={};
-for(const [name,path] of Object.entries({trash:'functions/api/admin/client-hq-files.ts',unbranded:'functions/_lib/unbranded-page.ts',publicLogo:'functions/api/watch/[slug]/logo.ts',publicWatch:'functions/_lib/mux-public.ts',logo:'functions/api/admin/client-logo.ts',preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
+for(const [name,path] of Object.entries({deletion:'functions/api/internal/v1/clients/[id]/deletion.ts',deleteLib:'functions/_lib/delete-client.ts',trash:'functions/api/admin/client-hq-files.ts',unbranded:'functions/_lib/unbranded-page.ts',publicLogo:'functions/api/watch/[slug]/logo.ts',publicWatch:'functions/_lib/mux-public.ts',logo:'functions/api/admin/client-logo.ts',preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
   await build({entryPoints:[path],bundle:true,platform:'node',format:'esm',outfile:join(dir,name+'.mjs')});handlers[name]=await import(pathToFileURL(join(dir,name+'.mjs')));
 }
 after(()=>rm(dir,{recursive:true,force:true}));
@@ -25,6 +25,7 @@ test('Drive thumbnails use edge-compatible redirects and reject unsafe destinati
   }finally{globalThis.fetch=original;}
 });
 const itemRequestMigration=await readFile('migrations/0053_mcp_item_requests.sql','utf8');
+const deleteMigration=await readFile('migrations/0057_client_deletion.sql','utf8');
 const trashMigration=await readFile('migrations/0056_client_drive_trash_requests.sql','utf8');
 const logoMigration=await readFile('migrations/0049_client_logos.sql','utf8');
 const migration=await readFile('migrations/0026_client_hq.sql','utf8');
@@ -194,7 +195,7 @@ function fixture(){
     CREATE TABLE mux_video_projects(id TEXT,value TEXT);
     CREATE TABLE mux_library_browse_state(id TEXT,refreshed_at TEXT,refresh_id TEXT);
     CREATE TABLE mux_library_browse_assets(asset_id TEXT,client TEXT,refresh_id TEXT);
-  `);db.exec(migration);db.exec(richNoteMigration);db.exec(itemRequestMigration);db.exec(logoMigration);db.exec(trashMigration);
+  `);db.exec(migration);db.exec(richNoteMigration);db.exec(itemRequestMigration);db.exec(logoMigration);db.exec(trashMigration);db.exec(deleteMigration);
   const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let values=[];const s={bind(...args){values=args;return s;},async first(){return db.prepare(sql).get(...values)??null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){const r=db.prepare(sql).run(...values);return {meta:{changes:r.changes}};}};return s;},async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
   const request=(path='',body,auth=true)=>new Request('https://local.test/api/admin/'+path,{method:body?'POST':'GET',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(body?{'Content-Type':'application/json',Origin:'https://local.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   // Model the current UI contract: creation IDs persist for a retry; edits carry
@@ -629,4 +630,56 @@ test('Client HQ file trash checks sessions, origin, exact ancestry, permissions 
   assert.equal((await api({...input,requestId:crypto.randomUUID(),rootId:'other-folder',expectedVersion:'4'})).status,200);
   assert.equal(records.get('file').trashed,true,'Native Google docs in explicitly linked extra folders can be trashed');
  }finally{globalThis.fetch=original;db.close();}
+});
+
+test('client deletion previews linked counts, detects edits, and preserves media and retry history',async()=>{
+ const {db,env,request}=fixture();
+ const actor={type:'user',id:'test@example.com',name:'Test',email:'test@example.com',scopes:new Set(['clients:read','clients:delete'])};
+ const id=db.prepare('SELECT id FROM client_directory').get().id;
+ db.exec(`CREATE TABLE production_cards(id TEXT,source_id TEXT); ALTER TABLE production_card_overrides ADD COLUMN deleted_at TEXT;
+ INSERT INTO production_cards VALUES('card','source'),('deleted-card','deleted-source');
+ INSERT INTO production_card_overrides VALUES('source','Existing',NULL),('deleted-source','Existing','now');
+ INSERT INTO mux_asset_metadata VALUES('asset','Existing','now');
+ INSERT INTO mux_library_browse_state VALUES('library','now','snapshot');
+ INSERT INTO mux_library_browse_assets VALUES('asset','Existing','snapshot'),('inferred','Existing','snapshot'),('old','Existing','old');`);
+ db.prepare("INSERT INTO client_workspace_items(id,workspace_id,kind,title,updated_at) VALUES('note',?,'note','Script','v1'),('todo',?,'todo','Review','v1')").run(id,id);
+ db.prepare("INSERT INTO client_drive_extra_folders VALUES(?,'extra','Extra')").run(id);
+ db.prepare("INSERT INTO client_activity VALUES('old-activity',?,'now','Test','note_created','updates','Script')").run(id);
+ db.prepare("INSERT INTO client_drive_trash_requests VALUES('test','old-request',?,'root','file','1','File','old-activity','completed','now','now')").run(id);
+ try{
+  const preview=await handlers.deleteLib.previewClientDeletion(env,id,actor);
+  assert.equal(preview.notes,1);assert.equal(preview.todos,1);assert.equal(preview.cards,1);assert.equal(preview.muxAssets,2);
+  const body={clientId:id,confirmName:preview.name,expectedVersion:preview.expectedVersion,requestId:crypto.randomUUID()};
+  await assert.rejects(()=>handlers.deleteLib.deleteClient(env,body,{...actor,scopes:new Set(['clients:write'])}),/permission/);
+  const denied=await handlers.deletion.onRequest({env,params:{id},request:request('deletion',body,false)});assert.equal(denied.status,401);
+  const hostile=request('deletion',body);hostile.headers.set('origin','https://evil.test');assert.equal((await handlers.deletion.onRequest({env,params:{id},request:hostile})).status,403);
+  db.exec("UPDATE client_workspace_items SET updated_at='v2' WHERE id='note'");
+  await assert.rejects(()=>handlers.deleteLib.deleteClient(env,body,actor),/changed/);
+  const fresh=await handlers.deleteLib.previewClientDeletion(env,id,actor);body.expectedVersion=fresh.expectedVersion;
+  const batch=env.TG_DATA.batch;
+  env.TG_DATA.batch=async statements=>{db.exec("UPDATE client_workspace_items SET updated_at='v3' WHERE id='note'");return batch(statements);};
+  await assert.rejects(()=>handlers.deleteLib.deleteClient(env,body,actor),/changed during/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n,2);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_deletion_requests').get().n,0);
+  env.TG_DATA.batch=batch;
+  body.expectedVersion=(await handlers.deleteLib.previewClientDeletion(env,id,actor)).expectedVersion;
+  db.exec("CREATE TRIGGER prevent_client_delete BEFORE DELETE ON client_directory BEGIN SELECT RAISE(ABORT,'fixture'); END;");
+  await assert.rejects(()=>handlers.deleteLib.deleteClient(env,body,actor));
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n,2);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_deletion_requests').get().n,0);
+  db.exec('DROP TRIGGER prevent_client_delete');
+  const result=await handlers.deleteLib.deleteClient(env,body,actor);assert.equal(result.deleted,true);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_directory').get().n,0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n,0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_drive_extra_folders').get().n,0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_activity').get().n,0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_drive_trash_requests').get().n,1);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM production_cards').get().n,2);
+  assert.equal(db.prepare('SELECT client FROM mux_asset_metadata').get().client,'Existing');
+  assert.equal((await handlers.deleteLib.deleteClient(env,body,actor)).replayed,true);
+  db.prepare('INSERT INTO client_directory(name,id,created_at) VALUES(?,?,?)').run('Existing','replacement','now');
+  await handlers.deleteLib.deleteClient(env,body,actor);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM client_directory WHERE id='replacement'").get().n,1);
+  await assert.rejects(()=>handlers.deleteLib.deleteClient(env,{...body,confirmName:'Other'},actor),/different/);
+ }finally{db.close();}
 });

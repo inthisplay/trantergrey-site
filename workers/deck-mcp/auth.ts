@@ -8,8 +8,8 @@ export type TrialEnvironment = AdminEnvironment & {
   TEST_ACCESS_CODE: string;
 };
 const scope = 'tg:personal';
-const supportedScopes = [scope, 'notifications:send'];
-function validScope(value: string) { return value === scope || value === 'tg:personal notifications:send'; }
+const supportedScopes = [scope, 'notifications:send', 'clients:delete'];
+function validScope(value: string) { const parts = value.split(' '); return parts[0] === scope && new Set(parts).size === parts.length && parts.every(part => supportedScopes.includes(part)); }
 function requestedScope(value: string) { return [...new Set(value.trim().split(/\s+/))].sort((a,b)=>a===scope?-1:b===scope?1:a.localeCompare(b)).join(' '); }
 const permanent = 253402300799; // Persistent grants; revoked explicitly, not on a calendar deadline.
 const accessLifetime = 3600;
@@ -65,10 +65,10 @@ export async function authorized(request: Request, env: TrialEnvironment) {
     const invitation = await activeInvitation(env, invitationId);
     if (!invitation) return false;
     await env.MCP_AUTH.prepare('UPDATE mcp_invitations SET last_used_at=? WHERE id=?').bind(new Date().toISOString(), invitationId).run();
-    return mcpActor(invitation, token.scope.includes('notifications:send'));
+    return mcpActor(invitation, token.scope.split(' ').includes('notifications:send'), token.scope.split(' ').includes('clients:delete'));
   }
   if (token.family) await env.MCP_AUTH.prepare("UPDATE oauth_records SET data=json_set(data,'$.lastUsedAt',?) WHERE kind='session' AND id=?").bind(now(), token.family).run();
-  return mcpActor(undefined, token.scope.includes('notifications:send'));
+  return mcpActor(undefined, token.scope.split(' ').includes('notifications:send'), token.scope.split(' ').includes('clients:delete'));
 }
 
 // Called after authorized() succeeds; retain the OAuth family so event delivery
@@ -113,12 +113,12 @@ export async function oauth(request: Request, env: TrialEnvironment): Promise<Re
     const redirectUri = p.get('redirect_uri') || '';
     if (!client || !client.redirect_uris.includes(redirectUri)) return fail('invalid_client_or_redirect');
     if (p.get('response_type') !== 'code' || p.get('code_challenge_method') !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(p.get('code_challenge') || '') || p.get('resource') !== resource || !validScope(requestedScope(p.get('scope') || scope))) return fail('invalid_request');
-    const grant: Grant = { clientId: client.client_id, redirectUri, challenge: p.get('code_challenge')!, resource, state: p.get('state') || '', scope: p.get('scope')?.includes('notifications:send') ? 'tg:personal notifications:send' : scope };
+    const grant: Grant = { clientId: client.client_id, redirectUri, challenge: p.get('code_challenge')!, resource, state: p.get('state') || '', scope: requestedScope(p.get('scope') || scope) };
     if (grant.state.length > 2048) return fail('invalid_state');
     const transaction = random();
     const cookieName = consentCookieName(transaction);
     await put(env, 'pending', await digest(transaction), grant, 600);
-    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect TranterGrey personal MCP</title><body><main><h1>Connect TranterGrey personal MCP</h1><p>This connection can read Deck cards and history, move and create cards, add comments, read videos and public share links, subscribe to new Mux asset events, link videos to cards, and read and manage Client HQ clients, notes and to-dos, including deleting items. These actions affect <strong>live TranterGrey data</strong>.</p>${grant.scope.includes('notifications:send') ? '<p>This connection can also list team notification recipients and send inbox and push notifications to selected teammates.</p>' : ''}<p>This connection stays authorized until revoked. ChatGPT can renew access automatically without asking you to sign in every hour. With a teammate invitation, actions are recorded under the name assigned to that invitation. Keep your code private; it grants access as that person.</p><form method="post" action="/authorize"><input type="hidden" name="transaction" value="${escape(transaction)}"><label>Access code <input name="access_code" type="password" required autocomplete="off"></label><p><button type="submit">Allow TranterGrey personal MCP access</button></p></form><p>Close this window to cancel. Never enter your Google or ChatGPT password here.</p></main></body></html>`;
+    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect TranterGrey personal MCP</title><body><main><h1>Connect TranterGrey personal MCP</h1><p>This connection can read Deck cards and history, move and create cards, add comments, read videos and public share links, subscribe to new Mux asset events, link videos to cards, and read and manage Client HQ clients, notes and to-dos, including deleting items. These actions affect <strong>live TranterGrey data</strong>.</p>${grant.scope.includes('notifications:send') ? '<p>This connection can also list team notification recipients and send inbox and push notifications to selected teammates.</p>' : ''}${grant.scope.split(' ').includes('clients:delete') ? '<p>This connection can also permanently delete Client HQ clients and their notes and to-dos after confirmation, while preserving Drive files, cards and videos.</p>' : ''}<p>This connection stays authorized until revoked. ChatGPT can renew access automatically without asking you to sign in every hour. With a teammate invitation, actions are recorded under the name assigned to that invitation. Keep your code private; it grants access as that person.</p><form method="post" action="/authorize"><input type="hidden" name="transaction" value="${escape(transaction)}"><label>Access code <input name="access_code" type="password" required autocomplete="off"></label><p><button type="submit">Allow TranterGrey personal MCP access</button></p></form><p>Close this window to cancel. Never enter your Google or ChatGPT password here.</p></main></body></html>`;
     // Browser form POSTs need their same-site Origin; no-referrer makes it opaque (null).
     // same-origin still suppresses referrers when redirecting back to ChatGPT.
     // form-action also governs redirects in browsers: allow only the validated callback.
