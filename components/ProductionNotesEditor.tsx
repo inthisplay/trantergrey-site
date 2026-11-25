@@ -2,20 +2,35 @@
 
 import { UiIcon } from '@/components/UiIcon';
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 
 type ProductionNotesEditorProps = {
   initialHtml: string;
   label?: string;
   disabled?: boolean;
+  autoFocus?: boolean;
   onChange: (html: string) => void;
 };
 
 const format = (command: string, value?: string) => document.execCommand(command, false, value);
 
-export function ProductionNotesEditor({ initialHtml, disabled = false, onChange, label = 'Card notes' }: ProductionNotesEditorProps) {
+export function ProductionNotesEditor({ initialHtml, disabled = false, autoFocus = false, onChange, label = 'Card notes' }: ProductionNotesEditorProps) {
   const editor = useRef<HTMLDivElement>(null);
+  // The browser owns the live HTML and selection. Feeding draft updates back
+  // into innerHTML resets the caret on every keystroke. Remount for a new edit.
+  const [startingHtml] = useState(initialHtml);
+
+  useEffect(() => {
+    if (!autoFocus || !editor.current) return;
+    editor.current.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor.current);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, [autoFocus]);
 
   const emitChange = () => {
     if (editor.current) onChange(editor.current.innerHTML);
@@ -105,6 +120,6 @@ export function ProductionNotesEditor({ initialHtml, disabled = false, onChange,
       <ToolbarButton label={<UiIcon name="bulletList" />} title="Bulleted list" command="insertUnorderedList" />
       <button type="button" title="Insert checklist" aria-label="Insert checklist" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={insertChecklist}><UiIcon name="checklist" /></button>
     </div>
-    <div ref={editor} className="production-notes-editable" contentEditable={!disabled} suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: initialHtml }} onInput={emitChange} onChange={handleChecklistChange} onKeyDown={handleKeyDown} aria-label={label} data-placeholder="Add notes…" />
+    <div ref={editor} className="production-notes-editable" contentEditable={!disabled} suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: startingHtml }} onInput={emitChange} onChange={handleChecklistChange} onKeyDown={handleKeyDown} role="textbox" aria-multiline="true" aria-label={label} data-placeholder="Add notes…" />
   </div>;
 }
