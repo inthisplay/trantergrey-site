@@ -71,6 +71,22 @@ Project maintenance rules are in [AGENTS.md](../AGENTS.md). New business feature
 must assess UI, API and MCP support together, reuse shared commands, update the
 contracts, and verify each affected deployment separately.
 
+### Word script import in the Deck
+
+The admin UI conditionally offers **Import Word script into this comment** on an
+editable local comment that contains a locally stored `.docx` attachment. It
+converts the document's editable text and basic formatting in the browser,
+appends it to that comment's edit draft, and requires the person to review and
+save through the existing comment editor. No new server write, API endpoint,
+scope, or MCP tool is added: conversion is a browser-only convenience that
+produces an ordinary comment edit.
+The existing API/MCP gap remains: integrations cannot convert Word attachments
+or update production-card notes (other than notes supplied at card creation).
+The importer currently supports text, headings, emphasis, alignment, and basic
+lists; Word page styling and complex layouts may need manual cleanup. It only
+appears for editable comments with local Deck attachment URLs, not external or
+legacy attachment links.
+
 ### Create a card
 
 `POST /cards` requires `cards:create` and a JSON object containing `title`,

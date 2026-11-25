@@ -17,6 +17,7 @@ import { TeamMemberPicker } from './TeamMemberPicker';
 import { CardMediaGallery } from './CardMediaGallery';
 import { CommentMediaContent } from './CommentMediaContent';
 import { ProductionCardTitle } from './ProductionCardTitle';
+import { docxHtmlToCommentValue, docxToHtml } from '@/lib/docx-to-html';
 
 type Column = { sourceId: string; name: string };
 type LocalComment = { id: string; isQuestion?: number; questionResolvedAt?: string | null; bodyHtml: string; bodyJson?: string; authorName: string; authorEmail?: string | null; createdAt: string; deletedAt?: string | null; deletedByName?: string | null };
@@ -71,6 +72,21 @@ const addMissingMuxCopyButton = (html: string) => html.replace(
   /(<a class="production-comment-mux-asset-public-link" href="([^"]+)"[^>]*>[^<]*<\/a>)(?!<button\b)/g,
   (_, link: string, href: string) => `<div class="production-comment-mux-actions">${link}<button type="button" data-copy-public-link="${href}">Copy public link</button></div>`,
 );
+const docxAttachmentUrl = (html: string) => {
+  if (typeof document === 'undefined') return null;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  for (const link of Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+    const href = link.getAttribute('href') || '';
+    const label = (link.textContent || '').trim();
+    if (!/\.docx(?:$|[?#\s])/i.test(`${label} ${href}`)) continue;
+    try {
+      const url = new URL(href, window.location.origin);
+      if (url.origin === window.location.origin && /^\/api\/admin\/production-board\/attachments\/[A-Za-z0-9-]+$/.test(url.pathname)) return url.href;
+    } catch { /* Ignore malformed attachment links. */ }
+  }
+  return null;
+};
 
 type ProductionCardProps = {
   id: string;
@@ -99,6 +115,8 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
   const [commentChanging, setCommentChanging] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [deletingCard, setDeletingCard] = useState(false);
+  const [docxImportingId, setDocxImportingId] = useState<string | null>(null);
+  const [docxImportError, setDocxImportError] = useState<{ id: string; message: string } | null>(null);
 
   const load = () => fetch(`/api/admin/production-board/${encodeURIComponent(id)}`, { cache: 'no-store' }).then(async (response) => {
     const payload = await response.json();
@@ -159,6 +177,33 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
     setNotesFocused(true);
   };
   const updateNotesHtml = (notesHtml: string) => setDraft((current) => ({ ...(current || cardDraft()), notesHtml, notes: descriptionText(notesHtml) }));
+  const importDocxIntoComment = async (localComment: LocalComment, itemId: string, href: string) => {
+    setDocxImportingId(itemId); setDocxImportError(null);
+    try {
+      const response = await fetch(href, { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error('The Word attachment could not be downloaded.');
+      const importedHtml = await docxToHtml(await response.blob());
+      const importedValue = docxHtmlToCommentValue(importedHtml) as Descendant[];
+      let existingValue: Descendant[];
+      try {
+        const parsed: unknown = localComment.bodyJson ? JSON.parse(localComment.bodyJson) : null;
+        existingValue = Array.isArray(parsed) ? parsed as Descendant[] : [{ type: 'paragraph', children: [{ text: descriptionText(localComment.bodyHtml) }] } as Descendant];
+      } catch {
+        existingValue = [{ type: 'paragraph', children: [{ text: descriptionText(localComment.bodyHtml) }] } as Descendant];
+      }
+      const separator = { type: 'paragraph' as const, children: [{ text: '' }] } as Descendant;
+      const nextValue = [...existingValue, separator, ...importedValue];
+      setCommentEdit(nextValue);
+      setEditingCommentId(localComment.id);
+      window.setTimeout(() => {
+        const commentElement = document.getElementById(`comment-${itemId}`);
+        commentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        commentElement?.querySelector<HTMLElement>('.production-comment-editor')?.focus();
+      }, 80);
+    } catch (cause) {
+      setDocxImportError({ id: itemId, message: cause instanceof Error ? cause.message : 'Unable to import this Word document.' });
+    } finally { setDocxImportingId(null); }
+  };
   const toggleSavedChecklist = (event: ChangeEvent<HTMLDivElement>) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox' || !target.closest('.production-note-checklist')) return;
@@ -247,14 +292,15 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
     <div className="production-card-heading"><div><p className="eyebrow">Local production record · Basecamp source preserved</p><ProductionCardTitle value={activeDraft.title} onChange={title => setDraft({ ...activeDraft, title })} onSave={() => void save()} disabled={saving} /></div></div>
     {error && <p className="production-save-error">{error}</p>}
     <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><ClientPicker value={activeDraft.client} clients={data.clients} onChange={(value) => setDraft({ ...activeDraft, client: value })} onBlur={() => void save()} disabled={saving} onClientsChanged={() => onUpdated?.()} placeholder="Search or add a client" /></dd></div><div><dt>Assigned to</dt><dd><TeamMemberPicker value={activeDraft.assignedTo} members={data.assignees} onChange={(value) => setDraft({ ...activeDraft, assignedTo: value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><span className="production-date-field" data-empty={!activeDraft.dueOn}><input aria-label="Due on" type="date" className={activeDraft.dueOn ? undefined : "is-empty"} value={activeDraft.dueOn} onChange={(event) => setDraft({ ...activeDraft, dueOn: event.target.value })} onBlur={() => void save()} disabled={saving} /><span className="production-date-placeholder" aria-hidden="true">Set date</span></span></dd></div><div><dt>Status</dt><dd><select value={activeDraft.columnSourceId} onChange={(event) => { const next = { ...activeDraft, columnSourceId: event.target.value }; setDraft(next); void save(next); }} disabled={saving}>{data.columns.map((column) => <option key={column.sourceId} value={column.sourceId}>{column.name}</option>)}</select></dd></div></dl>
-    <section className="production-card-notes production-inline-notes"><div className="production-inline-notes-heading"><h2>Notes</h2>{!notesFocused && <button type="button" onClick={editNotes}>{hasSavedNotes ? 'Edit notes' : 'Add notes'}</button>}</div>{!notesFocused ? <div className={`production-notes-display${hasSavedNotes ? '' : ' is-empty'}`} onChange={toggleSavedChecklist} dangerouslySetInnerHTML={{ __html: text(card.notes_html) || '<p>Add notes…</p>' }} /> : <><ProductionNotesEditor key={`${id}-notes-edit`} initialHtml={text(card.notes_html)} disabled={saving} onChange={updateNotesHtml} /><div className="production-inline-notes-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setDraft(null); setNotesFocused(false); }} disabled={saving}>Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { void save().finally(() => setNotesFocused(false)); }} disabled={saving}>{saving ? 'Saving…' : 'Save notes'}</button></div></>}{!notesFocused && <NotesDatePrompts key={id} text={notesText} filmingOn={text(card.filmingOn)} dueOn={text(card.due_on).slice(0,10)} disabled={saving || Boolean(draft)} onConfirm={confirmNoteDate} />}</section>
+    <section className="production-card-notes production-inline-notes"><div className="production-inline-notes-heading"><h2>Notes</h2>{!notesFocused && <button type="button" onClick={editNotes}>{hasSavedNotes ? 'Edit notes' : 'Add notes'}</button>}</div>{!notesFocused ? <div className={`production-notes-display${hasSavedNotes ? '' : ' is-empty'}`} onChange={toggleSavedChecklist} dangerouslySetInnerHTML={{ __html: text(card.notes_html) || '<p>Add notes…</p>' }} /> : <><ProductionNotesEditor key={`${id}-notes-edit`} initialHtml={text(draft?.notesHtml ?? card.notes_html)} disabled={saving} onChange={updateNotesHtml} /><div className="production-inline-notes-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setDraft(null); setNotesFocused(false); }} disabled={saving}>Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { void save().finally(() => setNotesFocused(false)); }} disabled={saving}>{saving ? 'Saving…' : 'Save notes'}</button></div></>}{!notesFocused && <NotesDatePrompts key={id} text={notesText} filmingOn={text(card.filmingOn)} dueOn={text(card.due_on).slice(0,10)} disabled={saving || Boolean(draft)} onConfirm={confirmNoteDate} />}</section>
     {data.steps.length > 0 && <section><h2>Checklist</h2><ul>{data.steps.map((step) => <li key={text(step.source_id)}>{step.completed === 1 ? <><UiIcon name="check" /><span className="sr-only">Completed: </span></> : <><UiIcon name="circle" /><span className="sr-only">Incomplete: </span></>}{text(step.title)}</li>)}</ul></section>}
     <div id="card-gallery"><CardMediaGallery key={id} cardId={id} onUpdated={onUpdated} /></div>
     <section id="card-comments" className="production-local-comments"><h2>Comments</h2><CardSignalEditor key={`${id}-${text(card.attention)}-${text(card.filmingOn)}`} id={id} attention={text(card.attention)} filmingOn={text(card.filmingOn)} onSaved={() => { void load().then(setData).catch(cause => setError(String(cause))); onUpdated?.(); }} />{timeline.map((item) => {
       const localComment = item.kind === 'local-comment' ? data.localComments.find((comment) => `local-${comment.id}` === item.id) : null;
       const canEdit = localComment ? editableByViewer(localComment) && !localComment.deletedAt : false;
       const isEditingComment = localComment?.id === editingCommentId;
-      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article id={`comment-${item.id}`} className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id} onClick={copyEmbeddedPublicLink}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><CommentMediaContent key={`${id}-${item.id}`} cardId={id} commentKey={item.id} onCopy={block => { setComment(current => [...(current || []), block, { type: 'paragraph', children: [{ text: '' }] }]); setCommentEditorKey(value => value + 1); window.setTimeout(() => document.querySelector('.production-comment-form')?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 0); }} html={addMissingMuxCopyButton(compactCommentLinks(item.html || '')).replace(/(class="production-comment-mux-asset-public-link"[^>]*>Open public page) ↗(?=<\/a>)/g, (_, label: string) => label + ' ' + uiIconMarkup('external'))} />{Boolean(localComment?.isQuestion) && <div className="production-comment-actions"><button type="button" disabled={commentChanging} onClick={() => void setQuestionAddressed(localComment!.id, !localComment!.questionResolvedAt)}>{localComment?.questionResolvedAt ? 'Question addressed · Reopen' : 'Mark question addressed'}</button></div>}{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
+      const wordDocxUrl = item.kind === 'comment' || item.kind === 'local-comment' ? docxAttachmentUrl(item.html || '') : null;
+      return item.kind === 'event' ? <p className="production-activity-event" key={item.id}><small>{item.timestamp || 'Source timestamp unavailable'}</small> {item.summary}</p> : <article id={`comment-${item.id}`} className={localComment?.id === deletingCommentId ? 'is-deleting' : ''} key={item.id} onClick={copyEmbeddedPublicLink}>{localComment?.deletedAt ? <p className="production-comment-deleted"><small>{localComment.deletedAt}</small>{localComment.deletedByName || localComment.authorName} deleted a comment.</p> : <><small><span className="production-comment-author-name">{item.author}</span> · {item.timestamp}</small>{isEditingComment ? <div className="production-comment-edit"><ProductionCommentEditor key={localComment!.id} cardId={id} client={text(card.client) || null} initialValue={commentEdit || undefined} onChange={setCommentEdit} /><div><button type="button" onClick={() => { setEditingCommentId(null); setCommentEdit(null); }} disabled={commentChanging}>Cancel</button><button type="button" onClick={() => saveComment(localComment!.id)} disabled={commentChanging || !hasCommentContent(commentEdit)}>{commentChanging ? 'Saving…' : 'Save comment'}</button></div></div> : <><CommentMediaContent key={`${id}-${item.id}`} cardId={id} commentKey={item.id} onCopy={block => { setComment(current => [...(current || []), block, { type: 'paragraph', children: [{ text: '' }] }]); setCommentEditorKey(value => value + 1); window.setTimeout(() => document.querySelector('.production-comment-form')?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 0); }} html={addMissingMuxCopyButton(compactCommentLinks(item.html || '')).replace(/(class="production-comment-mux-asset-public-link"[^>]*>Open public page) ↗(?=<\/a>)/g, (_, label: string) => label + ' ' + uiIconMarkup('external'))} />{(Boolean(localComment?.isQuestion) || Boolean(wordDocxUrl && canEdit)) && <div className="production-comment-actions">{Boolean(localComment?.isQuestion) && <button type="button" disabled={commentChanging} onClick={() => void setQuestionAddressed(localComment!.id, !localComment!.questionResolvedAt)}>{localComment?.questionResolvedAt ? 'Question addressed · Reopen' : 'Mark question addressed'}</button>}{wordDocxUrl && canEdit && <button type="button" onClick={() => void importDocxIntoComment(localComment!, item.id, wordDocxUrl)} disabled={Boolean(docxImportingId) || commentChanging || Boolean(editingCommentId)}>{docxImportingId === item.id ? 'Importing…' : 'Import Word script into this comment'}</button>}{docxImportError?.id === item.id && <span role="alert">{docxImportError.message}</span>}</div>}{canEdit && <div className="production-comment-actions"><button type="button" onClick={() => editComment(localComment!)}>Edit</button><button type="button" onClick={() => deleteComment(localComment!.id)} disabled={commentChanging}>{localComment!.id === deletingCommentId ? 'Deleting…' : 'Delete'}</button></div>}</>}</>}</article>;
     })}<div className="production-comment-form"><div><p className="production-comment-author">{data.viewer?.name || 'Signed-in team member'}</p><ProductionCommentEditor key={commentEditorKey} initialValue={comment || undefined} cardId={id} client={text(card.client) || null} onChange={setComment} renderActions={(uploadButton, uploading) => <><div className="comment-tag-options">{suggestedDates.map(date => <details className="comment-date-prompt" key={date}><summary>{dateMeanings[date] === 'filming' ? 'Filming' : dateMeanings[date] === 'due' ? 'Due date' : dateMeanings[date] === 'reference' ? 'Reference' : 'Date found'} · {date}</summary><div role="group" aria-label={`Meaning of ${date}`} className="comment-date-popover"><strong>What does {date} mean?</strong><small>Dates without a year use the current year. Applied when you post.</small>{[['filming','Filming date'],['due','Due date'],['reference','Just a reference']].map(([value,label]) => <button type="button" key={value} disabled={commentSaving} aria-pressed={dateMeanings[date] === value} onClick={event => { setDateMeanings(current => ({ ...Object.fromEntries(Object.entries(current).filter(([key,meaning]) => key === date || value !== 'due' || meaning !== value)), [date]:value })); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{label}</button>)}</div></details>)}<details><summary>Add a card tag</summary><label>Needs attention<input value={tagText} maxLength={80} placeholder="Casting options provided" onChange={event => setTagText(event.target.value)} disabled={commentSaving} /></label><small>Saved with this comment. Clear it when addressed.</small></details></div><div className="production-comment-submit-actions">{uploadButton}<button type="button" onClick={addComment} disabled={commentSaving || uploading || !hasCommentContent(comment)}>{commentSaving ? 'Posting…' : 'Post comment'}</button></div></>} /></div></div></section>
     <div className="production-card-archive"><button type="button" onClick={() => { const next = { ...activeDraft, archived: !activeDraft.archived }; setDraft(next); void save(next); }} disabled={saving || deletingCard}>{activeDraft.archived ? 'Unarchive card' : 'Archive card'}</button><button type="button" className="production-card-delete" onClick={() => void deleteCard()} disabled={saving || deletingCard}>{deletingCard ? 'Deleting…' : 'Delete card'}</button></div>
   </article>;

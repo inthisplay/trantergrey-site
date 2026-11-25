@@ -154,7 +154,8 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
     setUploading(files.map((file) => file.name));
     try {
       for (const file of files) {
-        const response = await fetch(`/api/admin/production-board/${encodeURIComponent(cardId)}/attachments`, { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream', 'x-file-name': file.name, 'x-file-size': String(file.size) }, body: file });
+        const contentType = file.type || (file.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/octet-stream');
+        const response = await fetch(`/api/admin/production-board/${encodeURIComponent(cardId)}/attachments`, { method: 'POST', headers: { 'content-type': contentType, 'x-file-name': file.name, 'x-file-size': String(file.size) }, body: file });
         const payload = await response.json() as { attachment?: { sourceId: string; filename: string; contentType: string; byteSize: number }; error?: string };
         if (!response.ok || !payload.attachment) throw new Error(payload.error || `Unable to upload ${file.name}.`);
         Transforms.insertNodes(editor, { type: 'attachment', attachmentId: payload.attachment.sourceId, filename: payload.attachment.filename, contentType: payload.attachment.contentType, byteSize: payload.attachment.byteSize, children: [{ text: '' }] });
@@ -166,10 +167,10 @@ export function ProductionCommentEditor({ client, initialValue = emptyValue, onC
   const onDrop = (event: DragEvent<HTMLElement>) => { event.preventDefault(); setDragDepth(0); void uploadFiles(Array.from(event.dataTransfer.files)); };
   const ToolbarButton = ({ label, title, active, onMouseDown }: { label: ReactNode; title: string; active?: boolean; onMouseDown: () => void }) => <button type="button" title={title} aria-label={title} className={active ? 'is-active' : ''} onMouseDown={(event) => { event.preventDefault(); onMouseDown(); }}>{label}</button>;
 
-  const uploadButton = cardId ? <button type="button" className="production-comment-add-media" disabled={uploading.length > 0} onMouseDown={event => event.preventDefault()} onClick={() => mediaInput.current?.click()}>{uploading.length ? 'Uploading…' : 'Upload media'}</button> : null;
+  const uploadButton = cardId ? <button type="button" className="production-comment-add-media" disabled={uploading.length > 0} onMouseDown={event => event.preventDefault()} onClick={() => mediaInput.current?.click()}>{uploading.length ? 'Uploading…' : 'Upload file'}</button> : null;
 
   return <><section className={`production-comment-composer${dragDepth > 0 ? ' is-dropping' : ''}`} aria-label="Comment composer" onDragEnter={(event) => { event.preventDefault(); setDragDepth((depth) => depth + 1); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { event.preventDefault(); setDragDepth((depth) => Math.max(0, depth - 1)); }} onDrop={onDrop}>
-    {cardId && <input ref={mediaInput} type="file" hidden multiple accept="image/*,video/*" aria-label="Choose photos or videos for this comment" onChange={event => { const files = Array.from(event.target.files || []); if (files.length) void uploadFiles(files); }} />}
+    {cardId && <input ref={mediaInput} type="file" hidden multiple accept="image/*,video/*,audio/*,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="Choose an attachment for this comment" onChange={event => { const files = Array.from(event.target.files || []); if (files.length) void uploadFiles(files); }} />}
     {!renderActions && cardId && <div className="production-comment-media-bar">{uploadButton}</div>}
     <div className="production-comment-composer-bar"><div className="production-comment-tools" aria-label="Text formatting">
       <ToolbarButton label={<UiIcon name="bold" />} title="Bold" active={isMarkActive(editor, 'bold')} onMouseDown={() => toggleMark(editor, 'bold')} />
