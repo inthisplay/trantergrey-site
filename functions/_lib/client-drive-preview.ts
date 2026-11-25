@@ -8,7 +8,7 @@ export function drivePreviewInfo(file: DriveFile) {
  const exported = pdfExports.has(file.mimeType);
  const mimeType = exported ? 'application/pdf' : file.mimeType;
  const kind = mimeType === 'application/pdf' ? 'pdf' : images.has(mimeType) ? 'image' : videos.has(mimeType) ? 'video' : audio.has(mimeType) ? 'audio' : ['text/plain','text/csv','application/json'].includes(mimeType) && Number(file.size || 0) <= 2*1024*1024 ? 'text' : 'unsupported';
- return { kind, mimeType, name: exported ? `${file.name}.pdf` : file.name, exported, downloadable: file.capabilities?.canDownload !== false && (!file.mimeType.startsWith('application/vnd.google-apps.') || exported) };
+ return { canTrash: file.capabilities?.canTrash === true && !['application/vnd.google-apps.folder','application/vnd.google-apps.shortcut'].includes(file.mimeType), version: file.version, originalName: file.name, kind, mimeType, name: exported ? `${file.name}.pdf` : file.name, exported, downloadable: file.capabilities?.canDownload !== false && (!file.mimeType.startsWith('application/vnd.google-apps.') || exported) };
 }
 export async function drivePreviewResponse(request: Request, token: string, file: DriveFile) {
  const info = drivePreviewInfo(file);

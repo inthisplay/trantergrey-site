@@ -19,7 +19,7 @@ Enable the Drive API in that Google Cloud project and configure an internal OAut
 
 Every signed-in website admin can browse files accessible through this organization account. Opening a file in Google Drive still uses the viewer's own Google permissions. Disconnect removes the local application credential and pending authorizations, preserving files and folder links. It does not revoke the Google application grant, because revocation of this shared OAuth client can affect other granted scopes. To revoke that grant, use the account’s Google security settings.
 
-Select the exact existing primary client folder via Docs & files, review the breadcrumb path, and confirm the selection. Folder names are never used to match clients. Alternatively create a new folder explicitly. Primary folder setup creates or reuses its `Client HQ` child and stores both exact folder IDs. Multiple same-named Client HQ children require a person to resolve the ambiguity. Add additional folders manually with **Add another folder**; these are browsable but uploads always target the primary folder’s Client HQ child. Removing an additional link only changes D1, never Drive files. Browse subfolders and paginated results; thumbnails are proxied through authenticated endpoints. Uploads (up to 20 MB) use the stored `Client HQ` subfolder. Folder creation is guarded by short-lived database locks, and root/ancestor checks run before reads and writes. Larger uploads can be added directly in Drive. Existing files are never renamed/deleted by this integration. Shortcuts open in Drive rather than being followed by the server. The folder picker and upload features require a real configured credential to exercise against Google.
+Select the exact existing primary client folder via Docs & files, review the breadcrumb path, and confirm the selection. Folder names are never used to match clients. Alternatively create a new folder explicitly. Primary folder setup creates or reuses its `Client HQ` child and stores both exact folder IDs. Multiple same-named Client HQ children require a person to resolve the ambiguity. Add additional folders manually with **Add another folder**; these are browsable but uploads always target the primary folder’s Client HQ child. Removing an additional link only changes D1, never Drive files. Browse subfolders and paginated results; thumbnails are proxied through authenticated endpoints. Uploads (up to 20 MB) use the stored `Client HQ` subfolder. Folder creation is guarded by short-lived database locks, and root/ancestor checks run before reads and writes. Larger uploads can be added directly in Drive. Existing files are never renamed automatically. Individual files can be explicitly moved to Drive trash through the preview’s Delete file action; see below. Shortcuts open in Drive rather than being followed by the server. The folder picker and upload features require a real configured credential to exercise against Google.
 
 OAuth reference: https://developers.google.com/identity/protocols/oauth2/web-server. Shared-drive reference: https://developers.google.com/workspace/drive/api/guides/enable-shareddrives.
 
@@ -51,3 +51,38 @@ Migration `0049_client_logos.sql` adds the nullable logo reference to the existi
 Unbranded video links serve the current logo through `/api/watch/[slug]/logo`, scoped to the project’s assigned client and only when unbranded sharing is enabled. The private admin endpoint remains authenticated. Missing logos leave the video layout unchanged; branded watch pages and collections do not display client logos.
 
 For imported video pages without a project-level client, logo lookup falls back to saved asset metadata and the current library client assignment. All variants must resolve to the same client; mixed or unassigned groups do not guess a logo.
+
+
+## Delete docs and files
+
+Open a file preview and choose **Delete file**. The confirmation names the actual
+Drive file and explains that it is removed for everyone and recoverable from Drive
+trash for 30 days. This applies to stored files and native Google documents in
+primary or additional linked client folders, including Client HQ uploads. Folders
+and shortcuts are protected. The connected organization account must have
+`canTrash`; preview metadata controls the button and the server checks again.
+
+`POST /api/admin/client-hq-files` is session-only, same-origin JSON with
+`clientId`, `rootId`, `fileId`, `expectedVersion`, and a durable `requestId`.
+The shared command rechecks exact linked-root ancestry under the configured shared
+drive and rejects changed file versions. No permanent delete or empty-trash action
+is offered. Restore through Google Drive. The UI removes the file after confirmation
+from the server; errors leave it visible, and retry uses the same request ID.
+
+Migration **0056_client_drive_trash_requests.sql** belongs to TG_DATA. The request
+ledger and initial activity entry commit atomically before contacting Drive; the
+completion state and activity update commit atomically afterward. Google Drive and
+D1 cannot share a transaction. A pending request survives lost responses and can
+reconcile an already-trashed file. Completed retries never reapply the Drive write,
+even if the file was later restored. A changed version on a pending request requires
+a fresh preview/confirmation. Pending history means requested, not confirmed.
+The ledger is retained without automatic expiry; request IDs are scoped to the
+verified session email. No live files are used for deletion tests.
+
+Drive file administration intentionally remains website/PWA-only, like the existing
+Drive upload/folder controls. Existing scoped API and personal MCP grants do not
+authorize destruction of files through the organization's Drive credential. No
+scope is broadened. The remaining integration gap is file listing/trashing; adding
+it requires a separately consented Drive capability and appropriate read tools.
+The endpoint uses shared rate limiting and privacy-safe Connection health monitoring.
+Only Pages needs deployment; no MCP tool or Worker change is required.

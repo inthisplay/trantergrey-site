@@ -355,3 +355,17 @@ and the Done column suppress chips. Move responses are partial card summaries, s
 clients retain omitted signal fields when merging them. No new writes or migrations.
 The shared search adapter exposes these fields through MCP `search_deck_cards` too;
 release both Pages and the MCP Worker for parity. Tool names/scopes are unchanged.
+
+
+## Client HQ Drive trash boundary
+
+Client HQ now offers confirmed, recoverable Drive file deletion through the
+session-only `POST /api/admin/client-hq-files`. This is deliberately outside scoped
+API/MCP grants: the organization-wide Drive connection and shared file deletion
+require separate consent before exposing them to integrations. Existing
+`clients:write` and `tg:personal` grants remain unchanged. The website and PWA share
+the command and UI; folders/shortcuts cannot be trashed. No tool is added. File
+listing/trashing remains an integration gap. See [Client HQ](client-hq.md#delete-docs-and-files)
+for retry/audit behavior, version checks, permissions and migration 0056. Shared
+rate limiting and Connection health cover the session endpoint; monitoring contains
+only operation/status metadata. Deploy Pages after the targeted TG_DATA migration.

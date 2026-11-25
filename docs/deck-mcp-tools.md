@@ -223,3 +223,17 @@ dismissal time, unresolved question summary, recent Mux/gallery timestamps and
 completion time. Deleted updates are excluded. These are current card summaries,
 not event-history reports. No tool/schema/scope changes or reconnection are needed.
 Deploy Pages and the MCP Worker to expose the same fields on both surfaces.
+
+
+## Client HQ Drive trash boundary
+
+Client HQ now offers confirmed, recoverable Drive file deletion through the
+session-only `POST /api/admin/client-hq-files`. This is deliberately outside scoped
+API/MCP grants: the organization-wide Drive connection and shared file deletion
+require separate consent before exposing them to integrations. Existing
+`clients:write` and `tg:personal` grants remain unchanged. The website and PWA share
+the command and UI; folders/shortcuts cannot be trashed. No tool is added. File
+listing/trashing remains an integration gap. See [Client HQ](client-hq.md#delete-docs-and-files)
+for retry/audit behavior, version checks, permissions and migration 0056. Shared
+rate limiting and Connection health cover the session endpoint; monitoring contains
+only operation/status metadata. Deploy Pages after the targeted TG_DATA migration.

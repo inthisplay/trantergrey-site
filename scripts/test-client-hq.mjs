@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 const dir=await mkdtemp(join(tmpdir(),'tg-client-hq-'));
 const handlers={};
-for(const [name,path] of Object.entries({unbranded:'functions/_lib/unbranded-page.ts',publicLogo:'functions/api/watch/[slug]/logo.ts',publicWatch:'functions/_lib/mux-public.ts',logo:'functions/api/admin/client-logo.ts',preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
+for(const [name,path] of Object.entries({trash:'functions/api/admin/client-hq-files.ts',unbranded:'functions/_lib/unbranded-page.ts',publicLogo:'functions/api/watch/[slug]/logo.ts',publicWatch:'functions/_lib/mux-public.ts',logo:'functions/api/admin/client-logo.ts',preferences:'functions/api/admin/client-preferences.ts',preferenceSort:'lib/client-preferences.ts',internalHQ:'functions/api/internal/v1/client-hq.ts',history:'functions/api/admin/production-board/history.ts',pins:'functions/api/admin/client-drive-pins.ts',hq:'functions/api/admin/client-hq.ts',clients:'functions/api/admin/clients.ts',browse:'functions/_lib/mux-library.ts',drive:'functions/api/admin/client-hq-drive.ts',driveLib:'functions/_lib/client-drive.ts',todo:'lib/client-todo.ts',oauth:'functions/_lib/client-drive-oauth.ts',connection:'functions/api/admin/client-drive-connection.ts'})){
   await build({entryPoints:[path],bundle:true,platform:'node',format:'esm',outfile:join(dir,name+'.mjs')});handlers[name]=await import(pathToFileURL(join(dir,name+'.mjs')));
 }
 after(()=>rm(dir,{recursive:true,force:true}));
@@ -25,6 +25,7 @@ test('Drive thumbnails use edge-compatible redirects and reject unsafe destinati
   }finally{globalThis.fetch=original;}
 });
 const itemRequestMigration=await readFile('migrations/0053_mcp_item_requests.sql','utf8');
+const trashMigration=await readFile('migrations/0056_client_drive_trash_requests.sql','utf8');
 const logoMigration=await readFile('migrations/0049_client_logos.sql','utf8');
 const migration=await readFile('migrations/0026_client_hq.sql','utf8');
 const richNoteMigration=(await readFile('migrations/0028_client_note_rich_text.sql','utf8'))+(await readFile('migrations/0029_client_note_editor_json.sql','utf8'))+(await readFile('migrations/0030_client_todo_completed_at.sql','utf8'))+(await readFile('migrations/0031_client_drive_connection.sql','utf8'))+(await readFile('migrations/0032_client_drive_extra_folders.sql','utf8'))+(await readFile('migrations/0033_client_drive_pins.sql','utf8'))+(await readFile('migrations/0034_client_activity.sql','utf8'));
@@ -193,7 +194,7 @@ function fixture(){
     CREATE TABLE mux_video_projects(id TEXT,value TEXT);
     CREATE TABLE mux_library_browse_state(id TEXT,refreshed_at TEXT,refresh_id TEXT);
     CREATE TABLE mux_library_browse_assets(asset_id TEXT,client TEXT,refresh_id TEXT);
-  `);db.exec(migration);db.exec(richNoteMigration);db.exec(itemRequestMigration);db.exec(logoMigration);
+  `);db.exec(migration);db.exec(richNoteMigration);db.exec(itemRequestMigration);db.exec(logoMigration);db.exec(trashMigration);
   const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let values=[];const s={bind(...args){values=args;return s;},async first(){return db.prepare(sql).get(...values)??null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){const r=db.prepare(sql).run(...values);return {meta:{changes:r.changes}};}};return s;},async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
   const request=(path='',body,auth=true)=>new Request('https://local.test/api/admin/'+path,{method:body?'POST':'GET',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(body?{'Content-Type':'application/json',Origin:'https://local.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   // Model the current UI contract: creation IDs persist for a retry; edits carry
@@ -563,4 +564,69 @@ test('standalone videos can enable unbranded sharing and reuse the page when tog
     assert.equal(db.prepare('SELECT COUNT(*) n FROM mux_video_projects').get().n,1);
     await assert.rejects(()=>handlers.unbranded.setAssetUnbrandedPage(env,{...asset,id:'private',playbackPolicy:'signed'},true),/public Mux playback/);
   }finally{db.close();}
+});
+
+test('Client HQ file trash checks sessions, origin, exact ancestry, permissions and durable retries',async()=>{
+ const {db,env,request}=fixture(), original=globalThis.fetch;
+ Object.assign(env,{GOOGLE_DRIVE_ENCRYPTION_KEY:'12'.repeat(32),GOOGLE_DRIVE_ID:'root'});
+ const clientId=db.prepare('SELECT id FROM client_directory').get().id;
+ db.prepare("UPDATE client_directory SET drive_folder_id='client-folder' WHERE id=?").run(clientId);
+ const cipher=await handlers.oauth.encryptDriveSecret(env,'fixture-refresh');
+ db.prepare("INSERT INTO client_drive_connection VALUES('organization',?,?,?,?,0)").run(cipher,'owner@trantergrey.com','root','now');
+ const folderType='application/vnd.google-apps.folder';
+ const records=new Map([
+  ['root',{id:'root',name:'Shared',mimeType:folderType}],
+  ['client-folder',{id:'client-folder',name:'Client',mimeType:folderType,parents:['root']}],
+  ['other-folder',{id:'other-folder',name:'Other',mimeType:folderType,parents:['root']}],
+  ['file',{id:'file',name:'Script.docx',mimeType:'application/octet-stream',parents:['client-folder'],version:'1',capabilities:{canTrash:true}}],
+ ]);
+ let writes=0,loseResponse=false,failWrite=false;
+ globalThis.fetch=async(url,init={})=>{
+  const u=new URL(url);
+  if(u.pathname==='/token')return Response.json({access_token:'fixture-access'});
+  const file=records.get(u.pathname.split('/').at(-1));
+  if(!file)return new Response('',{status:404});
+  if(init.method==='PATCH'){
+   writes++;assert.equal(u.searchParams.get('supportsAllDrives'),'true');assert.deepEqual(JSON.parse(init.body),{trashed:true});
+   if(failWrite)return new Response('',{status:403});
+   file.trashed=true;file.version=String(Number(file.version)+1);
+   if(loseResponse){loseResponse=false;throw new Error('lost-response-with-private-data');}
+  }
+  return Response.json(file);
+ };
+ const input={clientId,rootId:'client-folder',fileId:'file',expectedVersion:'1',requestId:crypto.randomUUID()};
+ const api=(body=input,auth=true)=>handlers.trash.onRequest({env,request:request('client-hq-files',body,auth)});
+ try{
+  assert.equal((await api(input,false)).status,401);
+  const hostile=request('client-hq-files',input);hostile.headers.set('Origin','https://evil.test');
+  assert.equal((await handlers.trash.onRequest({env,request:hostile})).status,403);
+  assert.equal((await api({...input,rootId:'other-folder'})).status,403);
+  records.get('file').parents=['other-folder'];assert.equal((await api()).status,503);
+  records.get('file').parents=['client-folder'];
+  assert.equal((await api({...input,fileId:'client-folder'})).status,400);
+  assert.equal((await api({...input,expectedVersion:'old'})).status,409);
+  records.get('file').capabilities.canTrash=false;assert.equal((await api()).status,403);
+  records.get('file').capabilities.canTrash=true;
+  assert.equal(writes,0);
+  loseResponse=true;
+  const lost=await api();assert.equal(lost.status,503);assert.ok(!(await lost.text()).includes('private-data'));
+  assert.equal(db.prepare('SELECT state FROM client_drive_trash_requests').get().state,'pending');
+  assert.equal((await api()).status,200);assert.equal(writes,1);
+  assert.equal(db.prepare('SELECT action FROM client_activity').get().action,'drive_trashed');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_activity').get().n,1);
+  records.get('file').trashed=false;records.get('file').version='3';
+  assert.equal((await api()).status,200);assert.equal(writes,1,'Completed retry cannot trash a restored file');
+  assert.equal((await api({...input,fileId:'another'})).status,409);
+  const next={...input,requestId:crypto.randomUUID(),expectedVersion:'3'};
+  failWrite=true;assert.equal((await api(next)).status,503);assert.equal(records.get('file').trashed,false);
+  failWrite=false;records.get('file').version='4';assert.equal((await api(next)).status,409);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM client_drive_locks').get().n,0);
+  records.get('file').mimeType='application/vnd.google-apps.shortcut';
+  assert.equal((await api({...input,requestId:crypto.randomUUID(),expectedVersion:'4'})).status,400);
+  records.get('file').mimeType='application/vnd.google-apps.document';
+  db.prepare('INSERT INTO client_drive_extra_folders(client_id,folder_id,name) VALUES(?,?,?)').run(clientId,'other-folder','Extra');
+  records.get('file').parents=['other-folder'];
+  assert.equal((await api({...input,requestId:crypto.randomUUID(),rootId:'other-folder',expectedVersion:'4'})).status,200);
+  assert.equal(records.get('file').trashed,true,'Native Google docs in explicitly linked extra folders can be trashed');
+ }finally{globalThis.fetch=original;db.close();}
 });

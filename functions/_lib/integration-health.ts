@@ -23,7 +23,7 @@ export function operationLabel(path: string) {
   if (path === '/api/internal/v1/videos/workspace') return 'videos/workspace';
   if (/^\/api\/internal\/v1\/videos\/[^/]+$/.test(path)) return 'videos/detail';
   for (const name of ['notifications','cards','videos','boards/production','client-hq']) if (path === '/api/internal/v1/' + name) return name;
-  for (const name of ['inbox','client-hq','mcp-connections','integration-health']) if (path === '/api/admin/' + name) return name;
+  for (const name of ['inbox','client-hq','client-hq-files','mcp-connections','integration-health']) if (path === '/api/admin/' + name) return name;
   for (const name of ['register','authorize','token','revoke','mcp']) if (path === '/' + name) return name;
   return 'other';
 }
