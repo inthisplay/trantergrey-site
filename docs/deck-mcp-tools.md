@@ -214,3 +214,12 @@ check comments before retrying uncertain writes. Prefer `link_video_to_card`
 for an explicit asset attachment with durable retry protection. Existing MCP
 arguments and OAuth grants remain unchanged; refresh tool metadata for updated
 guidance. Both Pages and MCP deployments are required.
+
+## Deck update chip data
+
+`search_deck_cards` inherits the additive signal fields documented in
+[the internal API](internal-api.md#pwa-deck-update-chips): attention, filming dates,
+dismissal time, unresolved question summary, recent Mux/gallery timestamps and
+completion time. Deleted updates are excluded. These are current card summaries,
+not event-history reports. No tool/schema/scope changes or reconnection are needed.
+Deploy Pages and the MCP Worker to expose the same fields on both surfaces.

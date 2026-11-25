@@ -33,3 +33,11 @@ New or edited local comments with a visible question mark are flagged at save ti
 The most recent unaddressed, non-deleted question produces “Greyson asked a question” using the author's first name, and opens that exact comment. It ranks below imminent filming and explicit attention messages, but above other filming dates and recent additions. It does not expire. Any signed-in team member can mark a question addressed or reopen it on the comment. Resolving the latest question reveals any older outstanding question. Opening the card, posting a reply, and clearing recent additions do not resolve questions. Editing away the question or deleting the comment removes it from eligibility. Editing an already addressed question does not automatically reopen it.
 
 Migration 0051 adds two small comment fields and a partial index; apply it with 0050 before deploying the Deck release. Detection runs during the existing comment write; the existing board request returns an indexed question summary, with no new per-card HTTP requests, polling, or external AI calls. Validation: `node --test scripts/test-comment-questions.mjs scripts/test-card-signals.mjs`.
+
+## PWA board
+
+The PWA Deck uses the same `cardSignal` priority/expiry rules and chip styles as
+its desktop counterpart. Tapping a tagged card opens its relevant comment or
+gallery. Existing paginated card reads supply the signal fields; there are no
+extra per-card requests. Dragging preserves the signal data, and Done, archived,
+and completed cards suppress chips.

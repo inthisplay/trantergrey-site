@@ -13,22 +13,25 @@ import { columnColorStyle } from '@/lib/deck-colors';
 import type { CSSProperties } from 'react';
 import { useDeckReturnAnimation } from './useDeckReturnAnimation';
 import { TeamAppCard } from './TeamAppCard';
+import { cardSignal, type CardSignalFields } from '@/lib/card-signal';
+import { filmingDates } from '@/lib/filming-dates';
 
 type Column = { id: string; name: string; cardCount: number; color?: string | null };
-type Card = { id: string; title: string; client: string; columnSourceId: string; dueOn: string | null };
+type Card = CardSignalFields & { id: string; title: string; client: string; columnSourceId: string; dueOn: string | null };
 type ColumnCards = { items: Card[]; nextCursor: string | null; loading?: boolean };
 type DropTargetData = { columnSourceId?: string };
 
-function DraggableDeckCard({ card }: { card: Card }) {
+function DraggableDeckCard({ card, done }: { card: Card; done: boolean }) {
+  const signal = cardSignal(done ? { ...card, completedAt: card.completedAt || 'done' } : card);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: card.id, data: { columnSourceId: card.columnSourceId, type: 'card' } });
-  return <article ref={setNodeRef} className={`${styles.card} ${deck.card}${isDragging ? ` ${deck.dragging}` : ''}`} style={{ transform: CSS.Translate.toString(transform) }}><a href={`/app/deck?card=${encodeURIComponent(card.id)}`}><b>{card.title}</b><small>{card.client || 'Internal'}{card.dueOn ? ` · Due ${card.dueOn}` : ''}</small></a><button className={deck.grabber} type="button" aria-label={`Drag ${card.title}`} {...attributes} {...listeners}><i /><i /><i /></button></article>;
+  return <article ref={setNodeRef} className={`${styles.card} ${deck.card}${isDragging ? ` ${deck.dragging}` : ''}`} style={{ transform: CSS.Translate.toString(transform) }}><a href={`/app/deck?card=${encodeURIComponent(card.id)}${signal ? `&focus=${encodeURIComponent(signal.target)}` : ''}`}><b>{card.title}</b><small>{card.client || 'Internal'}{card.dueOn ? ` · Due ${card.dueOn}` : ''}</small>{signal && <span className={`production-card-signal is-${signal.kind}`} title={signal.kind === 'date' ? `Filming dates: ${filmingDates(card.filmingOn).join(', ')}` : signal.label}>{signal.label}</span>}</a><button className={deck.grabber} type="button" aria-label={`Drag ${card.title}`} {...attributes} {...listeners}><i /><i /><i /></button></article>;
 }
 
 function DeckColumn({ column, cards, isOpen, isDropTarget, activeDragColumnId, onToggle, onLoadMore, onChangeColor }: { column: Column; cards: ColumnCards | undefined; isOpen: boolean; isDropTarget: boolean; activeDragColumnId: string; onToggle: (open: boolean) => void; onLoadMore: () => void; onChangeColor: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { measureDroppableContainers } = useDndContext();
   const { isOver, setNodeRef } = useDroppable({ id: column.id, data: { columnSourceId: column.id, type: 'column' } });
-  return <details ref={setNodeRef} onAnimationEnd={() => measureDroppableContainers([])} data-column-color={column.color || undefined} data-drag-source={activeDragColumnId === column.id || undefined} style={columnColorStyle(column.color) as CSSProperties} className={`${styles.column} ${mobile.lane} ${deck.column}${isOver || isDropTarget ? ` ${deck.dropTarget}` : ''}`} open={isOpen} onToggle={(event) => onToggle((event.currentTarget as HTMLDetailsElement).open)}><summary><h2>{column.name}<small>{column.cardCount}</small></h2><div className="deck-pwa-column-menu"><button type="button" aria-label={`Column options for ${column.name}`} aria-expanded={menuOpen} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setMenuOpen((open) => !open); }}><UiIcon name="more" /></button>{menuOpen && <div role="menu"><button type="button" role="menuitem" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setMenuOpen(false); onChangeColor(); }}>Change color</button></div>}</div></summary><div className={deck.cardList}><SortableContext items={cards?.items.map(card => card.id) || []} strategy={verticalListSortingStrategy}>{cards?.items.map((card) => <DraggableDeckCard card={card} key={card.id} />)}</SortableContext>{cards?.loading && <p className={styles.empty}>Loading cards…</p>}{cards && cards.nextCursor && !cards.loading && <button type="button" onClick={onLoadMore}>Load more</button>}</div></details>;
+  return <details ref={setNodeRef} onAnimationEnd={() => measureDroppableContainers([])} data-column-color={column.color || undefined} data-drag-source={activeDragColumnId === column.id || undefined} style={columnColorStyle(column.color) as CSSProperties} className={`${styles.column} ${mobile.lane} ${deck.column}${isOver || isDropTarget ? ` ${deck.dropTarget}` : ''}`} open={isOpen} onToggle={(event) => onToggle((event.currentTarget as HTMLDetailsElement).open)}><summary><h2>{column.name}<small>{column.cardCount}</small></h2><div className="deck-pwa-column-menu"><button type="button" aria-label={`Column options for ${column.name}`} aria-expanded={menuOpen} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setMenuOpen((open) => !open); }}><UiIcon name="more" /></button>{menuOpen && <div role="menu"><button type="button" role="menuitem" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setMenuOpen(false); onChangeColor(); }}>Change color</button></div>}</div></summary><div className={deck.cardList}><SortableContext items={cards?.items.map(card => card.id) || []} strategy={verticalListSortingStrategy}>{cards?.items.map((card) => <DraggableDeckCard card={card} done={column.name.toLowerCase() === 'done'} key={card.id} />)}</SortableContext>{cards?.loading && <p className={styles.empty}>Loading cards…</p>}{cards && cards.nextCursor && !cards.loading && <button type="button" onClick={onLoadMore}>Load more</button>}</div></details>;
 }
 
 export function TeamAppKanban() {
@@ -37,6 +40,7 @@ export function TeamAppKanban() {
   const [columns, setColumns] = useState<Column[] | null>(null); const [cardsByColumn, setCardsByColumn] = useState<Record<string, ColumnCards>>({}); const [openColumns, setOpenColumns] = useState<Record<string, boolean>>({}); const [error, setError] = useState(''); const [cardId, setCardId] = useState(''); const [activeDragId, setActiveDragId] = useState(''); const [dropColumnId, setDropColumnId] = useState('');
   const cardsByColumnRef = useRef<Record<string, ColumnCards>>({});
   useEffect(() => { cardsByColumnRef.current = cardsByColumn; }, [cardsByColumn]);
+  const [focusTarget, setFocusTarget] = useState('');
   const [compactTouch, setCompactTouch] = useState(false);
   useEffect(() => { const query = matchMedia('(max-width: 980px) and (pointer: coarse)'); const update = () => setCompactTouch(query.matches); update(); query.addEventListener('change', update); return () => query.removeEventListener('change', update); }, []);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 7 } }));
@@ -56,9 +60,9 @@ export function TeamAppKanban() {
     const response = await fetch('/api/internal/v1/boards/production', { cache: 'no-store' }); if (response.status === 401) { location.assign(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`); return; }
     const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Unable to load The Deck.'); const nextColumns = payload.data.columns as Column[]; setColumns(nextColumns); await Promise.all(nextColumns.filter((column) => ['in progress', 'edit'].includes(column.name.toLowerCase())).map((column) => loadColumn(column.id)));
   }, [loadColumn]);
-  useEffect(() => { setCardId(new URLSearchParams(location.search).get('card') || ''); }, []);
+  useEffect(() => { const params = new URLSearchParams(location.search); setCardId(params.get('card') || ''); setFocusTarget(params.get('focus') || ''); }, []);
   useEffect(() => { void loadBoard().catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to load The Deck.')); }, [loadBoard]);
-  if (cardId) return <TeamAppCard id={cardId} />;
+  if (cardId) return <TeamAppCard id={cardId} focusTarget={focusTarget} />;
   const cards = Object.values(cardsByColumn).flatMap((bucket) => bucket.items);
   const moveCard = async (event: DragEndEvent) => {
     const columnSourceId = (event.over?.data.current as DropTargetData | undefined)?.columnSourceId; const card = cards.find((item) => item.id === String(event.active.id)); if (!card || !columnSourceId || event.over?.id === event.active.id) return;
@@ -67,7 +71,7 @@ export function TeamAppKanban() {
     const sourceIndex = cardsByColumn[card.columnSourceId]?.items.findIndex(item => item.id === card.id) ?? -1;
     const originalOverIndex = cardsByColumn[columnSourceId]?.items.findIndex(item => item.id === event.over?.id) ?? -1;
     const beforeCardId = overIndex < 0 ? undefined : card.columnSourceId === columnSourceId && sourceIndex < originalOverIndex ? destination[overIndex + 1]?.id : destination[overIndex].id;
-    setError(''); try { const response = await fetch(`/api/internal/v1/cards/${encodeURIComponent(card.id)}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ columnSourceId, beforeCardId }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Unable to move this card.'); const moved = (payload.data?.card || { ...card, columnSourceId }) as Card;
+    setError(''); try { const response = await fetch(`/api/internal/v1/cards/${encodeURIComponent(card.id)}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ columnSourceId, beforeCardId }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Unable to move this card.'); const moved = ({ ...card, ...payload.data?.card, columnSourceId }) as Card;
       setCardsByColumn((current) => { const next = { ...current }; if (next[card.columnSourceId]) next[card.columnSourceId] = { ...next[card.columnSourceId], items: next[card.columnSourceId].items.filter((item) => item.id !== card.id) }; if (next[columnSourceId]) next[columnSourceId] = { ...next[columnSourceId], items: (() => { const items = next[columnSourceId].items.filter(item => item.id !== card.id); const index = beforeCardId ? items.findIndex(item => item.id === beforeCardId) : -1; items.splice(index < 0 ? items.length : index, 0, moved); return items; })() }; return next; }); if (payload.data?.counts) setColumns((current) => current?.map((column) => ({ ...column, cardCount: payload.data.counts[column.id] ?? column.cardCount })) || null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to move this card.'); }
   };

@@ -23,7 +23,7 @@ const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'fu
 const { onRequestPost: linkVideoApi } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/videos.mjs')));
 const { videoCommentBody } = await import(pathToFileURL(join(temp, 'functions/_lib/video-comment-body.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
-const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
+const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0050_production_card_signals', '0035_card_media_gallery', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8') + await readFile('workers/deck-mcp/events-schema.sql','utf8');
 const {enqueueMuxReady,deliverEvents}=await import(pathToFileURL(join(temp,'functions/_lib/mcp-events.mjs')));
 const {onRequestPost:muxWebhook}=await import(pathToFileURL(join(temp,'functions/api/webhooks/mux.mjs')));
@@ -869,4 +869,33 @@ test('real Workers runtime sends signed callbacks and returns redirects without 
  ]}));t.after(()=>mf.dispose());
  const ok=await mf.dispatchFetch('http://test/ok');assert.equal(ok.status,200);assert.deepEqual(await ok.json(),{challenge:'/ok',signed:true});
  const redirect=await mf.dispatchFetch('http://test/redirect',{redirect:'manual'});assert.equal(redirect.status,302);
+});
+
+test('card search exposes paginated chip data and excludes deleted updates', async t => {
+  const f = fixture(t), call = await connected(f, t);
+  const ids = [];
+  for (const title of ['Chip card', 'Other card']) {
+    const result = await call('create_deck_card', { title, columnSourceId: 'ideas', requestId: crypto.randomUUID() });
+    ids.push(result.structuredContent.id);
+  }
+  const source = f.db.prepare('SELECT source_id FROM production_cards WHERE id=?').get(ids[0]).source_id;
+  f.db.prepare('INSERT INTO production_card_signals VALUES(?,?,?,?)').run(source, 'Review script', '2026-11-27', '2026-11-20');
+  const insert = f.db.prepare('INSERT INTO production_local_comments(id,card_source_id,body_html,author_name,created_at,is_question,deleted_at) VALUES(?,?,?,?,?,?,?)');
+  insert.run('question',source,'<p>Ready?</p>','Taylor Jackson','2026-11-24',1,null);
+  insert.run('mux',source,'<div class="production-comment-mux-asset"></div>','Taylor','2026-11-23',0,null);
+  insert.run('deleted',source,'<div class="production-comment-mux-asset">Ready?</div>','Other','2026-11-25',1,'2026-11-25');
+  const result = await call('search_deck_cards', { columnId: 'ideas', limit: 1 });
+  assert.equal(result.isError, undefined);
+  assert.equal(result.structuredContent.data.length, 1);
+  assert.ok(result.structuredContent.meta.nextCursor);
+  const page2 = await call('search_deck_cards', { columnId: 'ideas', limit: 1, cursor: result.structuredContent.meta.nextCursor });
+  const rows = [...result.structuredContent.data, ...page2.structuredContent.data];
+  const card = rows.find(row => row.id === ids[0]);
+  assert.equal(card.attention, 'Review script');
+  assert.equal(card.filmingOn, '2026-11-27');
+  assert.equal(card.dismissedAt, '2026-11-20');
+  assert.deepEqual(JSON.parse(card.openQuestion), { id: 'question', author: 'Taylor Jackson' });
+  assert.equal(card.muxAddedAt, '2026-11-23');
+  assert.equal(card.galleryAddedAt, null);
+  assert.equal(rows.find(row => row.id === ids[1]).attention, null);
 });

@@ -342,3 +342,16 @@ check comments before retrying uncertain writes. Prefer `link_video_to_card`
 for an explicit asset attachment with durable retry protection. Existing MCP
 arguments and OAuth grants remain unchanged; refresh tool metadata for updated
 guidance. Both Pages and MCP deployments are required.
+
+## PWA Deck update chips
+
+`GET /cards` now includes additive nullable `completedAt`, `attention`, `filmingOn`,
+`dismissedAt`, `openQuestion`, `muxAddedAt`, and `galleryAddedAt` fields. `openQuestion`
+is a JSON string containing the newest unresolved local question's `id` and `author`.
+Deleted comments/gallery items are excluded. Pagination, deleted-card filtering,
+and `cards:read` authorization are unchanged. The PWA uses the desktop signal rules
+and styles, with links to the relevant comment or gallery; archived/completed cards
+and the Done column suppress chips. Move responses are partial card summaries, so
+clients retain omitted signal fields when merging them. No new writes or migrations.
+The shared search adapter exposes these fields through MCP `search_deck_cards` too;
+release both Pages and the MCP Worker for parity. Tool names/scopes are unchanged.
