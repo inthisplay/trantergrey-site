@@ -1,3 +1,4 @@
+import { storePrivateUpload, UploadError } from '../../../../_lib/private-upload';
 import { prepareMediaPreviews } from '../../../../_lib/media-previews';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../../_lib/admin';
 
@@ -25,13 +26,11 @@ export async function onRequest({ request, env, params }: Context): Promise<Resp
     if (!Number.isInteger(size) || size < 1 || size > limit) return fail('Files must be between 1 byte and 90 MB.', 413);
     let filename: string;
     try { filename = decodeURIComponent(request.headers.get('x-file-name') || 'Media').replace(/[\\/\0]/g, '-').slice(0, 180); } catch { return fail('Invalid filename.'); }
-    const reader = request.body?.getReader(); if (!reader) return fail('Choose a file.');
-    const buffer = new Uint8Array(size); let bytes = 0;
-    while (true) { const chunk = await reader.read(); if (chunk.done) break; bytes += chunk.value.byteLength; if (bytes > limit || bytes > size) { await reader.cancel(); return fail('File exceeds the declared upload size.', 413); } buffer.set(chunk.value, bytes - chunk.value.byteLength); }
-    if (bytes !== size) return fail('Upload was incomplete. Please retry.');
+    if (!request.body) return fail('Choose a file.');
     const id = crypto.randomUUID(); const key = `gallery/${card.source_id}/${id}`;
-    await env.PRODUCTION_ARCHIVE.put(key, buffer, { httpMetadata: { contentType } });
-    await env.TG_DATA.prepare(`INSERT INTO production_gallery (id,card_source_id,filename,content_type,byte_size,r2_key,title,uploaded_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(id, card.source_id, filename, contentType, bytes, key, filename.replace(/\.[^.]+$/, '') || filename, session.email || session.name, now, now).run();
+    try { await storePrivateUpload(env, request, key, size, contentType); }
+    catch (error) { return fail(error instanceof UploadError ? error.message : 'Upload failed.', error instanceof UploadError ? error.status : 503); }
+    await env.TG_DATA.prepare(`INSERT INTO production_gallery (id,card_source_id,filename,content_type,byte_size,r2_key,title,uploaded_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(id, card.source_id, filename, contentType, size, key, filename.replace(/\.[^.]+$/, '') || filename, session.email || session.name, now, now).run();
     await prepareMediaPreviews(env, key, contentType);
     return Response.json({ id }, { status: 201 });
   }

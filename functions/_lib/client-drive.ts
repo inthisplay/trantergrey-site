@@ -1,21 +1,10 @@
 import type { AdminEnvironment } from './admin';
-import { connectionStatus,decryptDriveSecret,sharedDriveId } from './client-drive-oauth';
+import { connectionStatus,sharedDriveId } from './client-drive-oauth';
 export const folderType = 'application/vnd.google-apps.folder';
 export type DriveFile = { id:string; name:string; mimeType:string; parents?:string[]; driveId?:string; trashed?:boolean; version?:string; thumbnailLink?:string; webViewLink?:string; size?:string; capabilities?:{canDownload?:boolean; canTrash?:boolean} };
 export const driveId = sharedDriveId;
 export const driveConfigured = async(env:AdminEnvironment) => (await connectionStatus(env)).connected;
-export async function driveToken(env:AdminEnvironment) {
-  if(!await driveConfigured(env)) throw new Error('Connect or reconnect Google Drive to browse this client’s files.');
-  const stored=await env.TG_DATA.prepare("SELECT refresh_cipher FROM client_drive_connection WHERE id='organization'").first<{refresh_cipher:string}>();
-  if(!stored)throw new Error('Connect Google Drive first.');
-  let refresh:string;
-  try{refresh=await decryptDriveSecret(env,stored.refresh_cipher);}catch{throw new Error('The Google Drive credential could not be unlocked. Reconnect Google Drive.');}
-  const response = await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID!,client_secret:env.GOOGLE_CLIENT_SECRET!,refresh_token:refresh,grant_type:'refresh_token'})});
-  const data = await response.json() as {access_token?:string;error?:string};
-  if(data.error==='invalid_grant')await env.TG_DATA.prepare("UPDATE client_drive_connection SET needs_reconnect=1 WHERE id='organization' AND refresh_cipher=?").bind(stored.refresh_cipher).run();
-  if(!response.ok || !data.access_token) throw new Error('The Google Drive connection needs to be authorized again.');
-  return data.access_token;
-}
+export { cachedDriveToken as driveToken } from './drive-token-cache';
 export async function driveRequest<T>(token:string, path:string, init:RequestInit={}) : Promise<T> {
   const send=()=>fetch(`https://www.googleapis.com/drive/v3/${path}`,{...init,headers:{...init.headers,Authorization:`Bearer ${token}`}});
   let response:Response;

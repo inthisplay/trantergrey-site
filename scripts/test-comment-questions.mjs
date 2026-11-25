@@ -33,8 +33,10 @@ test('posting, resolving, reopening, editing and deleting a question updates boa
  CREATE TABLE production_card_overrides(card_source_id TEXT,deleted_at TEXT);
  CREATE TABLE production_local_comments(id TEXT,card_source_id TEXT,body_html TEXT,body_json TEXT,author_name TEXT,author_email TEXT,created_at TEXT,deleted_at TEXT,deleted_by_name TEXT);`);
  db.exec(await readFile('migrations/0051_comment_questions.sql','utf8'));
+ db.exec(await readFile('migrations/0059_comment_retries.sql','utf8'));
  const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let args=[];return {bind(...v){args=v;return this;},async first(){return db.prepare(sql).get(...args)||null;},async run(){return db.prepare(sql).run(...args);}};}}};
- const req=(fn,body,id='card',auth=true,origin)=>fn({env,params:{id},request:new Request('http://localhost/api/comments',{method:'POST',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(origin?{origin}:{})},body:JSON.stringify(body)})});
+ env.TG_DATA.batch=async statements=>{db.exec('BEGIN');try{for(const statement of statements)await statement.run();db.exec('COMMIT')}catch(error){db.exec('ROLLBACK');throw error;}};
+ const req=(fn,body,id='card',auth=true,origin)=>fn({env,params:{id},request:new Request('http://localhost/api/comments',{method:'POST',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(origin?{origin}:{})},body:JSON.stringify({requestId:crypto.randomUUID(),...body})})});
  const content=text=>[{type:'paragraph',children:[{text}]}];
  const open=()=>db.prepare('SELECT id FROM production_local_comments WHERE is_question=1 AND question_resolved_at IS NULL AND deleted_at IS NULL').all();
  try {

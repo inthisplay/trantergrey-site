@@ -16,6 +16,8 @@ import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, K
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useRetryId } from './useRetryId';
+import { useLiveRefresh } from './useLiveRefresh';
 import { ProductionCard } from './ProductionCard';
 import { ClientPicker } from './ClientPicker';
 import { TeamMemberPicker } from './TeamMemberPicker';
@@ -23,7 +25,7 @@ import { TeamMemberPicker } from './TeamMemberPicker';
 type Card = CardSignalFields & { id: string; title: string; client?: string; columnSourceId: string; position: number | null; archived: number; createdAt?: string; updatedAt?: string; dueOn?: string; completedAt?: string; commentsCount?: number };
 type Column = { sourceId: string; name: string; cardsCount: number; color?: string | null };
 type BoardData = { columns: Column[]; cards: Card[]; clients: string[]; assignees: string[] };
-type NewCardDraft = { id: string; title: string; notes: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
+type NewCardDraft = { expectedUpdatedAt?: string; id: string; title: string; notes: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
 type DropTargetData = { type?: string; columnSourceId?: string };
 
 const cardFromLocation = () => new URLSearchParams(window.location.search).get('card') || '';
@@ -92,15 +94,16 @@ function ProductionNewCard({ column, columns, clients, assignees, initialClient 
   const [columnSourceId, setColumnSourceId] = useState(column.sourceId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const retryId = useRetryId();
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!title.trim()) { setError('Add a title to create this card.'); return; }
     setSaving(true); setError('');
     try {
-      const response = await fetch('/api/admin/production-board/cards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ columnSourceId, title, client, assignedTo, dueOn, notes }) });
+      const response = await fetch('/api/admin/production-board/cards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ columnSourceId, title, client, assignedTo, dueOn, notes, requestId: retryId({ columnSourceId, title, client, assignedTo, dueOn, notes }) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to create this card.');
-      onCreated({ id: payload.id, title, notes, client, assignedTo, dueOn, columnSourceId, archived: false });
+      onCreated({ expectedUpdatedAt: payload.expectedUpdatedAt, id: payload.id, title, notes, client, assignedTo, dueOn, columnSourceId, archived: false });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to create this card.'); }
     finally { setSaving(false); }
   };
@@ -139,7 +142,7 @@ export function ProductionBoard() {
   const dragOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const mobileSensors = useSensors(useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }), useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-  const loadBoard = useCallback(() => fetch('/api/admin/production-board', { cache: 'no-store' }).then(async (response) => {
+  const loadBoard = useCallback((signal?: AbortSignal) => fetch('/api/admin/production-board', { cache: 'no-store', signal }).then(async (response) => {
     if (response.status === 401) { location.replace('/login?next=/admin/production'); return null; }
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'Unable to open the production board.');
@@ -162,6 +165,7 @@ export function ProductionBoard() {
   useEffect(() => { loadBoard().then((payload) => payload && setData(payload)).catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to open the production board.')); }, [loadBoard]);
   useEffect(() => () => { if (dragOpenTimer.current) clearTimeout(dragOpenTimer.current); }, []);
 
+  useLiveRefresh(async signal => { const payload = await loadBoard(signal); if (payload && !signal.aborted) setData(payload); }, Boolean(data) && !activeDragCardId && !movingCardId && !menuColumnId && !colorColumn && !savingReminderClient && !cardId && !newCardColumnId);
   const selectedCard = useMemo(() => data?.cards.find((card) => card.id === cardId) || null, [cardId, data]);
   const activeDragCard = useMemo(() => data?.cards.find((card) => card.id === activeDragCardId) || null, [activeDragCardId, data]);
   const mobileDrag = mobileTouchBoard && Boolean(activeDragCard);
@@ -193,7 +197,13 @@ export function ProductionBoard() {
     if (!newlyCreatedCard || !reminderClient.trim()) return;
     setSavingReminderClient(true);
     try {
-      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(newlyCreatedCard.id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...newlyCreatedCard, client: reminderClient }) });
+      const latestResponse = await fetch(`/api/admin/production-board/${encodeURIComponent(newlyCreatedCard.id)}`, { cache: 'no-store' });
+      const latest = await latestResponse.json();
+      if (!latestResponse.ok) throw new Error(latest.error || 'Unable to read the latest card.');
+      const current = latest.card;
+      const assigned = JSON.parse(current.assignees_json || '[]') as Array<string | {name?: string}>;
+      const update = { title: current.title, notes: '', notesHtml: current.notes_html || '', assignedTo: assigned.map(person => typeof person === 'string' ? person : person.name || '').filter(Boolean).join(', '), dueOn: current.due_on || '', columnSourceId: current.column_source_id, archived: current.archived === 1, expectedUpdatedAt: current.updatedAt, client: reminderClient };
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(newlyCreatedCard.id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(update) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to save this client.');
       setClientReminderOpen(false); setNewlyCreatedCard(null); setCardInUrl();
@@ -244,7 +254,7 @@ export function ProductionBoard() {
       columns: data.columns.map((column) => card.columnSourceId !== columnSourceId && column.sourceId === card.columnSourceId ? { ...column, cardsCount: column.cardsCount - 1 } : card.columnSourceId !== columnSourceId && column.sourceId === columnSourceId ? { ...column, cardsCount: column.cardsCount + 1 } : column),
     });
     try {
-      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(card.id)}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ columnSourceId, beforeCardId: beforeCardId || undefined }) });
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(card.id)}/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedUpdatedAt: card.updatedAt, columnSourceId, beforeCardId: beforeCardId || undefined }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error || 'Unable to move this card.');
       const refreshed = await loadBoard(); if (refreshed) setData(refreshed);
     } catch (cause) { setData(previous); setError(cause instanceof Error ? cause.message : 'Unable to move this card.'); }

@@ -8,7 +8,7 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   const denied = await adminResponse(request, env); if (denied) return denied;
   const columns = await env.TG_DATA.prepare(`SELECT c.source_id AS sourceId, COALESCE(co.name, c.name) AS name, co.color, c.position, COUNT(p.source_id) AS cardsCount
     FROM production_columns c LEFT JOIN production_column_overrides co ON co.column_source_id = c.source_id
-    LEFT JOIN production_cards p ON COALESCE((SELECT o.column_source_id FROM production_card_overrides o WHERE o.card_source_id = p.source_id), p.column_source_id) = c.source_id
+    LEFT JOIN production_cards p ON COALESCE((SELECT o.column_source_id FROM production_card_overrides o WHERE o.card_source_id = p.source_id), p.column_source_id) = c.source_id AND NOT EXISTS (SELECT 1 FROM production_card_overrides deleted WHERE deleted.card_source_id=p.source_id AND deleted.deleted_at IS NOT NULL)
     WHERE COALESCE(co.archived, 0) = 0 GROUP BY c.source_id ORDER BY CASE WHEN c.position IS NULL THEN 0 ELSE 1 END, c.position, c.source_id`).all<Row>();
   const [cards, clients, teamMembers] = await Promise.all([
     env.TG_DATA.prepare(`SELECT p.id, p.source_id AS sourceId, COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId, COALESCE(o.position, p.position) AS position,

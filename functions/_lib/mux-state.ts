@@ -229,39 +229,6 @@ export async function updateVideoProject(env: AdminEnvironment, rawId: unknown, 
   return project;
 }
 
-export async function replaceVideoAsset(env: AdminEnvironment, previousAsset: MuxLibraryAsset, replacementAsset: MuxLibraryAsset) {
-  if (!replacementAsset.playbackId || replacementAsset.playbackPolicy !== 'public') throw new Error('The replacement video is still processing in Mux. Try again once it is ready.');
-  const [store, metadata] = await Promise.all([readVideoProjectStore(env), readMuxMetadata(env)]);
-  const now = new Date().toISOString();
-  const saved = metadata[previousAsset.id];
-  const project = store.projects.find((item) => item.variants.some((variant) => variant.assetId === previousAsset.id));
-  const variants = project
-    ? project.variants.map((variant) => variant.assetId === previousAsset.id ? { ...variant, assetId: replacementAsset.id, aspectRatio: replacementAsset.aspectRatio } : variant)
-    : [{ assetId: replacementAsset.id, label: ratioLabel(replacementAsset.aspectRatio), aspectRatio: replacementAsset.aspectRatio, order: 0 }];
-  const nextProject: VideoProject = project ?? {
-    id: crypto.randomUUID(),
-    title: saved?.title || previousAsset.title,
-    slug: shortVideoSlug(new Set(store.projects.map((item) => item.slug))),
-    client: saved?.client || null,
-    description: null,
-    unbrandedPublicPage: false,
-    variants,
-    collectionIds: [],
-    createdAt: now,
-    updatedAt: now,
-  };
-  await patchMuxMetadata(env, replacementAsset.id, {
-    title: saved?.title || previousAsset.title,
-    client: saved?.client || '',
-    tags: saved?.tags || [],
-    status: saved?.status || 'unreviewed',
-    thumbnailTime: saved?.thumbnailTime ?? 1,
-    downloadsEnabled: saved?.downloadsEnabled ?? true,
-  });
-  await saveProject(env, project ? { ...nextProject, variants, updatedAt: now } : nextProject);
-  return project ? { ...nextProject, variants, updatedAt: now } : nextProject;
-}
-
 export async function assignShortVideoUrls(env: AdminEnvironment, assets: MuxLibraryAsset[]) {
   const [store, metadata] = await Promise.all([readVideoProjectStore(env), readMuxMetadata(env)]);
   const used = new Set(store.projects.map((item) => item.slug));

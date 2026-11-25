@@ -1,4 +1,5 @@
-import { cpSync, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { isUnlistedPath, unlistedRobots } from '../lib/search-visibility.mjs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -50,6 +51,16 @@ try {
   else {
     rmSync(output, { recursive: true, force: true });
     renameSync(path.join(staging, 'out'), output);
+    // Static Pages responses bypass Functions when routing is optimized. Cover
+    // both HTML metadata and response headers, including .html URL aliases.
+    for (const file of readdirSync(output, { recursive: true })) {
+      if (typeof file !== 'string' || !file.endsWith('.html')) continue;
+      const pathname = '/' + file.replaceAll(path.sep, '/').replace(/\/index\.html$/, '/').replace(/^index\.html$/, '');
+      if (!isUnlistedPath(pathname)) continue;
+      const filename = path.join(output, file);
+      const html = readFileSync(filename, 'utf8').replace(/<meta\s+name="(?:robots|googlebot)"[^>]*>/gi, '');
+      writeFileSync(filename, html.replace('</head>', `<meta name="robots" content="${unlistedRobots}"/></head>`));
+    }
   }
 } finally {
   rmSync(staging, { recursive: true, force: true });

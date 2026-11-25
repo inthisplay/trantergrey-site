@@ -5,7 +5,7 @@ type Context = { request: Request; env: AdminEnvironment; params: { id: string }
 
 export async function onRequestPost({ request, env, params }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  const body = await request.json().catch(() => null) as { columnSourceId?: unknown; beforeCardId?: unknown } | null;
+  const body = await request.json().catch(() => null) as { columnSourceId?: unknown; beforeCardId?: unknown; expectedUpdatedAt?: unknown } | null;
   try { return Response.json(await moveProductionCard(env, params.id, body || {}, (await adminSession(request, env))?.name || 'Admin')); }
-  catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Unable to move this card.' }, { status: 400 }); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Unable to move this card.' }, { status: error instanceof Error && 'status' in error ? Number(error.status) : 400 }); }
 }

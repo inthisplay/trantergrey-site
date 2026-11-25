@@ -13,6 +13,7 @@ export function AdminLogin() {
     if (query.get('error') === 'config') setError('Private access is being configured. Please try again shortly.');
     if (query.get('error') === 'google-config') setError('Google sign-in is still being configured.');
     if (query.get('error') === 'google') setError('Google sign-in could not be verified. Please try again.');
+    if (query.get('error') === 'access') setError('Your access is not active. Ask the site owner to enable your team account.');
     if (query.get('error') === 'domain') setError('Please sign in with your @trantergrey.com account.');
   }, []);
   return <div className="admin-login-options">

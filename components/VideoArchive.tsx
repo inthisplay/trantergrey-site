@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import type { ArchiveRow } from '@/lib/video-archive';
 import styles from './VideoArchive.module.css';
 
-type Catalog = {matchingIds:string[];clientCounts:Record<string,number>;directoryClients:string[];lastEdit:{id:string;label:string;count:number}|null;rows:ArchiveRow[];total:number;catalogTotal:number;available:number;nextOffset:number|null;clients:string[];years:string[];state:{scan_status:string;checked_at:string|null;error:string|null;worker_seen_at:string|null;active_scan:string|null;scanProgress:{folders:number;done:number}|null}|null};
+type Catalog = {revision:string;activeJobs:number;matchingIds:string[];clientCounts:Record<string,number>;directoryClients:string[];lastEdit:{id:string;label:string;count:number}|null;rows:ArchiveRow[];total:number;catalogTotal:number;available:number;nextOffset:number|null;clients:string[];years:string[];state:{scan_status:string;checked_at:string|null;error:string|null;worker_seen_at:string|null;active_scan:string|null;scanProgress:{folders:number;done:number}|null}|null};
 const date=(value:string)=>new Intl.DateTimeFormat('en-US',{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(new Date(value));
 const availability=(row:ArchiveRow)=>row.status==='available'?'In Drive':row.status==='ambiguous'?'Needs review':row.status==='restricted'?'Download restricted':'Not found yet';
 const folder=(row:ArchiveRow)=>`Vimeo Archive${row.folder?' / '+row.folder:''}`;
@@ -18,29 +18,52 @@ export function VideoArchive({onClose,onImported}:{onClose:()=>void;onImported:(
   const [selected,setSelected]=useState<ArchiveRow|null>(null),[title,setTitle]=useState(''),[assignedClient,setAssignedClient]=useState(''),[fileId,setFileId]=useState(''),[previewError,setPreviewError]=useState(false);
   const [editing,setEditing]=useState(false),[checked,setChecked]=useState<string[]>([]),[bulkLabel,setBulkLabel]=useState(''),[manage,setManage]=useState(false),[sourceLabels,setSourceLabels]=useState<string[]>([]),[labelSearch,setLabelSearch]=useState(''),[targetLabel,setTargetLabel]=useState(''),[notice,setNotice]=useState('');
   useEffect(()=>{setChecked([]);},[query,client,year,unavailable]);
+  const catalogKey=useRef('');
+  const currentCatalog=useRef<Catalog|null>(null),activeLoad=useRef<AbortController|null>(null);
+  currentCatalog.current=catalog;
   const sequence=useRef(0),completed=useRef(new Set<string>());
   useEffect(()=>{dialog.current?.showModal();},[]);
   useEffect(()=>{const timer=setTimeout(()=>{setSearch(query);setOffset(0);},250);return()=>clearTimeout(timer);},[query]);
-  const load=useCallback(async(signal?:AbortSignal)=>{
+  const load=useCallback(async(signal?:AbortSignal,incremental=false)=>{
+    if(document.hidden)return;
+    activeLoad.current?.abort();
+    const controller=new AbortController();activeLoad.current=controller;
+    const requestSignal=signal ? AbortSignal.any([signal,controller.signal,AbortSignal.timeout(20000)]) : AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
     const current=++sequence.current;
     try {
       const params=new URLSearchParams({q:search,client,year,unavailable:unavailable?'1':'0',offset:String(offset)});
-      const response=await fetch(`/api/admin/archive?${params}`,{cache:'no-store',signal:signal||AbortSignal.timeout(20000)});
-      const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to load archive.');
-      if(current!==sequence.current)return;
+      const filterKey=params.toString();
+      const previous=currentCatalog.current;
+      if(incremental && previous && catalogKey.current===filterKey){params.set('revision',previous.revision);params.set('pageIds',previous.rows.map(row=>row.id).join(','));}
+      const response=await fetch(`/api/admin/archive?${params}`,{cache:'no-store',signal:requestSignal});
+      let data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to load archive.');
+      if(current!==sequence.current || requestSignal.aborted)return;
+      if(data.unchanged && previous){
+        const jobs=new Map<string,ArchiveRow['job']>(data.jobs.map((job:NonNullable<ArchiveRow['job']>)=>[job.vimeo_id,job]));
+        data={...previous,state:data.state,activeJobs:data.activeJobs,rows:previous.rows.map(row=>({...row,job:jobs.get(row.id)||null}))};
+      }
+      currentCatalog.current=data;catalogKey.current=filterKey;
       setCatalog(data);setError('');
       if(client && (data.clientCounts[client]||0)<2){setClient('');setOffset(0);}
       setSelected(previous=>previous?data.rows.find((row:ArchiveRow)=>row.id===previous.id)||previous:null);
       let refreshMux=false;
       for(const row of data.rows as ArchiveRow[])if(row.job?.state==='ready'&&!completed.current.has(row.job.id)){completed.current.add(row.job.id);refreshMux=true;}
       if(refreshMux)onImported();
-    }catch(e){if(current===sequence.current&&!signal?.aborted)setError(e instanceof Error?e.message:'Unable to load archive.');}
-    finally{if(current===sequence.current)setLoading(false);}
+    }catch(e){if(current===sequence.current&&!requestSignal.aborted)setError(e instanceof Error?e.message:'Unable to load archive.');}
+    finally{if(activeLoad.current===controller)activeLoad.current=null;if(current===sequence.current)setLoading(false);}
   },[search,client,year,unavailable,offset,onImported]);
   // The panel observes progress only. The background worker owns scans and imports.
   const latestLoad=useRef(load);latestLoad.current=load;
   useEffect(()=>{const controller=new AbortController();setLoading(true);void load(controller.signal);return()=>controller.abort();},[search,client,year,unavailable,offset]);
-  useEffect(()=>{const interval=setInterval(()=>void latestLoad.current(),5000);return()=>{clearInterval(interval);sequence.current++;};},[]);
+  const pausePolling=useRef(false);pausePolling.current=busy||query!==search;
+  useEffect(()=>{
+    let timer:ReturnType<typeof setTimeout>,stopped=false,running=false;
+    const schedule=()=>{clearTimeout(timer);if(!stopped)timer=setTimeout(tick,currentCatalog.current?.activeJobs || currentCatalog.current?.state?.scan_status==='scanning'?5000:30000);};
+    const tick=async()=>{if(stopped||running)return;if(!document.hidden&&!pausePolling.current&&!activeLoad.current){running=true;try{await latestLoad.current(undefined,true);}finally{running=false;}}schedule();};
+    const visibility=()=>{if(document.hidden){activeLoad.current?.abort();clearTimeout(timer);}else void tick();};
+    schedule();document.addEventListener('visibilitychange',visibility);
+    return()=>{stopped=true;clearTimeout(timer);activeLoad.current?.abort();sequence.current++;document.removeEventListener('visibilitychange',visibility);};
+  },[Boolean(catalog?.activeJobs || catalog?.state?.scan_status==='scanning')]);
   async function action(body:object) {
     setBusy(true);setError('');
     try{const response=await fetch('/api/admin/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await response.json();if(!response.ok)throw new Error(data.error||'Archive action failed.');if(['assign-clients','rename-client','undo-clients'].includes((body as {action:string}).action)){setNotice(`${data.count} video${data.count===1?'':'s'} updated.`);setChecked([]);setOffset(0);setSelected(null);if((body as {action:string}).action==='rename-client'){setSourceLabels([]);setTargetLabel('');setLabelSearch('');}}await latestLoad.current();}

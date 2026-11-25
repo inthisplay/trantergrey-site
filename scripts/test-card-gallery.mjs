@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+// Node fixture equivalent; the production stream is tested in Workers by test-media-safety.
+globalThis.FixedLengthStream = class { constructor(size) { let bytes=0; const stream=new TransformStream({transform(chunk,controller){bytes+=chunk.byteLength;if(bytes>size)throw new Error('overflow');controller.enqueue(chunk);},flush(){if(bytes!==size)throw new Error('truncated');}});this.readable=stream.readable;this.writable=stream.writable;} };
 const dir = await mkdtemp(join(tmpdir(), 'tg-gallery-'));
 await build({ entryPoints: ['functions/api/admin/production-board/[id]/gallery.ts'], bundle: true, platform: 'node', format: 'esm', outfile: join(dir, 'api.mjs') });
 await build({ entryPoints: ['functions/api/admin/production-board/[id]/gallery/[media].ts'], bundle: true, platform: 'node', format: 'esm', outfile: join(dir, 'file.mjs') });
@@ -23,7 +25,7 @@ function fixture() {
   db.exec(migration);
   db.exec(rolodexMigration);
   const objects = new Map();
-  const env = { GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture', TG_DATA: { prepare(sql) { let args = []; return { bind(...values) { args=values; return this; }, async first() { return db.prepare(sql).get(...args) || null; }, async all() { return { results: db.prepare(sql).all(...args) }; }, async run() { return db.prepare(sql).run(...args); } }; } }, PRODUCTION_ARCHIVE: { async put(key, value) { objects.set(key, value); }, async get(key, options) { const data=objects.get(key); if(!data)return null; const chunk=options?.range ? data.slice(options.range.offset, options.range.offset+options.range.length) : data; return {body:new Blob([chunk]).stream(),size:data.length,...(options?.range ? {range:options.range}: {})}; } } };
+  const env = { GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture', TG_DATA: { prepare(sql) { let args = []; return { bind(...values) { args=values; return this; }, async first() { return db.prepare(sql).get(...args) || null; }, async all() { return { results: db.prepare(sql).all(...args) }; }, async run() { return db.prepare(sql).run(...args); } }; } }, PRODUCTION_ARCHIVE: { async put(key, value) { objects.set(key, new Uint8Array(await new Response(value).arrayBuffer())); }, async get(key, options) { const data=objects.get(key); if(!data)return null; const chunk=options?.range ? data.slice(options.range.offset, options.range.offset+options.range.length) : data; return {body:new Blob([chunk]).stream(),size:data.length,...(options?.range ? {range:options.range}: {})}; } } };
   const request = (method='GET', body, card='card', auth=true, extra={}) => onRequest({env,params:{id:card},request:new Request('http://localhost/api/gallery',{method,headers:{...(auth?{cookie:'tg_admin=test'}:{}),...extra},...(body!==undefined?{body:typeof body==='string'?body:JSON.stringify(body)}:{})})});
   const upload = () => request('POST','test','card',true,{'content-type':'image/png','x-file-size':'4','x-file-name':'Actor.png'});
   return {db,env,request,upload,objects};

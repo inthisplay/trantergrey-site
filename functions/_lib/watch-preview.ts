@@ -20,6 +20,7 @@ export async function watchPreview(env: AdminEnvironment, url: URL) {
     ? await Promise.all([getMuxLibraryAsset(env, assetId).catch(() => null), readMuxMetadata(env).catch(() => null)])
     : [null, null];
   const saved = assetId ? metadata?.[assetId] : undefined;
+  if (!collection && asset?.playbackPolicy !== 'public') return null;
   const title = collection?.name || project?.title || (asset?.playbackPolicy === 'public' ? saved?.title || asset.title : null);
   if (!title) return null;
   const image = asset?.playbackPolicy === 'public' && asset.playbackId
@@ -30,7 +31,7 @@ export async function watchPreview(env: AdminEnvironment, url: URL) {
   return {
     title,
     image: new URL(image || logo, url.origin).href,
-    description: collection?.description || project?.description || (collection ? 'A video collection from TranterGrey.' : 'Watch a film by TranterGrey.'),
+    description: collection ? collection.description || 'A video collection from TranterGrey.' : project?.description || 'Watch a film by TranterGrey.',
     url: new URL(pathname, url.origin).href,
   };
 }

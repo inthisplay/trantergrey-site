@@ -5,20 +5,18 @@ import { WatchDownloadIcon, WatchShareIcon } from './WatchActionIcons';
 import { WatchHeaderActions } from './WatchHeader';
 import { SoloVideoPlayer, type SoloVideoVariant } from './SoloVideoPlayer';
 import { ExternalLink } from 'pixelarticons/react';
-import { prepareDownload } from '@/lib/watch-download';
+import { CollectionDownloads } from './CollectionDownloads';
 import { VideoModal, type ModalVideo } from './VideoModal';
-import type { VideoProjectCollection } from '@/lib/video-projects-shared';
+import type { VideoProjectCollection, VideoProjectVariant } from '@/lib/video-projects-shared';
 
 type VideoData = { pending?: boolean; clientLogoUrl?: string | null; title: string; client: string | null; description: string | null; unbrandedPublicPage: boolean; variants: SoloVideoVariant[]; collections: VideoProjectCollection[] };
-type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: unknown[]; thumbnailUrl: string | null }> };
+type CollectionData = { collection: VideoProjectCollection; downloadAssetIds: string[]; projects: Array<{ id: string; title: string; slug: string; client: string | null; variants: VideoProjectVariant[]; thumbnailUrl: string | null }> };
 
 export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlayer = false, headerActions = false }: { unbranded?: boolean; linkBase?: string; compactPlayer?: boolean; headerActions?: boolean }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const [video, setVideo] = useState<VideoData | null>(null);
   const [collection, setCollection] = useState<CollectionData | null>(null);
-  const [archiveUrl, setArchiveUrl] = useState('');
-  const [downloadPending, setDownloadPending] = useState(false);
-  const [downloadNotice, setDownloadNotice] = useState('');
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState('');
   async function copyCollectionUrl() {
     try {
@@ -39,38 +37,6 @@ export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlay
     setPreview(null);
     previewTrigger.current?.focus();
   }, []);
-
-  useEffect(() => {
-    if (archiveUrl) return () => URL.revokeObjectURL(archiveUrl);
-  }, [archiveUrl]);
-
-  async function downloadCollection(assetIds: string[]) {
-    setDownloadPending(true);
-    setDownloadNotice('Preparing the highest available quality for each video…');
-    try {
-      const urls: string[] = [];
-      for (let offset = 0; offset < assetIds.length; offset += 3) {
-        const batch = assetIds.slice(offset, offset + 3);
-        urls.push(...await Promise.all(batch.map((assetId) => prepareDownload({ assetId }, 'highest'))));
-      }
-      setDownloadNotice('Packaging the videos into a ZIP…');
-      const { BlobWriter, ZipWriter } = await import('@zip.js/zip.js');
-      const archive = new ZipWriter(new BlobWriter('application/zip'));
-      for (const [index, url] of urls.entries()) {
-        const response = await fetch(url);
-        if (!response.ok || !response.body) throw new Error(`Video ${index + 1} could not be retrieved.`);
-        const filename = new URL(url).searchParams.get('download') || 'video.mp4';
-        await archive.add(`${index + 1}-${filename}`, response.body, { level: 0, useWebWorkers: false });
-      }
-      setArchiveUrl(URL.createObjectURL(await archive.close()));
-      setDownloadNotice(`ZIP ready with ${urls.length} MP4 files.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Please try again.';
-      setDownloadNotice(`Could not prepare all downloads. ${message}`);
-    } finally {
-      setDownloadPending(false);
-    }
-  }
 
   async function openPreview(event: React.MouseEvent<HTMLAnchorElement>, project: CollectionData['projects'][number]) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -149,18 +115,11 @@ export function WatchShell({ unbranded = false, linkBase = '/watch', compactPlay
       <div className="solo-video-heading"><p className="eyebrow">TranterGrey collection</p><h1>{collection.collection.name}</h1>{collection.collection.description && <p>{collection.collection.description}</p>}</div>
       <WatchHeaderActions enabled={headerActions}><div className="solo-collection-download"><div className="solo-video-action-buttons">
         <button type="button" onClick={() => void copyCollectionUrl()}><WatchShareIcon />{copyNotice === 'Copied!' ? 'Copied!' : 'Copy URL'}</button>
-        {collection.downloadAssetIds.length > 0 && <>
-        {archiveUrl ? <a href={archiveUrl} download={`${collection.collection.slug}.zip`}>
-          <WatchDownloadIcon />
-          Save ZIP
-        </a> : <button type="button" disabled={downloadPending} onClick={() => void downloadCollection(collection.downloadAssetIds)}>
-          <WatchDownloadIcon />
-          {downloadPending ? 'Preparing…' : 'Download all'}
-        </button>}
-        </>}</div>
-        <div role="status">{downloadNotice || copyNotice}</div>
+        {collection.downloadAssetIds.length > 0 && <button type="button" aria-expanded={downloadsOpen} onClick={() => setDownloadsOpen(open => !open)}><WatchDownloadIcon />{downloadsOpen ? 'Close downloads' : 'Download videos'}</button>}</div>
+        <div role="status">{copyNotice}</div>
       </div>
     </WatchHeaderActions></header>
+    {downloadsOpen && <CollectionDownloads items={Array.from(new Map(collection.projects.flatMap(project => project.variants.filter(variant => collection.downloadAssetIds.includes(variant.assetId)).map(variant => [variant.assetId, {assetId: variant.assetId, label: `${project.title} — ${variant.label || variant.aspectRatio || 'Video'}`} ] as const))).values())} />}
     {previewError && <p role="alert">{previewError}</p>}
     {collection.projects.length ? <div className="solo-collection-grid balanced-video-grid">{collection.projects.map((project) => {
       const href = `${linkBase}/${project.slug}`;

@@ -11,6 +11,8 @@ type PrivateBucketObject = {
   httpMetadata?: { contentType?: string };
 };
 type PrivateBucket = {
+  list?(options: {prefix: string; limit: number; cursor?: string}): Promise<{objects: {key: string; uploaded: Date}[]; truncated: boolean; cursor?: string}>;
+  delete?(key: string): Promise<void>;
   get(key: string, options?: { range?: { offset: number; length?: number } }): Promise<PrivateBucketObject | null>;
   head(key: string): Promise<{ size: number; httpMetadata?: { contentType?: string } } | null>;
   put(key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
@@ -90,10 +92,11 @@ export async function adminCookie(env: AdminEnvironment, identity: AdminIdentity
   if (!email || !isTranterGreyEmail(email)) throw new Error('A verified company identity is required.');
   const lifetime = teamSessionLifetimeSeconds;
   const expiresAt = new Date(Date.now() + lifetime * 1000).toISOString();
-  await env.TG_DATA
-    .prepare('INSERT INTO admin_sessions (id, expires_at, user_name, user_email) VALUES (?, ?, ?, ?)')
-    .bind(value, expiresAt, name, email)
-    .run();
+  const inserted = await env.TG_DATA
+    .prepare('INSERT INTO admin_sessions (id, expires_at, user_name, user_email) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM team_access WHERE email=? AND active=1) RETURNING id')
+    .bind(value, expiresAt, name, email, email)
+    .first();
+  if (!inserted) throw new Error('Team access is not active.');
   return `${sessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${lifetime}`;
 }
 

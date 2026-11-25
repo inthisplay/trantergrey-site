@@ -39,13 +39,13 @@ export async function onRequestPost({ request, env, params }: Context): Promise<
   const denied = await adminResponse(request, env); if (denied) return denied;
   const session = await adminSession(request, env);
   if (!session) return Response.json({ error: 'Sign in to add a comment.' }, { status: 401 });
-  const body = await request.json().catch(() => null) as { body?: unknown; signal?: { attention?: unknown; filmingOn?: unknown; filmingDates?: unknown; dueOn?: unknown } } | null;
+  const body = await request.json().catch(() => null) as { requestId?: unknown; body?: unknown; signal?: { attention?: unknown; filmingOn?: unknown; filmingDates?: unknown; dueOn?: unknown } } | null;
   if (!body || !body.body || typeof body.body !== 'object') return Response.json({ error: 'Enter a comment.' }, { status: 400 });
   const signal = body.signal;
   if (signal !== undefined && (!signal || typeof signal !== 'object' || Array.isArray(signal) || (signal.attention !== undefined && (typeof signal.attention !== 'string' || !signal.attention.trim() || signal.attention.trim().length > 80)) || (signal.filmingDates !== undefined && !validFilmingDates(signal.filmingDates)) || (signal.dueOn !== undefined && (typeof signal.dueOn !== 'string' || !validFilmingDate(signal.dueOn))) || (signal.filmingOn !== undefined && (typeof signal.filmingOn !== 'string' || !validFilmingDate(signal.filmingOn))))) return Response.json({ error: 'Check the card tag and filming date.' }, { status: 400 });
   const bodyJson = JSON.stringify(body.body); const bodyHtml = Array.isArray(body.body) ? slateHtml(body.body) : editorHtml(body.body as EditorPayload);
-  try { return Response.json({ localComment: await addProductionComment(env, params.id, { bodyHtml, bodyJson, ...(signal ? { signal: { ...(typeof signal.attention === 'string' ? { attention: signal.attention.trim() } : {}), ...(validFilmingDates(signal.filmingDates) ? { filmingDates: signal.filmingDates } : {}), ...(typeof signal.dueOn === 'string' ? { dueOn: signal.dueOn } : {}), ...(typeof signal.filmingOn === 'string' ? { filmingOn: signal.filmingOn } : {}) } } : {}) }, session) }, { status: 201 }); }
-  catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Unable to add this comment.' }, { status: 400 }); }
+  try { return Response.json({ localComment: await addProductionComment(env, params.id, { requestId: body.requestId, bodyHtml, bodyJson, ...(signal ? { signal: { ...(typeof signal.attention === 'string' ? { attention: signal.attention.trim() } : {}), ...(validFilmingDates(signal.filmingDates) ? { filmingDates: signal.filmingDates } : {}), ...(typeof signal.dueOn === 'string' ? { dueOn: signal.dueOn } : {}), ...(typeof signal.filmingOn === 'string' ? { filmingOn: signal.filmingOn } : {}) } } : {}) }, session) }, { status: 201 }); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Unable to add this comment.' }, { status: error instanceof Error && 'status' in error ? Number(error.status) : 400 }); }
 }
 
 async function editableComment(request: Request, env: AdminEnvironment, cardId: string, commentId: unknown) {
@@ -53,8 +53,8 @@ async function editableComment(request: Request, env: AdminEnvironment, cardId: 
   const session = await adminSession(request, env); if (!session) return { denied: Response.json({ error: 'Sign in to edit comments.' }, { status: 401 }) };
   if (typeof commentId !== 'string' || !/^[A-Za-z0-9-]{20,}$/u.test(commentId)) return { denied: Response.json({ error: 'Choose a valid comment.' }, { status: 400 }) };
   const comment = await env.TG_DATA.prepare(`SELECT plc.id, plc.author_name AS authorName, plc.author_email AS authorEmail, plc.deleted_at AS deletedAt
-    FROM production_local_comments plc JOIN production_cards p ON p.source_id = plc.card_source_id
-    WHERE p.id = ? AND plc.id = ?`).bind(cardId, commentId).first<{ id: string; authorName: string; authorEmail: string | null; deletedAt: string | null }>();
+    FROM production_local_comments plc JOIN production_cards p ON p.source_id = plc.card_source_id LEFT JOIN production_card_overrides o ON o.card_source_id=p.source_id
+    WHERE p.id = ? AND plc.id = ? AND o.deleted_at IS NULL`).bind(cardId, commentId).first<{ id: string; authorName: string; authorEmail: string | null; deletedAt: string | null }>();
   if (!comment) return { denied: Response.json({ error: 'Comment not found.' }, { status: 404 }) };
   const ownsComment = comment.authorEmail ? session.email?.toLowerCase() === comment.authorEmail.toLowerCase() : session.name === comment.authorName;
   if (!ownsComment) return { denied: Response.json({ error: 'You can only change your own comments.' }, { status: 403 }) };

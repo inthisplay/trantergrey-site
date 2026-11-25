@@ -73,11 +73,12 @@ test('date suggestions include ordinary dates, deduplicate, infer visible year a
 test('comment and confirmed meanings save together without replacing other signals',async()=>{
  const db=new DatabaseSync(':memory:');
  db.exec(`CREATE TABLE production_cards(id TEXT,source_id TEXT UNIQUE); INSERT INTO production_cards VALUES('card','source');
- CREATE TABLE production_local_comments(id TEXT,card_source_id TEXT,body_html TEXT,body_json TEXT,author_name TEXT,author_email TEXT,created_at TEXT,is_question INTEGER DEFAULT 0,question_resolved_at TEXT);
- CREATE TABLE production_card_overrides(card_source_id TEXT PRIMARY KEY,due_on TEXT,edited_at TEXT);`);
+ CREATE TABLE production_local_comments(id TEXT,card_source_id TEXT,body_html TEXT,body_json TEXT,author_name TEXT,author_email TEXT,created_at TEXT,is_question INTEGER DEFAULT 0,question_resolved_at TEXT,deleted_at TEXT);
+ CREATE TABLE production_card_overrides(card_source_id TEXT PRIMARY KEY,due_on TEXT,edited_at TEXT,deleted_at TEXT);`);
  db.exec(await readFile('migrations/0050_production_card_signals.sql','utf8'));
  const env={TG_DATA:{prepare(sql){let args=[];return {bind(...v){args=v;return this;},async first(){return db.prepare(sql).get(...args);},async run(){return db.prepare(sql).run(...args);}};}, async batch(statements){db.exec('BEGIN');try {for(const statement of statements)await statement.run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}}};
- const input={bodyHtml:'<p>Filming 1/21/27</p>',bodyJson:'[]'};
+ const input={get requestId(){return crypto.randomUUID()},bodyHtml:'<p>Filming 1/21/27</p>',bodyJson:'[]'};
+ db.exec(await readFile('migrations/0059_comment_retries.sql','utf8'));
  const actor={name:'Test',email:null};
  try {
  await addProductionComment(env,'card',input,actor);

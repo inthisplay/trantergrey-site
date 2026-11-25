@@ -65,3 +65,35 @@ no existing asset is upgraded or replaced automatically. Lower-resolution source
 retain their available resolution. Archive imports use a separate path and retain
 their existing settings. No migration is needed. This enables organic timing tests;
 it does not guarantee faster processing for every source format.
+
+## Snapshot retention and safe replacement
+
+Migration 0058 registers catalog generations, including existing snapshots. After
+a successful refresh, bounded cleanup removes expired inactive snapshot, browse
+and FTS rows (at least 2,000 and at most 10,000 per table per refresh). The daily
+MCP maintenance job also removes up to 10,000 per table, including abandoned builds.
+Active generations are excluded at deletion time, and generations younger than
+24 hours remain available to in-flight readers. Existing generations receive their
+24-hour grace period when migration 0058 runs; a large historical backlog drains
+over successive cleanup runs rather than one unbounded production deletion.
+
+The stale timestamp now correctly invalidates an otherwise indefinitely cached
+snapshot. Refresh failures do not delete the previously active generation.
+
+Replacement commits share-page changes, metadata, Deck associations and its retry
+ledger in one D1 transaction. It no longer automatically deletes the old Mux asset.
+The original remains playable under its existing playback policy and continues to
+incur Mux storage charges until explicitly deleted. Old hardcoded comment embeds
+are intentionally retained; share-page URLs point to the revision.
+
+Local development uses Wrangler's persisted local D1/R2 state. External Mux/Google
+requests still use the credentials configured locally, so fixture-based tests must
+mock those providers. Preview bindings have not been changed.
+
+Released November 25, 2026: production Pages `e7d9b436-32fb-4448-9270-7bbb27b8e200`
+and MCP Worker `915ebe7b-9418-4451-a7cd-77cb9e226651`. Migration 0058 is applied
+and recorded in local and production TG_DATA. Seven media-safety tests (including
+actual Workers/R2 streaming), 53 MCP tests, gallery/security/media/client regression
+suites, TypeScript, Pages release checks and Worker dry run passed. Live production
+OAuth renewal/rotation/revocation and 28-tool discovery/read checks passed without
+business-record mutations. No preview configuration changed.

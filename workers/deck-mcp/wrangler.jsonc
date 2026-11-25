@@ -5,6 +5,7 @@
   "compatibility_date": "2026-11-21",
   "workers_dev": true,
   "preview_urls": false,
+  "r2_buckets": [{ "binding": "PRODUCTION_ARCHIVE", "bucket_name": "trantergrey-production-archive" }],
   "vars": {
     "MCP_ORIGIN": "https://trantergrey-deck-mcp-trial.t-jackson.workers.dev",
     "DECK_ORIGIN": "https://trantergrey.com"

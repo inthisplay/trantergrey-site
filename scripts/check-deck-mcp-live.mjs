@@ -26,7 +26,7 @@ const access_token=renewed.access_token;console.log('Refresh token issued and ro
 const client=new Client({name:'tg-owner-readonly-smoke',version:'0.2.0'});
 try {
   await client.connect(new StreamableHTTPClientTransport(new URL(origin+'/mcp'),{requestInit:{headers:{Authorization:`Bearer ${access_token}`}}}));
-  const {tools}=await client.listTools();assert.equal(tools.length,28);console.log('Discovered 28 authenticated tools.');
+  const {tools}=await client.listTools();assert.equal(tools.length,26);console.log('Discovered 26 authenticated tools.');
   // This SDK version strips unknown capability keys on the client side.
   // Verify the extension on the raw wire, then use an explicit result schema.
   const initialized=await request('/mcp',{method:'POST',headers:{Authorization:`Bearer ${access_token}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'event-discovery-smoke',version:'1'}}})});

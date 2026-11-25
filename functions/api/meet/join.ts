@@ -1,6 +1,8 @@
+import type { AdminEnvironment } from '../../_lib/admin';
+import { enforceRateLimit, peer } from '../../_lib/integration-health';
 import { meetingRole, plugNmeetRequest, plugNmeetRoom, type PlugNmeetEnv } from '../../_lib/plugnmeet';
 
-type Context = { request: Request; env: PlugNmeetEnv };
+type Context = { request: Request; env: PlugNmeetEnv & AdminEnvironment };
 
 type ActiveResponse = { status?: boolean; msg?: string; is_active?: boolean };
 type JoinResponse = { status?: boolean; msg?: string; token?: string };
@@ -70,6 +72,7 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
     if (website) return Response.json({ ok: true });
     if (name.length < 2) return Response.json({ error: 'Please enter your name.' }, { status: 400 });
 
+    if (hosting || password) { const denied = await enforceRateLimit(env, 'api', 'meeting_password', peer(request), 6); if (denied) return Response.json({ error: 'Too many password attempts. Wait a minute and try again.' }, { status:429, headers:denied.headers }); }
     const { isAdmin } = await meetingRole(env, password, hosting);
     const { roomId, roomTitle } = plugNmeetRoom(env);
     const active = await plugNmeetRequest<ActiveResponse>(env, '/room/isRoomActive', { room_id: roomId });

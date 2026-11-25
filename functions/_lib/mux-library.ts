@@ -1,3 +1,4 @@
+import { cleanupCatalogSnapshots } from './catalog-retention';
 import { matchMuxAssetsToVimeo, type MatchedMuxLibraryAsset, type VimeoMatchCandidate } from '../../lib/mux-matching';
 import { createMuxSearch } from '../../lib/mux-search';
 import type { AdminEnvironment } from './admin';
@@ -36,6 +37,7 @@ async function browseIndexFresh(env: AdminEnvironment) {
 
 async function writeBrowseIndex(env: AdminEnvironment, assets: MatchedMuxLibraryAsset[], projects: VideoProject[], collections: VideoProjectCollection[]) {
   const refreshId = crypto.randomUUID(); const refreshedAt = new Date().toISOString();
+  await env.TG_DATA.prepare('INSERT INTO mux_catalog_generations(kind,refresh_id,created_at) VALUES(?,?,?)').bind('browse', refreshId, refreshedAt).run();
   const collectionTerms = new Map(collections.map((collection) => [collection.id, [
     collection.name,
     collection.slug.replace(/-/g, ' '),
@@ -66,6 +68,7 @@ async function writeBrowseIndex(env: AdminEnvironment, assets: MatchedMuxLibrary
   await env.TG_DATA.prepare(`INSERT INTO mux_library_browse_state (id, refresh_id, refreshed_at, asset_count) VALUES (?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET refresh_id=excluded.refresh_id, refreshed_at=excluded.refreshed_at, asset_count=excluded.asset_count`)
     .bind('library', refreshId, refreshedAt, assets.length).run();
+  await cleanupCatalogSnapshots(env, Math.max(2000, assets.length));
 }
 
 async function ensureBrowseIndex(env: AdminEnvironment) {

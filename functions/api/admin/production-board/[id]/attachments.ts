@@ -1,9 +1,10 @@
+import { storePrivateUpload, UploadError } from '../../../../_lib/private-upload';
 import { prepareMediaPreviews } from '../../../../_lib/media-previews';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../../_lib/admin';
 
 type Context = { request: Request; env: AdminEnvironment; params: { id: string } };
 const maxUploadBytes = 90 * 1024 * 1024;
-const supportedType = (value: string) => value.startsWith('image/') || value.startsWith('video/') || value.startsWith('audio/') || [
+const supportedType = (value: string) => ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/heic', 'image/heif'].includes(value) || value.startsWith('video/') || value.startsWith('audio/') || [
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -15,20 +16,22 @@ const safeFilename = (value: string) => value.replace(/[\\/\0]/g, '-').replace(/
 
 export async function onRequestPost({ request, env, params }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
+  if (request.headers.get('origin') && request.headers.get('origin') !== new URL(request.url).origin) return Response.json({ error: 'Invalid request origin.' }, { status: 403 });
   const session = await adminSession(request, env);
   if (!session) return Response.json({ error: 'Sign in to upload an attachment.' }, { status: 401 });
   if (!env.PRODUCTION_ARCHIVE) return Response.json({ error: 'Private production storage is not configured.' }, { status: 503 });
-  const card = await env.TG_DATA.prepare('SELECT source_id FROM production_cards WHERE id = ?').bind(params.id).first<{ source_id: string }>();
+  const card = await env.TG_DATA.prepare('SELECT p.source_id FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id=p.source_id WHERE p.id = ? AND o.deleted_at IS NULL').bind(params.id).first<{ source_id: string }>();
   if (!card) return Response.json({ error: 'Production card not found.' }, { status: 404 });
   const filename = safeFilename(request.headers.get('x-file-name') || 'attachment');
   const contentType = (request.headers.get('content-type') || 'application/octet-stream').split(';', 1)[0].trim().toLowerCase();
   const size = Number(request.headers.get('x-file-size') || request.headers.get('content-length') || 0);
   if (!supportedType(contentType)) return Response.json({ error: 'Upload an image, video, audio, PDF, or office document.' }, { status: 415 });
-  if (!Number.isFinite(size) || size < 1 || size > maxUploadBytes) return Response.json({ error: 'Files must be between 1 byte and 90 MB.' }, { status: 413 });
+  if (!Number.isInteger(size) || size < 1 || size > maxUploadBytes) return Response.json({ error: 'Files must be between 1 byte and 90 MB.' }, { status: 413 });
   if (!request.body) return Response.json({ error: 'Choose a file to upload.' }, { status: 400 });
   const sourceId = `local-attachment-${crypto.randomUUID()}`;
   const r2Key = `comments/${card.source_id}/${sourceId}/${encodeURIComponent(filename)}`;
-  await env.PRODUCTION_ARCHIVE.put(r2Key, request.body, { httpMetadata: { contentType } });
+  try { await storePrivateUpload(env, request, r2Key, size, contentType); }
+  catch (error) { return Response.json({ error: error instanceof UploadError ? error.message : 'Upload failed.' }, { status: error instanceof UploadError ? error.status : 503 }); }
   const now = new Date().toISOString();
   const sourceUrl = `/api/admin/production-board/attachments/${encodeURIComponent(sourceId)}`;
   await env.TG_DATA.prepare(`INSERT INTO production_attachments (source_id, card_source_id, comment_source_id, filename, content_type, byte_size, r2_key, source_url, status, source_json, imported_at)

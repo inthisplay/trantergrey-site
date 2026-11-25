@@ -34,7 +34,7 @@ async function digest(value: string) {
 export function peer(request: Request) { return request.headers.get('CF-Connecting-IP') || 'unknown-peer'; }
 // Atomic global fixed windows in D1: no per-instance memory counter. A single
 // row per subject/bucket rolls forward each minute. Cloudflare supplies the IP.
-export async function enforceRateLimit(env: AdminEnvironment, surface: Surface, bucket: string, subject: string, limit: number) {
+export async function enforceRateLimit(env: AdminEnvironment, surface: Surface, bucket: string, subject: string, limit: number, report = true) {
   const now = Math.floor(Date.now() / 1000), window = Math.floor(now / 60) * 60;
   const key = await digest(`${surface}:${bucket}:${subject}`);
   const row = await env.TG_DATA.prepare(`INSERT INTO integration_rate_limits(bucket_key,window_start,hits,expires_at) VALUES(?,?,1,?)
@@ -42,7 +42,7 @@ export async function enforceRateLimit(env: AdminEnvironment, surface: Surface, 
     window_start=excluded.window_start,expires_at=excluded.expires_at RETURNING hits`).bind(key, window, window + 120).first<{ hits: number }>();
   if (!row) throw new Error('Rate limit unavailable');
   if (row.hits <= limit) return null;
-  if (row.hits === limit + 1) await recordIntegrationEvent(env, surface, bucket, 'rate_limited', 429);
+  if (report && row.hits === limit + 1) await recordIntegrationEvent(env, surface, bucket, 'rate_limited', 429);
   return Response.json({ error: { code: 'rate_limited', message: 'Too many requests. Wait before trying again.' } }, {
     status: 429, headers: { 'Retry-After': String(window + 60 - now), 'Cache-Control': 'no-store' },
   });

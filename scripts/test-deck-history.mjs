@@ -14,7 +14,7 @@ for (const [name, path] of Object.entries(entries)) {
   handlers[name] = await import(pathToFileURL(join(dir, name + '.mjs')));
 }
 after(() => rm(dir, { recursive: true, force: true }));
-const migrations = await Promise.all(['0008_production_board','0009_production_card_overrides','0010_production_card_work_fields','0011_production_card_sort_order','0012_production_column_controls','0013_production_comment_blocks','0015_production_comment_authors','0017_internal_api_foundation','0023_production_column_colors','0025_production_card_deletions','0050_production_card_signals','0051_comment_questions'].map(name => readFile('migrations/' + name + '.sql', 'utf8')));
+const migrations = await Promise.all(['0008_production_board','0009_production_card_overrides','0010_production_card_work_fields','0011_production_card_sort_order','0012_production_column_controls','0013_production_comment_blocks','0015_production_comment_authors','0017_internal_api_foundation','0023_production_column_colors','0025_production_card_deletions','0050_production_card_signals','0051_comment_questions','0059_comment_retries','0052_card_creation_requests'].map(name => readFile('migrations/' + name + '.sql', 'utf8')));
 const migration = await readFile('migrations/0024_deck_history.sql', 'utf8');
 function fixture() {
   const db = new DatabaseSync(':memory:');
@@ -39,6 +39,31 @@ function fixture() {
   return { db, env, request, history };
 }
 function comment(db, id = 'comment-12345678901234567890') { db.prepare('INSERT INTO production_local_comments(id,card_source_id,body_html,author_name,author_email,created_at) VALUES (?, ?, ?, ?, ?, ?)').run(id,'source','<p>Private note</p>','Test Author','test@example.com','2026-11-17T15:00:00.000Z'); return id; }
+
+test('stale card saves preserve the newer edit; transaction-time races roll back', async () => {
+ const {db,env}=fixture();try {
+  const body={title:'Draft',notes:'',client:'',assignedTo:'',dueOn:'',columnSourceId:'edit',archived:false,expectedUpdatedAt:'2026-11-01T09:00:00Z'};
+  const save=()=>handlers.card.onRequestPatch({env,params:{id:'card'},request:new Request('https://local.test/card',{method:'PATCH',headers:{cookie:'tg_admin=test'},body:JSON.stringify(body)})});
+  const batch=env.TG_DATA.batch;
+  env.TG_DATA.batch=async statements=>{env.TG_DATA.batch=batch;db.exec("INSERT INTO production_card_overrides(card_source_id,title,edited_at) VALUES('source','Other person','2026-12-01T00:00:00Z')");return batch(statements);};
+  assert.equal((await save()).status,409);
+  assert.equal(db.prepare('SELECT title FROM production_card_overrides').get().title,'Other person');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM production_card_edit_log').get().n,0);
+  assert.equal((await save()).status,409);
+ } finally {db.close();}
+});
+test('comments and signals retry atomically and deleted cards cannot be mutated', async () => {
+ const {db,env}=fixture();try {
+  const actor={name:'Test Author',email:'test@example.com'},input={requestId:crypto.randomUUID(),bodyHtml:'<p>Ready?</p>',bodyJson:'[]'};
+  const first=await handlers.commands.addProductionComment(env,'card',input,actor);
+  assert.deepEqual(await handlers.commands.addProductionComment(env,'card',input,actor),first);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM production_local_comments').get().n,1);
+  await assert.rejects(()=>handlers.commands.addProductionComment(env,'card',{...input,bodyHtml:'Changed'},actor),/different comment/);
+  db.exec("INSERT INTO production_card_overrides(card_source_id,deleted_at,edited_at) VALUES('source','now','now')");
+  await assert.rejects(()=>handlers.commands.addProductionComment(env,'card',{...input,requestId:crypto.randomUUID()},actor),/not found/);
+  await assert.rejects(()=>handlers.commands.moveProductionCard(env,'card',{columnSourceId:'done'},actor.name),/not found/);
+ } finally {db.close();}
+});
 
 test('backfill preserves the source, normalizes dates, and keeps unknown dates unknown', async () => {
   const {db,history}=fixture();try {
@@ -65,7 +90,7 @@ test('keyset pages are bounded, stable for timestamp ties, and use the index', a
 test('comment edits are append-only and deletion redacts every earlier body', async () => {
   const {db,env,history}=fixture();try {
     const id=comment(db);
-    const call=async(method,body)=>handlers.comments[method]({env,params:{id:'card'},request:new Request('https://local.test/comments',{method:'POST',headers:{cookie:'tg_admin=test'},body:JSON.stringify(body)})});
+    const call=async(method,body)=>handlers.comments[method]({env,params:{id:'card'},request:new Request('https://local.test/comments',{method:'POST',headers:{cookie:'tg_admin=test'},body:JSON.stringify({requestId:crypto.randomUUID(),...body})})});
     assert.equal((await call('onRequestPatch',{commentId:id,body:[{type:'paragraph',children:[{text:'Revised private note'}]}]})).status,200);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM production_deck_history WHERE source_kind='local-comment'").get().n,2);
     assert.equal((await call('onRequestDelete',{commentId:id})).status,200);
@@ -75,7 +100,7 @@ test('comment edits are append-only and deletion redacts every earlier body', as
 });
 test('desktop and shared move commands record actors and column actions', async () => {
   const {db,env,history}=fixture();try {
-    const patch=body=>handlers.columns.onRequestPatch({env,params:{id:'edit'},request:new Request('https://local.test/columns/edit',{method:'PATCH',headers:{cookie:'tg_admin=test'},body:JSON.stringify(body)})});
+    const patch=body=>handlers.columns.onRequestPatch({env,params:{id:'edit'},request:new Request('https://local.test/columns/edit',{method:'PATCH',headers:{cookie:'tg_admin=test'},body:JSON.stringify({requestId:crypto.randomUUID(),...body})})});
     await patch({action:'color',color:'#edd9db'});await patch({action:'rename',name:'Editing'});await patch({action:'sort',direction:'newest'});
     await handlers.commands.moveProductionCard(env,'card',{columnSourceId:'done'},'Mobile user');
     const all=(await history()).events;
@@ -95,12 +120,12 @@ test('media extraction blocks unsafe URLs and retains authorized media as struct
 test('card creation, rich notes, and archive changes use the signed-in actor without no-op entries', async () => {
   const {db,env,history}=fixture();try {
     const body={title:'Test card',notes:'Review this frame.',notesHtml:'<p>Review this frame.</p><img src="/api/admin/production-board/attachments/local-attachment-test">',client:'',assignedTo:'',dueOn:'',columnSourceId:'edit',archived:false};
-    const patch=()=>handlers.card.onRequestPatch({env,params:{id:'card'},request:new Request('https://local.test/card',{method:'PATCH',headers:{cookie:'tg_admin=test'},body:JSON.stringify(body)})});
+    const patch=()=>handlers.card.onRequestPatch({env,params:{id:'card'},request:new Request('https://local.test/card',{method:'PATCH',headers:{cookie:'tg_admin=test'},body:JSON.stringify({...body,expectedUpdatedAt:db.prepare("SELECT COALESCE(o.edited_at,p.updated_at,p.created_at,'') version FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id=p.source_id WHERE p.id='card'").get().version})})});
     assert.equal((await patch()).status,200);
     const note=(await history()).events.find(e=>e.action==='notes_updated');assert.equal(note.actor,'Test Author');assert.equal(note.media[0].kind,'image');
     const count=db.prepare('SELECT COUNT(*) n FROM production_deck_history').get().n;await patch();assert.equal(db.prepare('SELECT COUNT(*) n FROM production_deck_history').get().n,count);
     body.archived=true;await patch();assert((await history()).events.some(e=>e.action==='card_archived'));
-    const created=await handlers.cards.onRequestPost({env,request:new Request('https://local.test/cards',{method:'POST',headers:{cookie:'tg_admin=test'},body:JSON.stringify({title:'New card',columnSourceId:'edit'})})});assert.equal(created.status,201);
+    const created=await handlers.cards.onRequestPost({env,request:new Request('https://local.test/cards',{method:'POST',headers:{cookie:'tg_admin=test'},body:JSON.stringify({title:'New card',columnSourceId:'edit',requestId:crypto.randomUUID()})})});assert.equal(created.status,201);
     assert((await history()).events.some(e=>e.action==='card_created'&&e.actor==='Test Author'));
   } finally {db.close();}
 });

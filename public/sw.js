@@ -1,4 +1,4 @@
-const CACHE = 'tg-team-shell-v9';
+const CACHE = 'tg-team-shell-v10';
 const SHELL = ['/app', '/app/mux', '/app/deck', '/app/clients', '/app/rolodex', '/app/inbox', '/manifest.webmanifest', '/tg-team-icon.png', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -14,11 +14,20 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  if (request.mode === 'navigate' && url.pathname.startsWith('/app')) {
+  if (request.mode === 'navigate' && (url.pathname === '/app' || url.pathname.startsWith('/app/'))) {
+    const path = url.pathname.replace(/\/$/, '');
     event.respondWith(fetch(request).then((response) => {
-      if (response.ok) void caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+      // Only static, known app shells: at most SHELL.length entries, regardless
+      // of search/card/client parameters. Never cache redirected login pages.
+      if (SHELL.includes(path) && response.ok && !response.redirected && response.headers.get('content-type')?.includes('text/html') && !/private|no-store/i.test(response.headers.get('cache-control') || '')) {
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE).then(cache => cache.put(path, copy)).catch(() => {}));
+      }
       return response;
-    }).catch(async () => (await caches.match(request)) || (await caches.match('/app/mux')) || (await caches.match('/app'))));
+    }).catch(async () => {
+      const cache = await caches.open(CACHE);
+      return (SHELL.includes(path) && await cache.match(path)) || await cache.match('/app') || new Response('You are offline. Reconnect to open the app.', { status: 503 });
+    }));
   }
 });
 

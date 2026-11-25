@@ -1,3 +1,4 @@
+import { cardBatch, cardGuard, CardConflict, cardVersionSql } from '../../../_lib/card-conflict';
 import { sanitizeProductionHtml } from '../../../../lib/production-html';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../../_lib/admin';
 import { readClientDirectory, registerClient } from '../../../_lib/client-directory';
@@ -36,7 +37,7 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
   const viewer = await adminSession(request, env);
   const storedCard = await env.TG_DATA.prepare(`SELECT p.*, s.attention, s.filming_on AS filmingOn, s.dismissed_at AS dismissedAt, p.description_html AS source_notes_html, o.notes_html AS local_notes_html, o.description_html AS legacy_notes_html, COALESCE(o.title, p.title) AS title, COALESCE(o.notes_html, o.description_html, p.description_html) AS notes_html,
     COALESCE(o.column_source_id, p.column_source_id) AS column_source_id, COALESCE(o.archived, p.archived) AS archived,
-    COALESCE(o.client, '') AS client, COALESCE(o.assignees_json, p.assignees_json, '[]') AS assignees_json, COALESCE(o.due_on, p.due_on) AS due_on, o.edited_at
+    COALESCE(o.client, '') AS client, COALESCE(o.assignees_json, p.assignees_json, '[]') AS assignees_json, COALESCE(o.due_on, p.due_on) AS due_on, o.edited_at, ${cardVersionSql} AS updatedAt
     FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id LEFT JOIN production_card_signals s ON s.card_source_id=p.source_id WHERE p.id = ? AND o.deleted_at IS NULL`).bind(params.id).first();
   if (!storedCard) return Response.json({ error: 'Production card not found.' }, { status: 404 });
   const card = preferPreservedNotes(storedCard as Record<string, unknown>) as Record<string, unknown>;
@@ -74,10 +75,11 @@ const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g,
 
 export async function onRequestPatch({ request, env, params }: Context): Promise<Response> {
   const denied = await adminResponse(request, env); if (denied) return denied;
-  const body = await request.json().catch(() => null) as { title?: unknown; notes?: unknown; notesHtml?: unknown; client?: unknown; assignedTo?: unknown; dueOn?: unknown; columnSourceId?: unknown; archived?: unknown } | null;
+  const body = await request.json().catch(() => null) as { expectedUpdatedAt?: unknown; title?: unknown; notes?: unknown; notesHtml?: unknown; client?: unknown; assignedTo?: unknown; dueOn?: unknown; columnSourceId?: unknown; archived?: unknown } | null;
   if (!body || typeof body.title !== 'string' || typeof body.notes !== 'string' || typeof body.client !== 'string' || typeof body.assignedTo !== 'string' || typeof body.dueOn !== 'string' || typeof body.columnSourceId !== 'string' || typeof body.archived !== 'boolean') {
     return Response.json({ error: 'Enter a title, client, assignees, due date, notes, status, and archive state.' }, { status: 400 });
   }
+  if (typeof body.expectedUpdatedAt !== 'string') return Response.json({ error: 'Reload this card before saving.' }, { status: 428 });
   const title = body.title.trim();
   const client = body.client.trim();
   const assignees = [...new Set(body.assignedTo.split(',').map((person) => person.trim()).filter(Boolean))];
@@ -89,8 +91,10 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
   if (!column) return Response.json({ error: 'Choose a valid board column.' }, { status: 400 });
   const before = await env.TG_DATA.prepare(`SELECT COALESCE(o.title, p.title) AS title, COALESCE(o.notes_html, o.description_html, p.description_html) AS notes,
     COALESCE(o.client, '') AS client, COALESCE(o.assignees_json, p.assignees_json, '[]') AS assignees, COALESCE(o.due_on, p.due_on) AS dueOn,
-    COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId, COALESCE(o.archived, p.archived) AS archived
-    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ?`).bind(params.id).first();
+    COALESCE(o.column_source_id, p.column_source_id) AS columnSourceId, COALESCE(o.archived, p.archived) AS archived, ${cardVersionSql} AS updatedAt
+    FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE p.id = ? AND o.deleted_at IS NULL`).bind(params.id).first();
+  if (!before) return Response.json({ error: 'Production card not found.' }, { status: 404 });
+  if ((before as { updatedAt: string }).updatedAt !== body.expectedUpdatedAt) return Response.json({ error: new CardConflict().message }, { status: 409 });
   const after = { title, notes: body.notes, client, assignees, dueOn, columnSourceId: body.columnSourceId, archived: body.archived ? 1 : 0 };
   // Retain Basecamp's original rich HTML if the editor's plain-text value is
   // unchanged. Changing another field must not silently flatten old notes.
@@ -111,8 +115,9 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
     && Number(previous.archived || 0) === after.archived && JSON.stringify(previousAssignees) === JSON.stringify([...assignees].sort());
   if (unchanged) return onRequestGet({ request, env, params });
   const actor = (await adminSession(request, env))?.name || 'Admin';
-  const editedAt = new Date().toISOString();
-  await env.TG_DATA.batch([
+  const editedAt = new Date(Math.max(Date.now(), (Date.parse(body.expectedUpdatedAt) || 0) + 1)).toISOString();
+  try { await cardBatch(env, [
+    cardGuard(env, params.id, body.expectedUpdatedAt),
     env.TG_DATA.prepare(`INSERT INTO production_card_overrides (card_source_id, title, notes_html, client, assignees_json, due_on, column_source_id, archived, edited_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(card_source_id) DO UPDATE SET title = excluded.title, notes_html = excluded.notes_html,
       client = excluded.client, assignees_json = excluded.assignees_json, due_on = excluded.due_on, column_source_id = excluded.column_source_id, archived = excluded.archived, edited_at = excluded.edited_at`)
@@ -120,6 +125,7 @@ export async function onRequestPatch({ request, env, params }: Context): Promise
     env.TG_DATA.prepare('INSERT INTO production_card_edit_log (id, card_source_id, changed_at, actor, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), card.source_id, editedAt, actor, JSON.stringify(before || {}), JSON.stringify(after)),
   ]);
+  } catch (error) { if (error instanceof CardConflict) return Response.json({ error: error.message }, { status: 409 }); throw error; }
   // Retaining a legacy label while editing notes must not recreate a deleted CHQ client.
   if (client && client !== previous.client) await registerClient(env, client);
   return onRequestGet({ request, env, params });

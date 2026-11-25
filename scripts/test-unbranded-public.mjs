@@ -10,14 +10,21 @@ await build({entryPoints:['functions/_lib/mux-public.ts'],bundle:true,format:'es
  build.onResolve({filter:/^\.\/(mux|mux-state|client-public-logo)$/},args=>({path:args.path,namespace:'fixture'}));
  build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='./mux' ? `export const getMuxLibraryAsset=async(env,id)=>{if(!env.assets[id])throw Error('missing');return env.assets[id]};export const getMuxLibraryAssets=async env=>Object.values(env.assets);export const muxSourceThumbnailUrl=()=>'';export const muxThumbnailUrl=()=>'';` : args.path==='./mux-state' ? `export const readVideoProjectStore=async env=>env.store;export const readMuxMetadata=async env=>env.metadata;` : `export const publicProjectClient=async(env,p)=>p.client;export const clientPublicLogo=async(env,p)=>p.unbrandedPublicPage&&p.client?'logo-key':null;`,loader:'js'}));
 }}]});
-const {publicWatchData}=await import(pathToFileURL(join(dir,'public.mjs')));
+const {publicWatchData,publicCollectionData}=await import(pathToFileURL(join(dir,'public.mjs')));
 after(()=>rm(dir,{recursive:true,force:true}));
 const fixture=()=>({assets:{publicAsset:{id:'publicAsset',playbackId:'publicPlayback',playbackPolicy:'public',title:'Video',aspectRatio:'16:9'},privateAsset:{id:'privateAsset',playbackId:'signedPlayback',playbackPolicy:'signed',title:'Private'}},store:{projects:[],collections:[]},metadata:{publicAsset:{client:'Client',downloadsEnabled:false}}});
 test('standalone public videos automatically support unbranded and preserve download policy',async()=>{
  const env=fixture();const data=await publicWatchData(env,'publicAsset');assert.equal(data.unbrandedPublicPage,true);assert.equal(data.variants[0].downloadsEnabled,false);assert.equal(data.clientLogoUrl,'/api/watch/publicAsset/logo');
- const privateData=await publicWatchData(env,'privateAsset');assert.equal(privateData.unbrandedPublicPage,false);assert.deepEqual(privateData.variants,[]);assert.equal(privateData.clientLogoUrl,null);
+ const privateData=await publicWatchData(env,'privateAsset');assert.equal(privateData,null);
 });
 test('existing ratio pages get both URLs without persisted opt-in or exposing signed variants',async()=>{
  const env=fixture();env.store.projects.push({slug:'film',legacySlugs:['old-film'],title:'Film',client:'Client',unbrandedPublicPage:false,variants:[{assetId:'publicAsset',label:'Horizontal'},{assetId:'privateAsset',label:'Private'}],collectionIds:[]});
  const data=await publicWatchData(env,'film');assert.equal(data.unbrandedPublicPage,true);assert.equal(data.variants.length,1);assert.equal(data.variants[0].playbackId,'publicPlayback');assert.equal(data.clientLogoUrl,'/api/watch/film/logo');assert.deepEqual(await publicWatchData(env,'old-film'),data);assert.equal(env.store.projects[0].unbrandedPublicPage,false);
+});
+
+test('private-only projects are hidden and collection variants exclude private asset IDs',async()=>{
+ const env=fixture();env.store.collections.push({id:'collection',slug:'collection'});
+ env.store.projects.push({slug:'private',title:'Secret',variants:[{assetId:'privateAsset'}],collectionIds:['collection']},{slug:'mixed',title:'Public',variants:[{assetId:'privateAsset'},{assetId:'publicAsset'}],collectionIds:['collection']});
+ assert.equal(await publicWatchData(env,'private'),null);
+ const data=await publicCollectionData(env,'collection');assert.equal(data.projects.length,1);assert.deepEqual(data.projects[0].variants,[{assetId:'publicAsset'}]);assert.ok(!JSON.stringify(data).includes('privateAsset'));assert.ok(!JSON.stringify(data).includes('Secret'));
 });

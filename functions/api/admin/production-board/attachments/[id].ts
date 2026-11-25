@@ -44,12 +44,15 @@ export async function onRequestGet({ request, env, params }: Context): Promise<R
     status: servesRange ? 206 : 200,
     headers: {
       'Accept-Ranges': 'bytes',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox; frame-ancestors 'self'",
+      'Referrer-Policy': 'no-referrer',
       'Content-Length': String(length),
       ...(servesRange ? { 'Content-Range': `bytes ${offset}-${offset + length - 1}/${fullFile.size}` } : {}),
       // The database value tracks the archive's canonical media type. Prefer it
       // over historic source metadata so Safari receives video/mp4 after a repair.
       'Content-Type': attachment.contentType || file.httpMetadata?.contentType || 'application/octet-stream',
-      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
+      'Content-Disposition': `${/^(?:image\/(?:jpeg|png|webp|gif|avif)|video\/|audio\/|application\/pdf$)/i.test(attachment.contentType || '') ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
       'Cache-Control': 'private, no-store',
     },
   });

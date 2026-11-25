@@ -23,9 +23,9 @@ const { onRequestGet: readComments } = await import(pathToFileURL(join(temp, 'fu
 const { onRequestPost: linkVideoApi } = await import(pathToFileURL(join(temp, 'functions/api/internal/v1/cards/[id]/videos.mjs')));
 const { videoCommentBody } = await import(pathToFileURL(join(temp, 'functions/_lib/video-comment-body.mjs')));
 after(() => rm(temp, { recursive: true, force: true }));
-const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions', '0050_production_card_signals', '0035_card_media_gallery', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0056_client_drive_trash_requests','0057_client_deletion','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
+const schemas = await Promise.all(['0008_production_board', '0009_production_card_overrides', '0010_production_card_work_fields', '0011_production_card_sort_order', '0012_production_column_controls', '0013_production_comment_blocks', '0015_production_comment_authors', '0051_comment_questions','0059_comment_retries', '0050_production_card_signals', '0035_card_media_gallery', '0017_internal_api_foundation', '0025_production_card_deletions', '0052_card_creation_requests', '0053_mcp_item_requests','0054_integration_health','0055_notifications','0056_client_drive_trash_requests','0057_client_deletion','0018_mux_library_snapshot'].map(name => readFile(`migrations/${name}.sql`, 'utf8')));
 const authSchema = await readFile('workers/deck-mcp/auth-schema.sql', 'utf8') + await readFile('workers/deck-mcp/events-schema.sql','utf8');
-const {enqueueMuxReady,deliverEvents}=await import(pathToFileURL(join(temp,'functions/_lib/mcp-events.mjs')));
+const {enqueueMuxReady,deliverEvents,liveSession,pruneSubscriptions}=await import(pathToFileURL(join(temp,'functions/_lib/mcp-events.mjs')));
 const {onRequestPost:muxWebhook}=await import(pathToFileURL(join(temp,'functions/api/webhooks/mux.mjs')));
 const hash = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('base64url');
 
@@ -122,13 +122,13 @@ test('separate consent tabs survive retries and clear only their own cookie', as
   assert.equal((await submit(first, first.cookie)).status, 400);
 });
 
-test('real MCP client discovers 28 tools and creates one audited card across retries', async t => {
+test('real MCP client discovers 26 tools and creates one audited card across retries', async t => {
   const f = fixture(t); const { access } = await f.token();
   const client = new Client({ name: 'deck-test', version: '1.0' });
   const transport = new StreamableHTTPClientTransport(new URL(f.env.MCP_ORIGIN + '/mcp'), { requestInit: { headers: { Authorization: `Bearer ${access}` } }, fetch: (url, options) => f.fetch(url, options) });
   await client.connect(transport);
   try {
-    const tools = await client.listTools(); assert.equal(tools.tools.length, 28); assert.equal(new Set(tools.tools.map(x => x.name)).size, 28); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
+    const tools = await client.listTools(); assert.equal(tools.tools.length, 26); assert.equal(new Set(tools.tools.map(x => x.name)).size, 26); assert.ok(tools.tools.some(x => x.name === 'report_deck_moves')); for (const tool of tools.tools) assert.equal(typeof tool.annotations.readOnlyHint, 'boolean');
     const columns = await client.callTool({ name: 'list_deck_columns', arguments: {} });
     assert.deepEqual(columns.structuredContent.columns, [{ id: 'ideas', name: 'Ideas' }, { id: 'production', name: 'Production' }]);
     const args = { title: 'Mabra fall campaign — MCP test', client: 'Mabra', columnSourceId: 'ideas', notes: '<script>alert(1)</script>', requestId: crypto.randomUUID() };
@@ -199,10 +199,10 @@ test('client item retries are durable; partial edits preserve rich body and dete
   assert.equal((await call('set_client_todo_completed', { clientId: 'bmw', itemId, expectedUpdatedAt: item.updated_at, completed: true })).isError, true);
   item = updated.structuredContent.item;
   const completed = await call('set_client_todo_completed', { clientId: 'bmw', itemId, expectedUpdatedAt: item.updated_at, completed: true }); assert.equal(completed.isError, undefined); assert.equal(completed.structuredContent.item.completed, 1); assert.equal(completed.structuredContent.item.due_on, '2026-12-01');
-  const deleted = await call('delete_client_item', { clientId: 'bmw', itemId, expectedUpdatedAt: completed.structuredContent.item.updated_at }); assert.equal(deleted.isError, undefined);
-  assert.equal((await call('create_client_item', args)).structuredContent.created, false, 'Retry after deletion must not resurrect the item');
-  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n, 0);
-  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_activity').get().n, 4);
+  const deleted = await call('delete_client_item', { clientId: 'bmw', itemId, expectedUpdatedAt: completed.structuredContent.item.updated_at }); assert.equal(deleted.isError, true);
+  assert.equal((await call('create_client_item', args)).structuredContent.created, false, 'Retry must not duplicate the item');
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_workspace_items').get().n, 1);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_activity').get().n, 3);
 });
 
 test('client create and audit roll back atomically on failure', async t => {
@@ -292,7 +292,7 @@ test('video tools search newest uploads, return public links and refuse private 
     const repaired=await call('link_video_to_card',{cardId:card.structuredContent.id,assetId:'oldvideo'});
     assert.equal(repaired.structuredContent.data.created,false);
     assert.equal(repaired.structuredContent.data.comment.id,'video-link-legacy');
-    const fallback=await call('add_deck_comment',{cardId:card.structuredContent.id,body:'Review https://deck.test/watch/u/newvideo'});
+    const fallback=await call('add_deck_comment',{requestId:crypto.randomUUID(),cardId:card.structuredContent.id,body:'Review https://deck.test/watch/u/newvideo'});
     assert.equal(fallback.isError,undefined);
     const fallbackRow=f.db.prepare('SELECT body_html,body_json FROM production_local_comments WHERE id=?').get(fallback.structuredContent.data.id);
     assert.match(fallbackRow.body_html,/<iframe/);
@@ -349,7 +349,7 @@ test('existing card movement and comments retain validation and audit attributio
   const cardId=created.structuredContent.id;
   const moved=await call('move_deck_card',{cardId,columnSourceId:'production'});assert.equal(moved.isError,undefined);assert.equal(moved.structuredContent.data.columnSourceId,'production');
   assert.equal(f.db.prepare('SELECT actor FROM production_card_edit_log').get().actor,'ChatGPT personal MCP');
-  const comment=await call('add_deck_comment',{cardId,body:'Please review <script>text</script>'});assert.equal(comment.isError,undefined);
+  const comment=await call('add_deck_comment',{requestId:crypto.randomUUID(),cardId,body:'Please review <script>text</script>'});assert.equal(comment.isError,undefined);
   assert.equal(comment.structuredContent.data.authorName,'ChatGPT personal MCP');assert.ok(!comment.structuredContent.data.bodyHtml.includes('<script>'));
   const detail=await call('get_deck_card',{cardId});assert.equal(detail.structuredContent.data.columnSourceId,'production');
   const history=await call('get_deck_card_activity',{cardId});assert.ok(history.structuredContent.data.some(e=>e.type==='comment_added'));
@@ -377,6 +377,8 @@ test('refresh survives the old deadline and a year of inactivity; rotates and re
 
 test('revocation binds client and invalidates all tokens only for the target connection', async t => {
   const f=fixture(t),a=await f.token(),b=await f.token();
+  f.db.exec(await readFile('migrations/0019_mux_library_browse_index.sql','utf8'));
+  f.db.exec(await readFile('migrations/0058_media_safety.sql','utf8'));
   const refresh=x=>f.form('/token',{grant_type:'refresh_token',refresh_token:x.refresh,client_id:x.grant.client_id,resource:f.env.MCP_ORIGIN+'/mcp',scope:'tg:personal'});
   assert.equal((await f.form('/revoke',{token:a.refresh,client_id:b.grant.client_id})).status,200);
   const renewed=await refresh(a);assert.equal(renewed.status,200);
@@ -398,6 +400,8 @@ test('refresh rotation rolls back on storage failure without losing the valid re
 
 test('cleanup removes revoked token families without removing persistent active grants', async t => {
   const f=fixture(t),a=await f.token(),b=await f.token();
+  f.db.exec(await readFile('migrations/0019_mux_library_browse_index.sql','utf8'));
+  f.db.exec(await readFile('migrations/0058_media_safety.sql','utf8'));
   await f.form('/revoke',{token:a.refresh,client_id:a.grant.client_id});
   await worker.scheduled({},f.env);
   assert.equal(f.auth.prepare("SELECT COUNT(*) n FROM oauth_records WHERE kind='refresh'").get().n,1);
@@ -438,7 +442,7 @@ test('teammate code is single-use, grants survive renewal, actions identify team
   const call=(name,args)=>client.callTool({name,arguments:args});
   const card=await call('create_deck_card',{title:'Member campaign',columnSourceId:'ideas',requestId:crypto.randomUUID()});assert.equal(card.isError,undefined);
   const audit=f.db.prepare("SELECT actor_id FROM production_card_activity WHERE event_type='card_created'").get();assert.equal(audit.actor_id,'mcp-invitation:'+invitation.invitation.id);
-  const comment=await call('add_deck_comment',{cardId:card.structuredContent.id,body:'From teammate'});assert.equal(comment.structuredContent.data.authorName,'Taylor (MCP)');assert.equal(comment.structuredContent.data.authorEmail,'taylor@trantergrey.com');
+  const comment=await call('add_deck_comment',{requestId:crypto.randomUUID(),cardId:card.structuredContent.id,body:'From teammate'});assert.equal(comment.structuredContent.data.authorName,'Taylor (MCP)');assert.equal(comment.structuredContent.data.authorEmail,'taylor@trantergrey.com');
   const todo=await call('create_client_item',{clientId:'bmw',kind:'todo',title:'Member todo',requestId:crypto.randomUUID()});assert.equal(todo.isError,undefined);assert.equal(f.db.prepare('SELECT actor FROM client_activity').get().actor,'Taylor (MCP)');
   const renewed=await f.form('/token',{grant_type:'refresh_token',refresh_token:member.refresh,client_id:member.grant.client_id});assert.equal(renewed.status,200);const tokens=await renewed.json();
   const before=await (await api()).json();assert.equal(before.invitations[0].connectionCount,1);assert.ok(before.invitations[0].lastUsedAt);
@@ -901,7 +905,7 @@ test('card search exposes paginated chip data and excludes deleted updates', asy
   assert.equal(rows.find(row => row.id === ids[1]).attention, null);
 });
 
-test('client deletion requires separate consent, exposes counts, retries safely and preserves renewal scope',async t=>{
+test('MCP denies client deletion even with historical consent and preserves renewal scope',async t=>{
  const f=fixture(t);
  f.db.exec(await readFile('migrations/0005_mux_library.sql','utf8'));
  f.db.exec(await readFile('migrations/0019_mux_library_browse_index.sql','utf8'));
@@ -914,9 +918,18 @@ test('client deletion requires separate consent, exposes counts, retries safely 
  const broaden=await f.form('/token',{grant_type:'refresh_token',refresh_token:old.token.refresh,client_id:old.token.grant.client_id,resource:f.env.MCP_ORIGIN+'/mcp',scope:'tg:personal clients:delete'});
  assert.equal(broaden.status,400);
  const enabled=await connect('tg:personal clients:delete notifications:send');
- const result=await enabled.call('delete_client',input);assert.equal(result.isError,undefined);assert.equal(result.structuredContent.data.deleted,true);
- assert.equal((await enabled.call('delete_client',input)).structuredContent.data.replayed,true);
- assert.equal(f.db.prepare("SELECT COUNT(*) n FROM client_directory WHERE id='bmw'").get().n,0);
+ const result=await enabled.call('delete_client',input);assert.equal(result.isError,true);
+ assert.equal((await enabled.call('delete_client',input)).isError,true);
+ assert.equal(f.db.prepare("SELECT COUNT(*) n FROM client_directory WHERE id='bmw'").get().n,1);
  const refreshed=await f.form('/token',{grant_type:'refresh_token',refresh_token:enabled.token.refresh,client_id:enabled.token.grant.client_id,resource:f.env.MCP_ORIGIN+'/mcp'});
  assert.equal(refreshed.status,200);assert.equal((await refreshed.json()).scope,'tg:personal clients:delete notifications:send');
+});
+
+test('event sessions accept valid permission combinations and reject substring lookalikes',async t=>{
+ const f=fixture(t);let index=0;
+ for(const scope of ['tg:personal','tg:personal notifications:send','tg:personal clients:delete notifications:send','notifications:send tg:personal','not-tg:personal']) {
+  const id='scope-'+index++;f.auth.prepare("INSERT INTO oauth_records(kind,id,data,expires_at) VALUES('session',?,?,?)").run(id,JSON.stringify({scope}),Math.floor(Date.now()/1000)+3600);
+  assert.equal(Boolean(await liveSession(f.env,id)),scope!=='not-tg:personal');
+ }
+ await pruneSubscriptions(f.env);
 });

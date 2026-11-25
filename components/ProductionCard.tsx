@@ -7,6 +7,8 @@ import { CardSignalEditor } from './CardSignalEditor';
 import { uiIconMarkup } from '@/lib/ui-icons';
 import { UiIcon } from '@/components/UiIcon';
 
+import { useRetryId } from './useRetryId';
+import { useLiveRefresh } from './useLiveRefresh';
 import { useEffect, useState } from 'react';
 import type { ChangeEvent, MouseEvent } from 'react';
 import type { Descendant } from 'slate';
@@ -34,7 +36,7 @@ type Detail = {
   editLog: Array<{ changedAt: string }>;
   viewer: { name: string; email: string | null } | null;
 };
-type Draft = { title: string; notes: string; notesHtml?: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
+type Draft = { expectedUpdatedAt: string; title: string; notes: string; notesHtml?: string; client: string; assignedTo: string; dueOn: string; columnSourceId: string; archived: boolean };
 type TimelineItem = { id: string; kind: 'comment' | 'event' | 'local-comment'; timestamp: string; author?: string; html?: string; summary?: string; order: number };
 
 const text = (value: unknown) => typeof value === 'string' ? value : '';
@@ -97,6 +99,7 @@ type ProductionCardProps = {
 };
 
 export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onDeleted }: ProductionCardProps) {
+  const retryCommentId = useRetryId();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -118,7 +121,7 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
   const [docxImportingId, setDocxImportingId] = useState<string | null>(null);
   const [docxImportError, setDocxImportError] = useState<{ id: string; message: string } | null>(null);
 
-  const load = () => fetch(`/api/admin/production-board/${encodeURIComponent(id)}`, { cache: 'no-store' }).then(async (response) => {
+  const load = (signal?: AbortSignal) => fetch(`/api/admin/production-board/${encodeURIComponent(id)}`, { cache: 'no-store', signal }).then(async (response) => {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'Unable to open this card.');
     return payload as Detail;
@@ -128,7 +131,8 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
   useEffect(() => {
     if (data && focusTarget) document.getElementById(focusTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [Boolean(data), focusTarget]);
-  if (error || !data) return <p className="admin-empty">{error || 'Opening production card…'}</p>;
+  useLiveRefresh(async signal => { const payload = await load(signal); if (!signal.aborted) setData(payload); }, Boolean(data) && !draft && !saving && !notesFocused && !comment && !editingCommentId && !commentSaving && !commentChanging && !deletingCard && !docxImportingId);
+  if (!data) return <p className="admin-empty">{error || 'Opening production card…'}</p>;
 
   const card = data.card;
   const assigned = names(card.assignees_json);
@@ -145,7 +149,7 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
     if (Number.isNaN(rightTime)) return -1;
     return leftTime - rightTime || left.order - right.order;
   });
-  const cardDraft = (): Draft => ({ title: text(card.title), notes: notesText, client: text(card.client), assignedTo: assigned.join(', '), dueOn: text(card.due_on).slice(0, 10), columnSourceId: text(card.column_source_id), archived: card.archived === 1 });
+  const cardDraft = (): Draft => ({ expectedUpdatedAt: text(card.updatedAt), title: text(card.title), notes: notesText, client: text(card.client), assignedTo: assigned.join(', '), dueOn: text(card.due_on).slice(0, 10), columnSourceId: text(card.column_source_id), archived: card.archived === 1 });
   const activeDraft = draft || cardDraft();
   const save = async (nextDraft = draft) => {
     if (!nextDraft) return;
@@ -220,7 +224,7 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
     if (!hasCommentContent(comment)) return;
     setCommentSaving(true); setError('');
     try {
-      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}/comments`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: comment, ...((tagText.trim() || acceptedDates.length || dueDate) ? { signal: { ...(tagText.trim() ? { attention: tagText.trim() } : {}), ...(acceptedDates.length ? { filmingDates: acceptedDates } : {}), ...(dueDate ? { dueOn: dueDate } : {}) } } : {}) }) });
+      const response = await fetch(`/api/admin/production-board/${encodeURIComponent(id)}/comments`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestId: retryCommentId({ comment, tagText, acceptedDates, dueDate, commentEditorKey }), body: comment, ...((tagText.trim() || acceptedDates.length || dueDate) ? { signal: { ...(tagText.trim() ? { attention: tagText.trim() } : {}), ...(acceptedDates.length ? { filmingDates: acceptedDates } : {}), ...(dueDate ? { dueOn: dueDate } : {}) } } : {}) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to add comment.');
       setData({ ...data, card: { ...data.card, ...(dueDate ? { due_on: dueDate } : {}), ...(tagText.trim() ? { attention: tagText.trim() } : {}), ...(acceptedDates.length ? { filmingOn: JSON.stringify([...new Set([...filmingDates(card.filmingOn), ...acceptedDates])].sort()) } : {}), ...(dueDate ? { dueOn: dueDate } : {}) }, localComments: [...data.localComments, payload.localComment] }); setTagText(''); setDateMeanings({}); setComment(null); setCommentEditorKey((value) => value + 1); onUpdated?.();
@@ -290,7 +294,7 @@ export function ProductionCard({ id, drawer = false, focusTarget, onUpdated, onD
   };
   return <article className={`production-card${drawer ? ' is-drawer-card' : ''}`}>
     <div className="production-card-heading"><div><p className="eyebrow">Local production record · Basecamp source preserved</p><ProductionCardTitle value={activeDraft.title} onChange={title => setDraft({ ...activeDraft, title })} onSave={() => void save()} disabled={saving} /></div></div>
-    {error && <p className="production-save-error">{error}</p>}
+    {error && <p className="production-save-error" role="alert">{error} <button type="button" onClick={() => { if (draft && !window.confirm("Discard your unsaved draft and load the latest card?")) return; void load().then(payload => { setData(payload); setDraft(null); setError(''); }); }}>Reload latest card</button></p>}
     <dl className="production-properties production-inline-properties"><div><dt>Client</dt><dd><ClientPicker value={activeDraft.client} clients={data.clients} onChange={(value) => setDraft({ ...activeDraft, client: value })} onBlur={(client) => void save({ ...activeDraft, client })} disabled={saving} onClientsChanged={() => onUpdated?.()} placeholder="Search or add a client" /></dd></div><div><dt>Assigned to</dt><dd><TeamMemberPicker value={activeDraft.assignedTo} members={data.assignees} onChange={(value) => setDraft({ ...activeDraft, assignedTo: value })} onBlur={() => void save()} disabled={saving} /></dd></div><div><dt>Due on</dt><dd><span className="production-date-field" data-empty={!activeDraft.dueOn}><input aria-label="Due on" type="date" className={activeDraft.dueOn ? undefined : "is-empty"} value={activeDraft.dueOn} onChange={(event) => setDraft({ ...activeDraft, dueOn: event.target.value })} onBlur={() => void save()} disabled={saving} /><span className="production-date-placeholder" aria-hidden="true">Set date</span></span></dd></div><div><dt>Status</dt><dd><select value={activeDraft.columnSourceId} onChange={(event) => { const next = { ...activeDraft, columnSourceId: event.target.value }; setDraft(next); void save(next); }} disabled={saving}>{data.columns.map((column) => <option key={column.sourceId} value={column.sourceId}>{column.name}</option>)}</select></dd></div></dl>
     <section className="production-card-notes production-inline-notes" onClick={(event) => {
       if (notesFocused || saving || !(event.target instanceof Element) || event.target.closest('a, button, input, label, select, textarea, [role="button"]')) return;

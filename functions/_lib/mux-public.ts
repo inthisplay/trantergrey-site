@@ -18,6 +18,8 @@ export async function publicWatchData(env: AdminEnvironment, slug: string) {
   if (project) {
     const assets = await Promise.all(project.variants.map((variant) => getMuxLibraryAsset(env, variant.assetId).catch(() => null)));
     const variants = assets.flatMap((asset, index) => asset ? [publicVariant(asset, project.variants[index].label, metadata)].filter((item): item is PublicVariant => Boolean(item)) : []);
+    // A share URL must not reveal metadata for a project with no public asset.
+    if (project.variants.length && !assets.some(asset => asset?.playbackPolicy === 'public')) return null;
     const client = await publicProjectClient(env, project).catch(() => project.client);
     const unbrandedPublicPage = variants.length > 0 || project.unbrandedPublicPage === true;
     const logoKey = await clientPublicLogo(env, {...project, client, unbrandedPublicPage}).catch(() => null);
@@ -26,6 +28,7 @@ export async function publicWatchData(env: AdminEnvironment, slug: string) {
   if (!/^[A-Za-z0-9]+$/.test(slug)) return null;
   const asset = await getMuxLibraryAsset(env, slug).catch(() => null); if (!asset) return null;
   const saved = metadata[asset.id]; const variant = publicVariant(asset, ratioLabel(asset.aspectRatio), metadata);
+  if (asset.playbackPolicy !== 'public') return null;
   const client = await publicProjectClient(env, { client: saved?.client || null, variants: [{assetId:asset.id}] }).catch(() => saved?.client || null);
   const logoKey = variant ? await clientPublicLogo(env, { client, unbrandedPublicPage: true }).catch(() => null) : null;
   return { pending: asset.status === 'preparing', clientLogoUrl: logoKey ? `/api/watch/${encodeURIComponent(asset.id)}/logo` : null, title: saved?.title || asset.title, client: client || '', description: '', unbrandedPublicPage: Boolean(variant), variants: variant ? [variant] : [], collections: [] };
@@ -45,10 +48,10 @@ export async function publicCollectionData(env: AdminEnvironment, slug: string) 
   const publicAssets = new Map(assets.flatMap((asset) =>
     asset?.playbackId && asset.playbackPolicy === 'public' ? [[asset.id, asset] as const] : [],
   ));
-  const cards = projects.map((project) => ({
-    ...project,
-    thumbnailUrl: publicAssets.get(project.variants[0]?.assetId)?.thumbnailUrl ?? null,
-  }));
+  const cards = projects.flatMap((project) => {
+    const variants = project.variants.filter(({ assetId }) => publicAssets.has(assetId));
+    return variants.length ? [{ ...project, variants, thumbnailUrl: publicAssets.get(variants[0].assetId)?.thumbnailUrl ?? null }] : [];
+  });
   const downloadAssetIds = assetIds.filter((id) => publicAssets.has(id) && metadata[id]?.downloadsEnabled !== false);
   return { collection, projects: cards, downloadAssetIds };
 }

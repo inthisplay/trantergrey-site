@@ -40,6 +40,7 @@ async function fixture() {
  const db=new DatabaseSync(':memory:');
  for(const name of ['0005_mux_library.sql','0018_mux_library_snapshot.sql','0019_mux_library_browse_index.sql','0046_video_archive.sql','0047_archive_clients.sql'])db.exec(await readFile('migrations/'+name,'utf8'));
  db.exec("CREATE TABLE client_directory(name TEXT); INSERT INTO client_directory VALUES('Client'); CREATE TABLE admin_sessions(id TEXT,user_name TEXT,user_email TEXT,expires_at TEXT); INSERT INTO admin_sessions VALUES('test','Team','team@trantergrey.com','9999'); CREATE TABLE client_drive_connection(id TEXT,refresh_cipher TEXT,account_email TEXT,drive_id TEXT,updated_at TEXT,needs_reconnect INTEGER);");
+ for(const name of ['0061_resource_retention.sql','0062_archive_revision.sql'])db.exec(await readFile('migrations/'+name,'utf8'));
  const env={ARCHIVE_WORKER_SECRET:'worker-secret'.repeat(4),ADMIN_PASSWORD:'fixture',MUX_TOKEN_ID:'mux',MUX_TOKEN_SECRET:'mux-secret',GOOGLE_CLIENT_ID:'google',GOOGLE_CLIENT_SECRET:'google-secret',GOOGLE_DRIVE_ENCRYPTION_KEY:'12'.repeat(32),GOOGLE_DRIVE_ID:'shared',TG_DATA:{prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};},async batch(statements){const results=[];db.exec('BEGIN');try{for(const s of statements)results.push(await s.run());db.exec('COMMIT');return results;}catch(e){db.exec('ROLLBACK');throw e;}}}};
  const cipher=await modules.oauth.encryptDriveSecret(env,'refresh');db.prepare('INSERT INTO client_drive_connection VALUES(?,?,?,?,?,0)').run('organization',cipher,'owner@trantergrey.com','shared','now');
  const v=video();db.prepare('INSERT INTO archive_videos(vimeo_id,title,folder,client,created_at,duration,imported_at) VALUES(?,?,?,?,?,?,?)').run(v.vimeo_id,v.title,v.folder,v.client,v.created_at,v.duration,'now');
@@ -267,5 +268,21 @@ test('same-size source replacement between chunks stops and explicit retry start
   assert.equal((await f.api({action:'retry',id:'12345678'})).status,200);
   const job=f.db.prepare('SELECT * FROM archive_imports').get();
   assert.equal(job.source_version,'revision:revision-2');assert.equal(job.bytes_done,0);assert.equal(f.cancelled,true);
+ }finally{f.restore();}
+});
+test('unchanged archive polling reads bounded jobs, while catalog and active scan changes invalidate the revision',async()=>{
+ const f=await fixture();try{
+  const first=await(await f.api()).json();assert(first.revision);
+  const get=revision=>modules.api.onRequest({env:f.env,request:new Request(`https://local.test/api/admin/archive?revision=${revision}&pageIds=12345678`,{headers:{cookie:'tg_admin=test'}})});
+  const prepare=f.env.TG_DATA.prepare;
+  f.env.TG_DATA.prepare=sql=>{assert(!sql.includes('FROM archive_videos'),'unchanged polling must not read the catalog');return prepare(sql);};
+  const unchanged=await(await get(first.revision)).json();assert.equal(unchanged.unchanged,true);assert.deepEqual(unchanged.jobs,[]);assert.equal(unchanged.rows,undefined);
+  f.env.TG_DATA.prepare=prepare;
+  f.db.prepare('INSERT INTO archive_files VALUES(?,?,?)').run('pending','file',JSON.stringify(file()));
+  assert.equal((await(await get(first.revision)).json()).unchanged,true);
+  f.db.exec("UPDATE archive_videos SET title='Changed'");
+  const changed=await(await get(first.revision)).json();assert.notEqual(changed.revision,first.revision);assert.equal(changed.unchanged,undefined);
+  f.db.exec("UPDATE archive_state SET active_scan='pending' WHERE id='archive'");
+  assert.notEqual((await(await get(changed.revision)).json()).revision,changed.revision);
  }finally{f.restore();}
 });

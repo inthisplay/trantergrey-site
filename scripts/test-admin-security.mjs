@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, after } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,7 +10,7 @@ import { build } from 'esbuild';
 const dir = await mkdtemp(join(tmpdir(), 'tg-admin-security-'));
 const handlers = {};
 for (const [name, path] of Object.entries({
-  auth: 'functions/_lib/admin.ts', logout: 'functions/api/admin/logout.ts',
+  team: 'functions/api/admin/team-members.ts', safety: 'functions/_lib/request-safety.ts', auth: 'functions/_lib/admin.ts', logout: 'functions/api/admin/logout.ts',
   login: 'functions/api/admin/login.ts', config: 'functions/api/auth/config.ts',
   html: 'lib/production-html.ts', import: 'functions/_lib/production-board.ts',
   card: 'functions/api/admin/production-board/[id].ts',
@@ -24,6 +24,7 @@ const clean = handlers.html.sanitizeProductionHtml;
 function fixture() {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE admin_sessions (id TEXT PRIMARY KEY, expires_at TEXT, user_name TEXT, user_email TEXT)');
+  db.exec("CREATE TABLE team_access(email TEXT PRIMARY KEY,active INTEGER,updated_at TEXT); INSERT INTO team_access VALUES('team@trantergrey.com',1,'now'),('other@trantergrey.com',1,'now'),('tyler@trantergrey.com',1,'now'); CREATE TABLE admin_team_directory(email TEXT PRIMARY KEY,nickname TEXT,created_at TEXT,updated_at TEXT); INSERT INTO admin_team_directory VALUES('team@trantergrey.com','Team','now','now'); CREATE TABLE mcp_invitations(id TEXT,email TEXT,revoked_at TEXT); INSERT INTO mcp_invitations VALUES('invite','team@trantergrey.com',NULL); CREATE TABLE oauth_records(kind TEXT,id TEXT,data TEXT); INSERT INTO oauth_records VALUES('session','connection','{\"invitationId\":\"invite\"}');");
   const env = { ADMIN_PASSWORD: 'old-secret', GOOGLE_CLIENT_ID: 'google', GOOGLE_CLIENT_SECRET: 'secret', TG_DATA: {
     prepare(sql) { let values = []; return {
       bind(...args) { values = args; return this; },
@@ -31,6 +32,8 @@ function fixture() {
       async run() { return db.prepare(sql).run(...values); },
     }; },
   } };
+  env.TG_DATA.batch=async statements=>{db.exec('BEGIN');try{for(const statement of statements)await statement.run();db.exec('COMMIT');}catch(error){db.exec('ROLLBACK');throw error;}};
+  env.MCP_AUTH=env.TG_DATA;
   const request = (cookie = '', origin = 'https://app.test') => new Request('https://app.test/api/admin/logout', { method: 'POST', headers: { cookie, origin } });
   return { db, env, request };
 }
@@ -57,6 +60,39 @@ test('logout revokes precisely the current session, prevents replay, and is idem
 test('failed revocation never reports successful logout', async () => {
   const { db, env, request } = fixture(); db.close();
   await assert.rejects(handlers.logout.onRequestPost({ request: request('tg_admin=existing'), env }));
+});
+
+test('owner offboarding blocks login, revokes website and MCP sessions, and cannot disable the owner', async () => {
+ const {db,env}=fixture();try {
+  const owner=(await handlers.auth.adminCookie(env,{name:'Owner',email:'tyler@trantergrey.com'})).split(';')[0];
+  const member=(await handlers.auth.adminCookie(env,{name:'Team',email:'team@trantergrey.com'})).split(';')[0];
+  const change=(cookie,email,active)=>handlers.team.onRequestPatch({env,request:new Request('https://app.test/api/admin/team-members',{method:'PATCH',headers:{cookie,origin:'https://app.test'},body:JSON.stringify({email,active})})});
+  assert.equal((await change(member,'team@trantergrey.com',false)).status,403);
+  assert.equal((await change(owner,'tyler@trantergrey.com',false)).status,400);
+  assert.equal((await change(owner,'team@trantergrey.com',false)).status,200);
+  assert.equal(await handlers.auth.adminSession(new Request('https://app.test',{headers:{cookie:member}}),env),null);
+  await assert.rejects(()=>handlers.auth.adminCookie(env,{name:'Team',email:'team@trantergrey.com'}));
+  await assert.rejects(()=>handlers.auth.adminCookie(env,{name:'Unknown',email:'unknown@trantergrey.com'}));
+  assert.ok(db.prepare('SELECT revoked_at FROM mcp_invitations').get().revoked_at);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM oauth_records').get().n,0);
+  assert.equal((await change(owner,'team@trantergrey.com',true)).status,200);
+  assert.ok(await handlers.auth.adminCookie(env,{name:'Team',email:'team@trantergrey.com'}));
+  assert.ok(db.prepare('SELECT revoked_at FROM mcp_invitations').get().revoked_at);
+ } finally {db.close();}
+});
+
+test('request guards bound streamed JSON, reject cross-site cookie writes and share public rate limits', async () => {
+ const {db,env}=fixture();try {
+  db.exec(await readFile('migrations/0054_integration_health.sql','utf8'));
+  const guard=(path,options)=>handlers.safety.requestSafety(new Request('https://app.test'+path,options),env);
+  assert.equal((await guard('/api/admin/production-board/cards',{method:'POST',headers:{cookie:'tg_admin=x',origin:'https://evil.test'}})).status,403);
+  assert.equal((await guard('/api/contact',{method:'POST',headers:{'content-type':'text/plain'},body:'{}'})).status,415);
+  const stream=new ReadableStream({start(controller){controller.enqueue(new Uint8Array(1024*1024+1));controller.close();}});
+  assert.equal((await guard('/api/contact',{method:'POST',headers:{'content-type':'application/json'},body:stream,duplex:'half'})).status,413);
+  for(let i=0;i<6;i++)assert.equal(await guard('/api/contact',{method:'POST',headers:{'content-type':'application/json','CF-Connecting-IP':'192.0.2.1'},body:'{}'}),null);
+  assert.equal((await guard('/api/contact',{method:'POST',headers:{'content-type':'application/json','CF-Connecting-IP':'192.0.2.1'},body:'{}'})).status,429);
+  assert.ok(!JSON.stringify(db.prepare('SELECT * FROM integration_rate_limits').all()).includes('192.0.2.1'));
+ } finally {db.close();}
 });
 
 test('password authentication and legacy sessions fail closed even with the old secret configured', async () => {

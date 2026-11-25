@@ -24,6 +24,7 @@ async function read(env:AdminEnvironment,id:string){
 }
 export async function previewClientDeletion(env:AdminEnvironment,id:string,actor:ApiActor){checkScope(actor,'clients:read');return (await read(env,id)).preview;}
 export async function deleteClient(env:AdminEnvironment,input:{clientId:string;expectedVersion:string;confirmName:string;requestId:string},actor:ApiActor){
+ if(actor.surface==='mcp')throw new ClientDeletionError('Deletion is not available through MCP. Use the website.',403);
  checkScope(actor,'clients:delete');
  if(!input||typeof input.clientId!=='string'||typeof input.confirmName!=='string'||typeof input.expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedVersion)||typeof input.requestId!=='string'||!/^[a-f0-9-]{36}$/i.test(input.requestId))throw new ClientDeletionError('Provide the exact client, confirmation name, preview version and requestId UUID.');
  const actorId=`${actor.type}:${actor.id}`,payload=JSON.stringify({clientId:input.clientId,expectedVersion:input.expectedVersion,confirmName:input.confirmName});

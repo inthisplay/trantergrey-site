@@ -8,6 +8,7 @@ const {outputFiles}=await build({stdin:{contents:`import React from 'react'; imp
 const browser=await chromium.launch({...(process.env.CHROME_PATH ? {executablePath:process.env.CHROME_PATH} : {}),headless:true});
 try {
 const page=await browser.newPage(); page.on('pageerror', e=>console.log('PAGE ERROR',e.message)); page.setDefaultTimeout(10000);
+await page.clock.install();
 const data={items:[],card:{source_id:'fixture',title:'Fixture',notes_html:'<p>Original</p>'},steps:[],comments:[],events:[],attachments:[],columns:[],clients:[],assignees:[],localComments:[],editLog:[],viewer:null};
 await page.route('http://notes.test/**',async route=>{if(route.request().url().includes('/api/'))return route.fulfill({json:data});return route.fulfill({contentType:'text/html',body:'<div id="root"></div>'});});
 await page.goto('http://notes.test/');await page.addScriptTag({content:outputFiles[0].text});
@@ -20,4 +21,15 @@ await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(a
 await page.locator('.production-inline-notes-heading h2').click();assert.equal(await editor.textContent(),'Original');
 await page.keyboard.type(' again');assert.equal(await editor.textContent(),'Original again');
 console.log('PASS: notes body and heading activate editing; autofocus; forward typing; middle insertion; cancel and reopen.');
+await page.getByRole('button',{name:'Cancel',exact:true}).click();
+data.card.notes_html='<p>Updated by teammate</p>';
+await page.clock.fastForward(15000);
+await page.waitForFunction(()=>document.querySelector('.production-notes-display')?.textContent==='Updated by teammate');
+await page.locator('.production-notes-display p').click();
+await page.keyboard.type(' local draft');
+const draft=await editor.textContent();
+data.card.notes_html='<p>Another remote update</p>';
+await page.clock.fastForward(30000);
+assert.equal(await editor.textContent(),draft);
+console.log('PASS: idle cards refresh live; active notes drafts survive remote changes.');
 }finally{await browser.close();}

@@ -1,6 +1,7 @@
 import type { AdminEnvironment } from '../../_lib/admin';
 import { createMuxStaticRendition, getMuxLibraryAsset } from '../../_lib/mux';
 import { readMuxMetadata } from '../../_lib/mux-state';
+import { enforceRateLimit } from '../../_lib/integration-health';
 
 const qualities = ['highest', '1080p', '720p', '540p'] as const;
 type Quality = typeof qualities[number];
@@ -45,7 +46,11 @@ export async function onRequestPost({ request, env }: Context) {
     const quality = parse(body.quality); const asset = await publicAsset(env, body.assetId); const options = available(asset.maxResolution);
     if (!options.includes(quality)) { const next = nextQuality(quality, asset.maxResolution); return Response.json({ error: `${quality} is not available for this video.${next ? ` Try ${next} instead.` : ''}`, nextAvailableQuality: next }, { status: 409 }); }
     const target = effective(quality, asset.maxResolution); const existing = renditionFor(asset, target, quality);
-    if (!existing || !['ready', 'preparing', 'processing'].includes(existing.status)) await createMuxStaticRendition(env, body.assetId, target);
+    if (!existing || !['ready', 'preparing', 'processing'].includes(existing.status)) {
+      // Atomic across instances: simultaneous viewers must not all create the same rendition.
+      const pending = await enforceRateLimit(env, 'api', 'rendition_create', `${body.assetId}:${target}`, 1, false);
+      if (!pending) await createMuxStaticRendition(env, body.assetId, target);
+    }
     return Response.json({ ok: true, quality });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Could not prepare the download.' }, { status: 400 }); }
 }

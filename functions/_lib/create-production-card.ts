@@ -5,7 +5,7 @@ export class CardInputError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export type CardDraft = { title?: unknown; client?: unknown; columnSourceId?: unknown; notes?: unknown; requestId?: unknown };
+export type CardDraft = { title?: unknown; client?: unknown; columnSourceId?: unknown; notes?: unknown; requestId?: unknown; assignedTo?: unknown; dueOn?: unknown };
 
 function field(value: unknown, name: string, max: number, required = false) {
   if (value === undefined && !required) return '';
@@ -19,8 +19,12 @@ export async function createProductionCard(env: AdminEnvironment, draft: CardDra
     title: field(draft.title, 'title', 240, true),
     client: field(draft.client, 'client', 120),
     columnSourceId: field(draft.columnSourceId, 'column', 200, true),
-    notes: field(draft.notes, 'notes', 10000),
+    notes: field(draft.notes, 'notes', 100000),
+    ...(draft.assignedTo !== undefined ? {assignedTo: field(draft.assignedTo, 'assignees', 2000)} : {}),
+    ...(draft.dueOn !== undefined ? {dueOn: field(draft.dueOn, 'due date', 10)} : {}),
   };
+  const assignees = [...new Set((input.assignedTo || '').split(',').map(name => name.trim()).filter(Boolean))];
+  if (assignees.some(name => name.length > 120) || (input.dueOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.dueOn))) throw new CardInputError('Check the assignees and due date.');
   const requestId = field(draft.requestId, 'request ID', 100, true);
   if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) throw new CardInputError('Use a request ID of 16–100 letters, numbers, underscores, or hyphens.');
   const actorKey = `${actor.type}:${actor.id}`;
@@ -39,7 +43,7 @@ export async function createProductionCard(env: AdminEnvironment, draft: CardDra
   const now = new Date().toISOString();
   const sourceId = `local-${crypto.randomUUID()}`;
   const id = `local-card-${crypto.randomUUID()}`;
-  const result = { id, sourceId, title: input.title, client: input.client, columnSourceId: input.columnSourceId };
+  const result = { id, sourceId, expectedUpdatedAt: now, title: input.title, client: input.client, columnSourceId: input.columnSourceId };
   const notesHtml = input.notes.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!).replace(/\r?\n/g, '<br>');
   try {
     await env.TG_DATA.batch([
@@ -50,7 +54,7 @@ export async function createProductionCard(env: AdminEnvironment, draft: CardDra
         FROM production_cards p LEFT JOIN production_card_overrides o ON o.card_source_id = p.source_id WHERE COALESCE(o.column_source_id, p.column_source_id) = ?`)
         .bind(id, sourceId, input.columnSourceId, input.title, now, now, JSON.stringify({ local: true, createdBy: actor.name, integrationActor: actorKey }), now, input.columnSourceId),
       env.TG_DATA.prepare(`INSERT INTO production_card_overrides (card_source_id, title, notes_html, client, assignees_json, due_on, column_source_id, archived, edited_at)
-        VALUES (?, ?, ?, ?, '[]', '', ?, 0, ?)`).bind(sourceId, input.title, notesHtml || null, input.client, input.columnSourceId, now),
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`).bind(sourceId, input.title, notesHtml || null, input.client, JSON.stringify(assignees), input.dueOn || '', input.columnSourceId, now),
       env.TG_DATA.prepare(`INSERT INTO production_card_activity (id, card_id, event_type, occurred_at, actor_type, actor_id, details_json) VALUES (?, ?, 'card_created', ?, ?, ?, ?)`)
         .bind(crypto.randomUUID(), id, now, actor.type, actor.id, JSON.stringify({ ...result, actorName: actor.name })),
       ...(input.client ? [env.TG_DATA.prepare('INSERT INTO client_directory (name, created_at) VALUES (?, ?) ON CONFLICT(name) DO NOTHING').bind(input.client, now)] : []),

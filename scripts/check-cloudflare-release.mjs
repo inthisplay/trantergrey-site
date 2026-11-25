@@ -64,10 +64,10 @@ const loginPage = readFileSync('out/login.html', 'utf8');
 if (!loginPage.includes('/api/auth/google')) throw new Error('The static login page does not link to Google sign-in.');
 
 for (const page of ['out/watch.html', 'out/showcase.html', 'out/work.html']) {
-  if (!readFileSync(page, 'utf8').includes('<meta name="robots" content="noindex, nofollow"')) throw new Error(`${page} must prevent search indexing.`);
+  if (!readFileSync(page, 'utf8').includes('<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"')) throw new Error(`${page} must prevent search indexing.`);
 }
 const staticHeaders = readFileSync('out/_headers', 'utf8');
-for (const path of ['/watch', '/showcase', '/work', '/app', '/app/*']) {
+for (const path of ['/watch*', '/showcase*', '/work*', '/app*', '/admin*', '/api/*']) {
   if (!staticHeaders.includes(`${path}\n  X-Robots-Tag: noindex, nofollow, noarchive`)) throw new Error(`${path} must send an X-Robots-Tag header.`);
 }
 
@@ -154,7 +154,7 @@ for (const file of ['functions/watch/[slug].ts', 'functions/watch/collection/[sl
   if (!source.includes('Response.redirect(target, 302)')) throw new Error(`${file} must redirect public video URLs.`);
 }
 const robotsMiddleware = readFileSync('functions/_middleware.ts', 'utf8');
-if (!robotsMiddleware.includes('new Headers(response.headers)') || !robotsMiddleware.includes("'X-Robots-Tag', 'noindex, nofollow, noarchive'")) {
+if (!robotsMiddleware.includes('new Headers(response.headers)') || !robotsMiddleware.includes("'X-Robots-Tag', unlistedRobots")) {
   throw new Error('Public video routes must safely add a no-index header after Cloudflare route handling.');
 }
 

@@ -63,6 +63,7 @@ export async function createItem(env: AdminEnvironment, request: Request, input:
   return result;
 }
 export async function changeItem(env: AdminEnvironment, request: Request, input: Fields & { clientId: string; itemId: string; expectedUpdatedAt: string; completed?: boolean; remove?: boolean }, actor: ApiActor) {
+  if (input.remove && actor.surface === 'mcp') throw new ClientItemError('Deletion is not available through MCP. Use the website.', 403);
   if (typeof input.expectedUpdatedAt !== 'string' || !input.expectedUpdatedAt) throw new ClientItemError('expectedUpdatedAt is required. Reload the workspace and reopen the item before saving.', 428);
   const item = await clientItem(env, input.clientId, input.itemId);
   if (item.updated_at !== input.expectedUpdatedAt) throw new ClientItemError('Item changed. Reload the workspace and reopen the item before updating.', 409);

@@ -29,6 +29,7 @@ const deleteMigration=await readFile('migrations/0057_client_deletion.sql','utf8
 const trashMigration=await readFile('migrations/0056_client_drive_trash_requests.sql','utf8');
 const logoMigration=await readFile('migrations/0049_client_logos.sql','utf8');
 const migration=await readFile('migrations/0026_client_hq.sql','utf8');
+const resourceMigration=await readFile('migrations/0061_resource_retention.sql','utf8');
 const richNoteMigration=(await readFile('migrations/0028_client_note_rich_text.sql','utf8'))+(await readFile('migrations/0029_client_note_editor_json.sql','utf8'))+(await readFile('migrations/0030_client_todo_completed_at.sql','utf8'))+(await readFile('migrations/0031_client_drive_connection.sql','utf8'))+(await readFile('migrations/0032_client_drive_extra_folders.sql','utf8'))+(await readFile('migrations/0033_client_drive_pins.sql','utf8'))+(await readFile('migrations/0034_client_activity.sql','utf8'));
 test('Drive OAuth encrypts credentials, binds one-time state to a session, checks scope/account/access',async()=>{
   const {db,env,request}=fixture();const original=globalThis.fetch;
@@ -195,7 +196,7 @@ function fixture(){
     CREATE TABLE mux_video_projects(id TEXT,value TEXT);
     CREATE TABLE mux_library_browse_state(id TEXT,refreshed_at TEXT,refresh_id TEXT);
     CREATE TABLE mux_library_browse_assets(asset_id TEXT,client TEXT,refresh_id TEXT);
-  `);db.exec(migration);db.exec(richNoteMigration);db.exec(itemRequestMigration);db.exec(logoMigration);db.exec(trashMigration);db.exec(deleteMigration);
+  `);db.exec(migration);db.exec(richNoteMigration);db.exec(resourceMigration);db.exec(itemRequestMigration);db.exec(logoMigration);db.exec(trashMigration);db.exec(deleteMigration);
   const env={GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture',TG_DATA:{prepare(sql){let values=[];const s={bind(...args){values=args;return s;},async first(){return db.prepare(sql).get(...values)??null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){const r=db.prepare(sql).run(...values);return {meta:{changes:r.changes}};}};return s;},async batch(ss){db.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}}};
   const request=(path='',body,auth=true)=>new Request('https://local.test/api/admin/'+path,{method:body?'POST':'GET',headers:{...(auth?{cookie:'tg_admin=test'}:{}),...(body?{'Content-Type':'application/json',Origin:'https://local.test'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   // Model the current UI contract: creation IDs persist for a retry; edits carry
@@ -521,6 +522,8 @@ test('client logos require authentication, validate uploads, persist per client,
 
 test('unbranded video logos are public only through enabled projects and follow the assigned client', async()=>{
   const {db,env}=fixture();
+  const previousFetch=globalThis.fetch;env.MUX_TOKEN_ID='fixture';env.MUX_TOKEN_SECRET='fixture';
+  globalThis.fetch=async url=>Response.json({data:{id:String(url).split('/').pop(),status:'ready',playback_ids:[{id:'publicPlayback',policy:'public'}],tracks:[]}});
   db.exec("ALTER TABLE mux_video_projects ADD COLUMN updated_at TEXT; CREATE TABLE mux_video_collections(value TEXT,updated_at TEXT);");
   for (const column of ['title TEXT','tags TEXT','status TEXT','thumbnail_time REAL','downloads_enabled INTEGER']) db.exec('ALTER TABLE mux_asset_metadata ADD COLUMN '+column);
   const project={id:'film',slug:'film',legacySlugs:['old-film'],title:'Film',client:'Existing',unbrandedPublicPage:true,variants:[],collectionIds:[]};
@@ -547,7 +550,7 @@ test('unbranded video logos are public only through enabled projects and follow 
     project.variants=[];project.client='Existing';save();
     db.exec("UPDATE client_directory SET logo_key='logos/two'");assert.equal(await (await get()).text(),'replacement');
     db.exec("UPDATE client_directory SET logo_key=NULL");assert.equal((await get()).status,404);assert.equal((await handlers.publicWatch.publicWatchData(env,'film')).clientLogoUrl,null);
-  } finally {db.close();}
+  } finally {globalThis.fetch=previousFetch;db.close();}
 });
 
 test('standalone videos can enable unbranded sharing and reuse the page when toggled',async()=>{

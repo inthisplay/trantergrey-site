@@ -22,14 +22,15 @@ export function qualityLabel(quality: DownloadQuality) {
   return quality === 'highest' ? 'highest available' : quality;
 }
 
-export async function prepareDownload(variant: { assetId: string }, quality: DownloadQuality) {
-  const response = await fetch('/api/watch/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetId: variant.assetId, quality }) });
+export async function prepareDownload(variant: { assetId: string }, quality: DownloadQuality, signal?: AbortSignal) {
+  const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(150000)]) : AbortSignal.timeout(150000);
+  const response = await fetch('/api/watch/download', { signal: requestSignal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetId: variant.assetId, quality }) });
   const payload = await response.json() as { error?: string };
   if (!response.ok) {
     throw new Error(payload.error || 'Could not prepare the download.');
   }
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    const check = await fetch(`/api/watch/download?assetId=${encodeURIComponent(variant.assetId)}&quality=${quality}`, { cache: 'no-store' });
+    const check = await fetch(`/api/watch/download?assetId=${encodeURIComponent(variant.assetId)}&quality=${quality}`, { cache: 'no-store', signal: requestSignal });
     const next = await check.json() as { status?: string; downloadUrl?: string; error?: string; nextAvailableQuality?: DownloadQuality };
     if (!check.ok) throw new Error(next.error || 'Could not check the download.');
     if (next.status === 'ready' && next.downloadUrl) {
@@ -38,7 +39,12 @@ export async function prepareDownload(variant: { assetId: string }, quality: Dow
     if (next.status === 'errored' || next.status === 'skipped') {
       throw new Error(`${qualityLabel(quality)} is unavailable for this video.${next.nextAvailableQuality ? ` Choose ${next.nextAvailableQuality} instead.` : ''}`);
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    await new Promise<void>((resolve, reject) => {
+      requestSignal.throwIfAborted();
+      const abort = () => { clearTimeout(timer); reject(requestSignal.reason); };
+      const timer = setTimeout(() => { requestSignal.removeEventListener('abort', abort); resolve(); }, 3000);
+      requestSignal.addEventListener('abort', abort, { once: true });
+    });
   }
   throw new Error('The download is taking longer than expected. Please try again shortly.');
 }

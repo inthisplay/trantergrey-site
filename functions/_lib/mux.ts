@@ -1,3 +1,4 @@
+import { cleanupCatalogSnapshots } from './catalog-retention';
 import { normalizeProcessing } from '../../lib/mux-upload-status';
 import type { AdminEnvironment } from './admin';
 import type { MuxLibraryAsset } from '../../lib/mux-shared';
@@ -115,12 +116,13 @@ async function readCachedMuxLibraryAssets(env: AdminEnvironment) {
     try { const asset = JSON.parse(row.value) as MuxLibraryAsset; return asset?.id ? [asset] : []; }
     catch { return []; }
   }).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  return { assets, fresh: Date.now() - refreshedAt < muxLibraryCacheLifetimeMs };
+  return { assets, fresh: refreshedAt > 0 && Date.now() - refreshedAt < muxLibraryCacheLifetimeMs };
 }
 
 async function writeMuxLibrarySnapshot(env: AdminEnvironment, assets: MuxLibraryAsset[]) {
   const refreshId = crypto.randomUUID();
   const refreshedAt = new Date().toISOString();
+  await env.TG_DATA.prepare('INSERT INTO mux_catalog_generations(kind,refresh_id,created_at) VALUES(?,?,?)').bind('snapshot', refreshId, refreshedAt).run();
   // Keep batches well under D1's statement limit. The old snapshot remains
   // active until the state row is switched below.
   for (let start = 0; start < assets.length; start += 100) {
@@ -131,6 +133,7 @@ async function writeMuxLibrarySnapshot(env: AdminEnvironment, assets: MuxLibrary
   await env.TG_DATA.prepare(`INSERT INTO mux_library_snapshot_state (id, refresh_id, refreshed_at) VALUES (?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET refresh_id=excluded.refresh_id, refreshed_at=excluded.refreshed_at`)
     .bind('library', refreshId, refreshedAt).run();
+  await cleanupCatalogSnapshots(env, Math.max(2000, assets.length));
 }
 
 /** Marks the local catalog stale without throwing away the last good snapshot. */

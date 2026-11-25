@@ -593,7 +593,7 @@ export function MuxLibraryPanel({ combinedSearch = false, loginDestination = '/a
       }
       if (!payload?.project) throw new Error('Mux is still processing the replacement. Please try again in a moment.');
       await refreshLibrary();
-      setWorkspaceMessage(`Replacement is live at /watch/${payload.project.slug}.`);
+      setWorkspaceMessage(`Replacement is live at /watch/${payload.project.slug}. The original video is retained in the library.`);
       return true;
     } catch (reason) {
       setWorkspaceMessage(reason instanceof Error ? reason.message : 'Could not replace this video.');

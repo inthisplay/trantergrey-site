@@ -44,10 +44,11 @@ export async function onRequestGet({ request, env }: Context): Promise<Response>
   if (typeof profile.email !== 'string' || profile.email_verified !== true || profile.hd !== 'trantergrey.com' || !isTranterGreyEmail(profile.email)) return loginError(request, 'domain');
   const email = profile.email.toLowerCase();
   const teamMember = await env.TG_DATA.prepare('SELECT nickname FROM admin_team_directory WHERE email = ?').bind(email).first<{ nickname: string }>();
+  if (!await env.TG_DATA.prepare('SELECT email FROM team_access WHERE email=? AND active=1').bind(email).first()) return loginError(request, 'access');
   const displayName = teamMember?.nickname?.trim() || (typeof profile.name === 'string' && profile.name.trim() ? profile.name.trim() : email.split('@')[0]);
   const headers = new Headers({ Location: new URL(destination(request), origin(request)).toString() });
   headers.append('Set-Cookie', `${stateCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
   headers.append('Set-Cookie', `${destinationCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
-  headers.append('Set-Cookie', await adminCookie(env, { name: displayName, email }));
+  try { headers.append('Set-Cookie', await adminCookie(env, { name: displayName, email })); } catch { return loginError(request, 'access'); }
   return new Response(null, { status: 303, headers });
 }

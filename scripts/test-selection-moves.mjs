@@ -25,7 +25,7 @@ function fixture(projects = [project('group', ['A', 'B'])], assetIds = ['A', 'B'
   const db = new DatabaseSync(':memory:');
   db.exec(`
     CREATE TABLE admin_sessions (id TEXT, user_name TEXT, user_email TEXT, expires_at TEXT);
-    INSERT INTO admin_sessions VALUES ('test', 'Test', NULL, '9999-01-01');
+    INSERT INTO admin_sessions VALUES ('test', 'Test', 'test@trantergrey.com', '9999-01-01');
     CREATE TABLE mux_video_projects (id TEXT PRIMARY KEY, slug TEXT UNIQUE, value TEXT, created_at TEXT, updated_at TEXT);
     CREATE TABLE mux_video_collections (id TEXT PRIMARY KEY, slug TEXT UNIQUE, value TEXT, created_at TEXT, updated_at TEXT);
     CREATE TABLE mux_library_browse_state (id TEXT, refresh_id TEXT, refreshed_at TEXT, asset_count INTEGER);

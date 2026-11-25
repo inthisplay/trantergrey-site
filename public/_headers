@@ -1,20 +1,41 @@
-/watch
-  X-Robots-Tag: noindex, nofollow, noarchive
+/watch*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
 
-/watch/u
-  X-Robots-Tag: noindex, nofollow, noarchive
+/showcase*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
 
-/showcase
-  X-Robots-Tag: noindex, nofollow, noarchive
+/work*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
 
-/work
-  X-Robots-Tag: noindex, nofollow, noarchive
+/app*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
 
-/app
-  X-Robots-Tag: noindex, nofollow, noarchive
+/admin*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
 
-/app/*
-  X-Robots-Tag: noindex, nofollow, noarchive
+/login*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+
+/library*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+
+/mux-asset*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+
+/meet*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+
+/connect-vimeo*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+
+/our-work/collections*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+
+/404*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+
+/api/*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
 
 /sw.js
   Cache-Control: no-cache

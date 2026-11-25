@@ -405,3 +405,88 @@ new name commits the field. Leaving the field or typing an unmatched name follow
 by Enter does not create a client. Existing API creation/assignment contracts remain
 unchanged. Unrelated Deck edits preserve old client labels without recreating a
 removed Client HQ workspace.
+
+## Media safety — November 25, 2026
+
+Session-only attachment/gallery uploads stream to R2 and enforce the actual byte
+count (maximum 90 MiB). New SVG attachments are rejected; existing active-content
+attachments download with a sandbox and nosniff headers. Ordinary media/PDF previews
+remain inline. Upload routes remain admin-only because they transfer private files;
+there are no new integration scopes or MCP tools.
+
+The session-only video replacement endpoint now rejects identical IDs, requires a
+ready public replacement, and atomically updates affected share pages, metadata,
+Deck associations, cache invalidation and a durable audit/retry ledger. Retry with
+the same assetId/replacementAssetId. A different replacement for an already-replaced
+source returns 409. The original Mux asset is retained for recovery and may be
+deleted separately through the existing explicit delete action. Historical comment
+embeds and activity asset IDs remain historical; only canonical Deck associations
+move. Replacement remains admin-only; scoped API/MCP tools can read the updated
+associations but cannot upload, replace or delete Mux assets.
+
+Apply only TG_DATA migration 0058_media_safety.sql before deploying Pages and the
+MCP Worker. Refresh website tabs for the updated replacement wording. OAuth scopes
+and MCP schemas are unchanged; no reconnection or metadata refresh is needed.
+
+## Audit hardening — November 25, 2026
+
+- Public-but-unlisted sharing remains public. Explicitly private/signed videos do
+  not expose their titles/client metadata through public watch endpoints or previews;
+  collection variants omit private asset IDs. Site-hosted unlisted HTML, alternate
+  URLs, redirects, API and download responses send `X-Robots-Tag: noindex, nofollow,
+  noarchive, nosnippet, noimageindex`; static HTML also carries robots metadata.
+  Published marketing pages remain indexable. No robots.txt disallow is added:
+  compliant crawlers must fetch responses to see noindex. These directives are not
+  access control and cannot control third-party CDN response headers.
+- Shared Pages middleware bounds JSON bodies to 1 MiB (32 MiB for the authenticated
+  snapshot importer), checks cookie-write origins, and retains streaming upload and
+  signed webhook handlers. Public contact requests allow 6/minute/IP, meeting joins
+  60/minute/IP, password attempts 6/minute/IP, watch reads 600/minute/IP, download
+  preparation 180/minute/IP and download polling 600/minute/IP. Rate-limit subjects
+  are hashed in D1. Rendition preparation is coalesced per asset/quality/minute.
+- `PATCH /api/admin/production-board/:id` requires `expectedUpdatedAt` from GET's
+  `card.updatedAt` (428 absent, 409 stale). Drafts survive conflicts. Moves accept
+  the same optional version in both website/internal APIs and guard their whole
+  destination ordering transaction. Deleted cards are excluded from ordinary
+  mutations, counts and the legacy board's effective-state response.
+- Card creation in the website now uses the shared internal/MCP command and requires
+  `requestId`. Website assignees/due date are preserved. Comments in website/internal
+  APIs and MCP also require a stable requestId. Reuse identical input for retries;
+  changed reuse is rejected. Apply only migration 0059 for the comment retry ledger.
+- Visible, idle Deck views refresh every 15 seconds and on focus. Polls stop during
+  edits/dragging, avoid overlapping requests, and cancel on unmount. Active drafts
+  are preserved and server version checks prevent stale saves.
+- Migration 0060 seeds a team-access allowlist from the existing directory, active
+  Workspace sessions and owner. New Google sessions require enabled access.
+  `PATCH /api/admin/team-members` accepts `{email,active}` for the owner only;
+  disabling revokes website sessions and matching MCP invitations. Re-enabling
+  does not restore revoked invitations. Nickname edits never re-enable someone.
+  This is intentionally unavailable to API credentials/MCP to prevent integrations
+  from administering their own access. Normal editing uses existing session lookups.
+- MCP deletion tools are removed; shared commands reject MCP deletion even for old
+  grants. Website/scoped REST deletion contracts are preserved. Refresh plugin
+  metadata/start a new chat for the 26-tool inventory and comment requestId schema.
+  Existing OAuth renewal continues without reconnection.
+
+Older open website tabs should reload for the new retry/version fields. ZIP download
+behavior and preview-deployment configuration are unchanged.
+
+Production release verified November 25, 2026: Pages deployment
+`b3c82dc1.trantergrey-site-git.pages.dev` on the production `main` branch; MCP Worker
+version `714010ec-0189-4639-bc36-23dcb0fb3c36`. Only TG_DATA migrations 0059 and 0060
+were required for this release. TypeScript, Cloudflare release/Worker build checks,
+regression suites and the Chrome live-refresh/draft-preservation fixture passed.
+Live origin checks confirmed unlisted crawler headers and an indexable homepage;
+authenticated MCP smoke verified the 26-tool inventory, renewal and revocation
+without changing business records.
+
+### Resource maintenance and collection downloads (November 2026)
+
+- Archive GET accepts optional `revision` and up to 50 comma-separated numeric `pageIds`. An unchanged revision returns `{unchanged:true,revision,activeJobs,state,jobs}` with only visible-job progress and no catalog rows. Changed revisions return the existing full response plus `revision`/`activeJobs`. Initial loads and filter changes retain global matching and select-all semantics. The UI polls every 30 seconds while idle, every 5 seconds during imports/scans, pauses when hidden, and aborts obsolete reads. Catalog/database triggers invalidate revisions; pending scan rows do not invalidate the active scan.
+- Shared Drive access tokens are encrypted in D1 and reused only until 60 seconds before their reported expiry. An atomic, short-lived lease limits simultaneous refreshes. Connection/credential changes invalidate the cache; disconnect clears it. This does not change Drive scopes or require a new connection.
+- The service worker caches only the fixed static app shell paths; search parameters do not create additional entries. API responses, private/no-store responses and redirected pages are not cached by the navigation handler.
+- Daily maintenance examines at most 100 R2 logo objects per run with a durable cursor. Only app-generated, unreferenced `client-logos/` objects older than seven days are deleted. Current logos and other media prefixes are retained. This is internal storage housekeeping, not a user-facing business deletion operation; no API or MCP deletion capability is added.
+- Daily OAuth maintenance removes at most 100 registrations older than 30 days that have never completed authorization and have no live pending authorization/code/session/refresh/access records. Established clients are retained. Legacy clients receive a fresh grace period (bounded 100 backfills/run). Existing session renewal/revocation behavior is unchanged.
+- Collection downloads use the existing `/api/watch/download` authorization and preparation contract. The website prepares at most two files concurrently and displays individual MP4 links, independent errors/retry, and cancellation of client-side preparation. It no longer fetches media into a browser ZIP. Cancelling/closing stops queued requests and polling; an already requested Mux rendition may finish. This is a presentation change, so no additional scoped API operation or MCP tool is needed.
+
+Release prerequisites: apply only TG_DATA migrations `0061_resource_retention.sql` and `0062_archive_revision.sql`, and apply `workers/deck-mcp/retention-schema.sql` to MCP_AUTH. Deploy Pages and the MCP Worker; the latter needs the existing production R2 bucket binding for scheduled logo cleanup. No grant expansion, tool inventory change, metadata refresh or reconnect is required.

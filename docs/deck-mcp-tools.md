@@ -1,4 +1,4 @@
-# TranterGrey personal MCP — 28 tools
+# TranterGrey personal MCP — 26 tools
 
 This is the implemented tool inventory, not a platform tool-count limit. It exposes the existing scoped API plus focused commands for client items and calendar reporting. Admin-only destructive video operations, uploads, and identity administration are not exposed.
 
@@ -13,7 +13,7 @@ This is the implemented tool inventory, not a platform tool-count limit. It expo
 | `get_deck_card_activity` | Reads edits, link events, imported events and comment metadata. |
 | `get_deck_card_comments` | Reads paginated local/imported comment text and exact video references; flags unresolved playback IDs and incomplete extraction. |
 | `move_deck_card` | Moves a card to a column, optionally before another card. |
-| `add_deck_comment` | Adds a plain-text comment; not automatically retry-safe. |
+| `add_deck_comment` | Adds a comment with a required UUID requestId; identical retries return the original comment. |
 | `link_video_to_card` | Links an existing asset after a requested/verified match; duplicate links are prevented. |
 | `report_deck_moves` | Counts recorded transitions into a column within a calendar date range, with move count and unique-card count. |
 
@@ -46,8 +46,6 @@ Example: “How many Deck cards moved to Done this month?” Resolve Done with `
 | `update_client_item` | Changes only specified fields, retaining others; explicit body replacement becomes plain text. |
 | `set_client_todo_completed` | Completes/reopens a to-do without losing its other fields. |
 | `preview_client_deletion` | Read the exact workspace deletion counts, linked Mux/card counts, name and expectedVersion before confirmation. |
-| `delete_client` | Delete a confirmed client and its notes/to-dos; preserve Drive files, Deck cards and videos. Requires separately consented `clients:delete`. |
-| `delete_client_item` | Permanently deletes an explicitly selected note or to-do. |
 
 Item updates/deletes require the exact `expectedUpdatedAt` from a fresh workspace read. A concurrent modification rejects the operation. Item creation and its retry ledger/audit commit atomically. A retry after deletion cannot recreate the item. Empty dueOn/assignee explicitly clears those fields. Dates are validated as real calendar dates; assignments use existing team nicknames.
 
@@ -241,27 +239,67 @@ rate limiting and Connection health cover the session endpoint; monitoring conta
 only operation/status metadata. Deploy Pages after the targeted TG_DATA migration.
 
 
-## Client deletion and consent
+## Deletion is unavailable through MCP
 
-`preview_client_deletion(clientId)` uses existing `clients:read` access and returns
-notes/to-dos to delete, non-deleted Deck card and distinct saved Mux asset counts to
-keep, exact name, coverage and `expectedVersion`. Show these counts to the person
-and obtain explicit deletion intent before `delete_client`. Mux counts combine
-saved overrides with the current cached library (deduplicated); external Mux
-changes require a library refresh. Archived/completed cards count; deleted cards do not.
+`delete_client` and `delete_client_item` have been removed. `preview_client_deletion`
+remains read-only and reports counts for a deletion the user can perform on the
+website. Shared deletion commands reject MCP actors, and historical `clients:delete`
+grants no longer confer deletion permission. Historical grants still renew without
+reconnection; discovery no longer advertises this scope. Completing a to-do and
+archiving a client remain available because they are reversible, non-deletion actions.
 
-`delete_client` requires `clientId`, `confirmName`, `expectedVersion` and a UUID
-`requestId`. The new OAuth scope `clients:delete` is required in addition to
-`tg:personal`; old grants, legacy API tokens and refreshes do not gain it. Refresh
-plugin metadata/start a new chat for the two new tools. Reconnect with explicit
-`clients:delete` consent only if deletion through MCP is wanted. Existing tools and
-persistent renewal keep working. Optional `notifications:send` can be combined with
-the deletion scope. Invitations retain their individual attribution and revocation.
+Refresh plugin metadata and start a new chat to see the revised 26-tool inventory
+and the required `requestId` on `add_deck_comment`. Even stale chats cannot invoke
+removed deletion tools. No new OAuth consent is required.
 
-Deletion is atomic with its durable retry/audit record. Concurrent workspace edits
-or changed linked IDs reject stale confirmations. Retrying the same arguments and
-request ID returns the saved result without deleting a newly created replacement.
-Drive trash retry records survive client removal; client-owned notes/to-dos, local
-activity, extra folder links, pins and preferences are removed. No Drive/Mux delete
-calls or Deck mutations occur. Apply migration 0057 to TG_DATA after 0056, then deploy
-Pages and the MCP Worker. Connection health and shared rate limiting remain active.
+## Media safety — November 25, 2026
+
+Session-only attachment/gallery uploads stream to R2 and enforce the actual byte
+count (maximum 90 MiB). New SVG attachments are rejected; existing active-content
+attachments download with a sandbox and nosniff headers. Ordinary media/PDF previews
+remain inline. Upload routes remain admin-only because they transfer private files;
+there are no new integration scopes or MCP tools.
+
+The session-only video replacement endpoint now rejects identical IDs, requires a
+ready public replacement, and atomically updates affected share pages, metadata,
+Deck associations, cache invalidation and a durable audit/retry ledger. Retry with
+the same assetId/replacementAssetId. A different replacement for an already-replaced
+source returns 409. The original Mux asset is retained for recovery and may be
+deleted separately through the existing explicit delete action. Historical comment
+embeds and activity asset IDs remain historical; only canonical Deck associations
+move. Replacement remains admin-only; scoped API/MCP tools can read the updated
+associations but cannot upload, replace or delete Mux assets.
+
+Apply only TG_DATA migration 0058_media_safety.sql before deploying Pages and the
+MCP Worker. Refresh website tabs for the updated replacement wording. OAuth scopes
+and MCP schemas are unchanged; no reconnection or metadata refresh is needed.
+
+## Concurrent edits and retries — November 25, 2026
+
+`move_deck_card` accepts optional `expectedUpdatedAt` from `get_deck_card`. All moves
+validate the active destination and snapshot inside one transaction with their audit;
+concurrent changes reject instead of leaving half a reordered column. Deleted cards
+are excluded from moves, comments and board counts. `add_deck_comment` now requires
+a UUID `requestId`; reuse it and identical content after uncertainty. Changed reuse
+fails. Comment, optional signals, audit triggers and retry ledger commit atomically.
+Event subscriptions check scope membership rather than a fixed serialized scope
+string; legacy optional grants do not break subscriptions.
+
+Owner access management remains intentionally website-only. Disabling a teammate
+signs out their website sessions and revokes all invitations/connections labeled
+with their email. Invitation labels still do not verify the recipient's ChatGPT email.
+
+Production release verified November 25, 2026: Pages deployment
+`b3c82dc1.trantergrey-site-git.pages.dev` on the production `main` branch; MCP Worker
+version `714010ec-0189-4639-bc36-23dcb0fb3c36`. Only TG_DATA migrations 0059 and 0060
+were required for this release. TypeScript, Cloudflare release/Worker build checks,
+regression suites and the Chrome live-refresh/draft-preservation fixture passed.
+Live origin checks confirmed unlisted crawler headers and an indexable homepage;
+authenticated MCP smoke verified the 26-tool inventory, renewal and revocation
+without changing business records.
+
+### Background resource maintenance
+
+The daily Worker job also prunes unused OAuth registrations (30-day grace; completed authorizations and live grants protected; 100 registrations/run) and old unreferenced app-generated logos (7-day grace; 100 objects/run with a persistent cursor). Legacy OAuth registrations receive a fresh grace period. The Worker binds the existing `PRODUCTION_ARCHIVE` R2 bucket solely for this maintenance. These are bounded internal housekeeping operations, not MCP tools or user-requested record deletions. MCP business deletion remains disabled. Tool names/count, scopes, persistent renewal and revocation are unchanged; no plugin refresh or reconnect is needed.
+
+Drive token reuse and archive progress polling are internal optimizations. The collection website now offers separate MP4 links using the existing download endpoint instead of browser ZIP assembly; this presentation-only change adds no API/MCP capability gap. Schema prerequisites and exact retention behavior are in `docs/internal-api.md` under Resource maintenance and collection downloads.

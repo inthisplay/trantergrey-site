@@ -1,3 +1,5 @@
+import { cleanupUnusedLogos, cleanupUnusedOAuthClients } from '../../functions/_lib/resource-retention';
+import { cleanupCatalogSnapshots } from '../../functions/_lib/catalog-retention';
 import { registerNotificationTools } from './notifications';
 import { deliverNotificationPush } from '../../functions/_lib/notifications';
 import { enforceRateLimit, peer, operationLabel, recordIntegrationEvent, cleanupIntegrationHealth } from '../../functions/_lib/integration-health';
@@ -115,8 +117,11 @@ export default {
     await deliverNotificationPush(env);
     if(event.cron === '* * * * *') return;
     await cleanupIntegrationHealth(env);
+    await cleanupCatalogSnapshots(env, 10000);
     await env.MCP_AUTH.prepare('DELETE FROM oauth_records WHERE expires_at <= ?').bind(Math.floor(Date.now() / 1000)).run();
     await env.MCP_AUTH.prepare("DELETE FROM oauth_records WHERE kind IN ('refresh','token') AND json_extract(data,'$.family') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM oauth_records s WHERE s.kind='session' AND s.id=json_extract(oauth_records.data,'$.family'))").run();
+    await cleanupUnusedOAuthClients(env);
+    await cleanupUnusedLogos(env);
     } catch { await recordIntegrationEvent(env, 'mcp', 'scheduled_cleanup', 'server_error', 500); throw new Error('Integration cleanup failed'); }
   },
 };

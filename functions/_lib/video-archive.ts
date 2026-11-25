@@ -14,7 +14,7 @@ export const archiveState = (env: AdminEnvironment) => env.TG_DATA.prepare("SELE
 export async function archiveCatalog(env: AdminEnvironment) {
   const state = await archiveState(env);
   const [videos, files, links, jobs] = await Promise.all([
-    env.TG_DATA.prepare('SELECT * FROM archive_videos ORDER BY created_at DESC,title').all<ArchiveVideo & {archive_client:string|null}>(),
+    env.TG_DATA.prepare('SELECT vimeo_id,title,folder,client,archive_client,created_at,duration FROM archive_videos ORDER BY created_at DESC,title').all<ArchiveVideo & {archive_client:string|null}>(),
     env.TG_DATA.prepare('SELECT value FROM archive_files WHERE scan_id=?').bind(state?.active_scan || '').all<{value:string}>(),
     env.TG_DATA.prepare('SELECT * FROM archive_links').all<ArchiveLink>(),
     env.TG_DATA.prepare('SELECT id,vimeo_id,file_id,title,client,state,asset_id,bytes_done,byte_size,error FROM archive_imports').all<ArchiveJob>(),
@@ -25,7 +25,7 @@ export async function archiveCatalog(env: AdminEnvironment) {
 export async function archiveRows(env: AdminEnvironment) {
   const {state,matches,jobs}=await archiveCatalog(env);
   // A local snapshot provides immediate links; import preflight checks the live Mux account again.
-  const rows=await env.TG_DATA.prepare('SELECT value FROM mux_library_assets WHERE refresh_id=(SELECT refresh_id FROM mux_library_snapshot_state WHERE id=?)').bind('library').all<{value:string}>();
+  const rows=await env.TG_DATA.prepare(`SELECT json_object('vimeoId',json_extract(value,'$.vimeoId'),'status',json_extract(value,'$.status'),'id',json_extract(value,'$.id')) AS value FROM mux_library_assets WHERE refresh_id=(SELECT refresh_id FROM mux_library_snapshot_state WHERE id=?)`).bind('library').all<{value:string}>();
   const mux=new Map<string,string>();
   for(const row of rows.results){const asset=JSON.parse(row.value);if(asset.vimeoId && asset.status!=='errored')mux.set(asset.vimeoId,asset.id);}
   const byVideo=new Map(jobs.map(job=>[job.vimeo_id,job]));
