@@ -46,7 +46,7 @@ async function fixture() {
  db.prepare("INSERT INTO archive_files VALUES('scan','file',?)").run(JSON.stringify(file()));db.exec("UPDATE archive_state SET active_scan='scan',worker_seen_at='9999-01-01' WHERE id='archive'");
  const root=modules.core.archiveRoot;
  const records=new Map([['shared',{id:'shared',name:'Shared',mimeType:'application/vnd.google-apps.folder'}],[root,{id:root,name:'Vimeo Archive',parents:['shared'],mimeType:'application/vnd.google-apps.folder'}],['file',{...file(),parents:[root]}],['outside',{...file('outside'),parents:['shared']}]]);
- let creates=0,transferred=0,ready=false,lostResponse=false,scanFails=false,existing=[];
+ let creates=0,transferred=0,ready=false,lostResponse=false,scanFails=false,existing=[],cancelled=false,changeDuringRead=false,cancelFails=false;
  const original=globalThis.fetch;
  globalThis.fetch=async(input,init={})=>{
   const url=new URL(input);
@@ -55,13 +55,14 @@ async function fixture() {
    assert.equal(init.headers.Authorization,'Bearer access');
    if(url.pathname.endsWith('/files')){if(scanFails)return new Response('',{status:403});return Response.json({files:[records.get('file')]});}
    const id=url.pathname.split('/').at(-1);const f=records.get(id);if(!f)return new Response('',{status:404});
-   if(url.searchParams.get('alt')==='media'){const [,start,end]=init.headers.Range.match(/^bytes=(\d+)-(\d+)$/).map(Number);return new Response(new Uint8Array(end-start+1),{status:206,headers:{'Content-Range':`bytes ${start}-${end}/${f.size}`}});}
+   if(url.searchParams.get('alt')==='media'){if(changeDuringRead)f.headRevisionId='revision-new';const [,start,end]=init.headers.Range.match(/^bytes=(\d+)-(\d+)$/).map(Number);return new Response(new Uint8Array(end-start+1),{status:206,headers:{'Content-Range':`bytes ${start}-${end}/${f.size}`}});}
    return Response.json(f);
   }
   if(url.hostname==='api.mux.com') {
    if(url.pathname.endsWith('/assets'))return Response.json({data:existing});
-   if(url.pathname.endsWith('/uploads')&&init.method==='POST'){creates++;const body=JSON.parse(init.body);assert.deepEqual(body.new_asset_settings.playback_policies,['public']);assert.equal(body.new_asset_settings.meta.external_id,'12345678');return Response.json({data:{id:'upload1',url:'https://storage.googleapis.com/archive-test'}});}
-   if(url.pathname.endsWith('/uploads/upload1')){const complete=transferred===Number(records.get('file').size);return Response.json({data:{id:'upload1',status:complete?'asset_created':'waiting',...(complete?{asset_id:'asset1'}:{})}});}
+   if(url.pathname.endsWith('/uploads')&&init.method==='POST'){creates++;cancelled=false;const body=JSON.parse(init.body);assert.deepEqual(body.new_asset_settings.playback_policies,['public']);assert.equal(body.new_asset_settings.meta.external_id,'12345678');return Response.json({data:{id:'upload1',url:'https://storage.googleapis.com/archive-test'}});}
+   if(url.pathname.endsWith('/uploads/upload1/cancel')){assert.equal(init.method,'PUT');if(cancelFails)return Response.json({error:{message:'Cancellation unavailable'}},{status:503});cancelled=true;transferred=0;return Response.json({data:{id:'upload1',status:'cancelled'}});}
+   if(url.pathname.endsWith('/uploads/upload1')){const complete=transferred===Number(records.get('file').size);return Response.json({data:{id:'upload1',status:complete?'asset_created':cancelled?'cancelled':'waiting',...(complete?{asset_id:'asset1'}:{})}});}
    if(url.pathname.endsWith('/assets/asset1'))return Response.json({data:{id:'asset1',status:ready?'ready':'preparing',meta:{external_id:'12345678'},playback_ids:[{id:'public1',policy:'public'}]}});
   }
   if(url.hostname==='storage.googleapis.com') {
@@ -76,7 +77,7 @@ async function fixture() {
   throw new Error('Unexpected test request '+url.hostname+url.pathname);
  };
  const api=(body,auth=true,origin='https://local.test')=>modules.api.onRequest({env,request:new Request('https://local.test/api/admin/archive?unavailable=1',{method:body?'POST':'GET',headers:{...(auth?{cookie:'tg_admin=test'}:{}),Origin:origin},...(body?{body:JSON.stringify(body)}:{})})});
- return {db,env,api,records,restore(){db.close();globalThis.fetch=original;},get creates(){return creates;},get transferred(){return transferred;},set ready(v){ready=v;},set lostResponse(v){lostResponse=v;},set scanFails(v){scanFails=v;},set existing(v){existing=v;}};
+ return {db,env,api,records,restore(){db.close();globalThis.fetch=original;},get creates(){return creates;},get cancelled(){return cancelled;},set cancelFails(v){cancelFails=v;},set changeDuringRead(v){changeDuringRead=v;},get transferred(){return transferred;},set ready(v){ready=v;},set lostResponse(v){lostResponse=v;},set scanFails(v){scanFails=v;},set existing(v){existing=v;}};
 }
 test('archive endpoints require authentication and same origin, worker uses its own secret',async()=>{
  const f=await fixture();try{
@@ -191,4 +192,80 @@ test('production driver stops on idle or busy, bounds work and reports failure',
   for(const result of [{worked:false},{busy:true}]){calls=0;globalThis.fetch=async()=>{calls++;return Response.json(result);};await modules.driver.default.scheduled(null,env);assert.equal(calls,1);}
   for(const status of [302,503]){globalThis.fetch=async()=>new Response('',{status});await assert.rejects(()=>modules.driver.default.scheduled(null,env),new RegExp(String(status)));}
  }finally{globalThis.fetch=original;}
+});
+
+test('metadata-only version changes do not interrupt a content-revision transfer',async()=>{
+ const f=await fixture();try{
+  Object.assign(f.records.get('file'),{size:String(4*1024*1024+8),headRevisionId:'revision-1'});
+  await f.api({action:'import',id:'12345678',title:'Spot V2',client:''});
+  f.records.get('file').version='2';await modules.core.archiveWorkerStep(f.env);
+  await modules.core.archiveWorkerStep(f.env);
+  f.records.get('file').version='3';await modules.core.archiveWorkerStep(f.env);
+  assert.equal(f.transferred,4*1024*1024+8);assert.equal(f.creates,1);
+ }finally{f.restore();}
+});
+test('same-size binary revision changes during a download stop before sending bytes',async()=>{
+ const f=await fixture();try{
+  f.records.get('file').headRevisionId='revision-1';
+  await f.api({action:'import',id:'12345678',title:'Spot V2',client:''});
+  await modules.core.archiveWorkerStep(f.env);f.changeDuringRead=true;
+  await modules.core.archiveWorkerStep(f.env);
+  assert.equal(f.transferred,0);assert.match(f.db.prepare('SELECT error FROM archive_imports').get().error,/changed/);
+ }finally{f.restore();}
+});
+test('retry restarts a failed legacy partial upload without mixing old bytes or duplicating jobs',async()=>{
+ const f=await fixture();try{
+  f.records.get('file').size=String(4*1024*1024+8);
+  await f.api({action:'import',id:'12345678',title:'Spot V2',client:''});
+  await modules.core.archiveWorkerStep(f.env);await modules.core.archiveWorkerStep(f.env);
+  assert.equal(f.transferred,4*1024*1024);
+  Object.assign(f.records.get('file'),{version:'2',headRevisionId:'revision-1'});
+  f.db.exec("UPDATE archive_imports SET state='failed'");
+  assert.equal((await f.api({action:'retry',id:'12345678'})).status,200);
+  let job=f.db.prepare('SELECT * FROM archive_imports').get();
+  assert.equal(f.cancelled,true);assert.equal(job.bytes_done,0);assert.equal(job.upload_id,null);
+  assert.equal(job.source_version,'revision:revision-1');assert.equal(job.state,'queued');
+  await f.api({action:'retry',id:'12345678'});
+  await modules.core.archiveWorkerStep(f.env);await modules.core.archiveWorkerStep(f.env);await modules.core.archiveWorkerStep(f.env);
+  assert.equal(f.creates,2);assert.equal(f.transferred,4*1024*1024+8);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM archive_imports').get().n,1);
+ }finally{f.restore();}
+});
+test('retry preserves an asset already created by Mux and respects worker lease',async()=>{
+ const f=await fixture();try{
+  await f.api({action:'import',id:'12345678',title:'Spot V2',client:''});
+  await modules.core.archiveWorkerStep(f.env);await modules.core.archiveWorkerStep(f.env);
+  f.db.exec("UPDATE archive_imports SET state='failed'; UPDATE archive_state SET lease_owner='other',lease_until='9999'");
+  assert.equal((await f.api({action:'retry',id:'12345678'})).status,400);
+  f.db.exec('UPDATE archive_state SET lease_until=NULL');
+  assert.equal((await f.api({action:'retry',id:'12345678'})).status,200);
+  assert.equal(f.cancelled,false);assert.equal(f.creates,1);
+  assert.equal(f.db.prepare('SELECT asset_id FROM archive_imports').get().asset_id,'asset1');
+ }finally{f.restore();}
+});
+
+test('failed cancellation retains the old upload and failed job for a safe retry',async()=>{
+ const f=await fixture();try{
+  f.records.get('file').size=String(4*1024*1024+8);
+  await f.api({action:'import',id:'12345678',title:'Spot V2',client:''});
+  await modules.core.archiveWorkerStep(f.env);await modules.core.archiveWorkerStep(f.env);
+  f.db.exec("UPDATE archive_imports SET state='failed'");f.cancelFails=true;
+  assert.equal((await f.api({action:'retry',id:'12345678'})).status,400);
+  const job=f.db.prepare('SELECT * FROM archive_imports').get();
+  assert.equal(job.state,'failed');assert.equal(job.upload_id,'upload1');assert.equal(job.bytes_done,4*1024*1024);
+  assert.equal(f.creates,1);assert.equal(f.db.prepare('SELECT lease_owner FROM archive_state').get().lease_owner,null);
+ }finally{f.restore();}
+});
+test('same-size source replacement between chunks stops and explicit retry starts from zero',async()=>{
+ const f=await fixture();try{
+  Object.assign(f.records.get('file'),{size:String(4*1024*1024+8),headRevisionId:'revision-1'});
+  await f.api({action:'import',id:'12345678',title:'Spot V2',client:''});
+  await modules.core.archiveWorkerStep(f.env);await modules.core.archiveWorkerStep(f.env);
+  f.records.get('file').headRevisionId='revision-2';
+  for(let i=0;i<3;i++){f.db.exec('UPDATE archive_imports SET next_attempt_at=NULL');await modules.core.archiveWorkerStep(f.env);}
+  assert.equal(f.transferred,4*1024*1024);assert.equal(f.db.prepare('SELECT state FROM archive_imports').get().state,'failed');
+  assert.equal((await f.api({action:'retry',id:'12345678'})).status,200);
+  const job=f.db.prepare('SELECT * FROM archive_imports').get();
+  assert.equal(job.source_version,'revision:revision-2');assert.equal(job.bytes_done,0);assert.equal(f.cancelled,true);
+ }finally{f.restore();}
 });

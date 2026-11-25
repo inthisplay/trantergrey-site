@@ -1,6 +1,6 @@
 import { editArchiveClients, undoArchiveClients } from '../../_lib/archive-clients';
 import { adminResponse, adminSession, type AdminEnvironment } from '../../_lib/admin';
-import { archiveRows, archiveState, startArchiveScan, archivePreview, linkArchiveFile, queueArchiveImport } from '../../_lib/video-archive';
+import { archiveRows, archiveState, startArchiveScan, archivePreview, linkArchiveFile, queueArchiveImport, retryArchiveImport } from '../../_lib/video-archive';
 
 const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private, no-store','X-Robots-Tag':'noindex, nofollow'}});
 export async function onRequest({request,env}:{request:Request;env:AdminEnvironment}) {
@@ -46,7 +46,7 @@ export async function onRequest({request,env}:{request:Request;env:AdminEnvironm
       const id=await queueArchiveImport(env,body.id,body.title||'',body.client||'',actor.email||actor.name);return json({id},202);
     }
     if(body.action==='retry'){
-      await env.TG_DATA.prepare("UPDATE archive_imports SET state=CASE WHEN asset_id IS NOT NULL THEN 'processing' WHEN upload_id IS NOT NULL THEN 'transferring' ELSE 'queued' END,failures=0,error=NULL,next_attempt_at=NULL WHERE vimeo_id=? AND state='failed'").bind(body.id).run();return json({ok:true});
+      await retryArchiveImport(env,body.id);return json({ok:true});
     }
     return json({error:'Unknown archive action.'},400);
   }catch(e){return json({error:e instanceof Error?e.message:'Archive request failed.'},400);}

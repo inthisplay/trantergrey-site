@@ -81,8 +81,46 @@ async function verifiedFile(env:AdminEnvironment,id:string) {
   const file=await requireWithin(token,id,archiveRoot);
   if(file.capabilities?.canDownload===false)throw new Error('The connected Drive account cannot download this video.');
   if(!file.mimeType.startsWith('video/') && !/\.(mp4|mov|m4v|webm|mxf|avi|mkv|mpeg|mpg)$/i.test(file.name))throw new Error('Choose a video file.');
-  const details=await driveRequest<ArchiveFile>(token,`files/${id}?supportsAllDrives=true&fields=id,name,mimeType,size,version,capabilities(canDownload)`);
+  const details=await driveRequest<ArchiveFile>(token,`files/${id}?supportsAllDrives=true&fields=id,name,mimeType,size,version,headRevisionId,capabilities(canDownload)`);
   return {token,file:{...file,...details}};
+}
+// Drive version includes metadata-only changes; headRevisionId identifies binary content.
+// Keep untagged versions readable for jobs created before this fix.
+function sourceIdentity(file:ArchiveFile) {
+  return file.headRevisionId ? `revision:${file.headRevisionId}` : file.version || null;
+}
+function sourceChanged(job:Job,file:ArchiveFile) {
+  const identity=job.source_version?.startsWith('revision:') ? sourceIdentity(file) : file.version;
+  return Number(file.size)!==job.byte_size || !job.source_version || identity!==job.source_version;
+}
+export async function retryArchiveImport(env:AdminEnvironment,id:string) {
+  const owner=crypto.randomUUID();
+  const lease=await env.TG_DATA.prepare("UPDATE archive_state SET lease_owner=?,lease_until=? WHERE id='archive' AND (lease_until IS NULL OR lease_until<?) RETURNING id").bind(owner,new Date(Date.now()+120000).toISOString(),now()).first();
+  if(!lease)throw new Error('The archive worker is busy. Retry in a moment.');
+  try {
+    const job=await env.TG_DATA.prepare("SELECT * FROM archive_imports WHERE vimeo_id=? AND state='failed'").bind(id).first<Job>();
+    if(!job)return;
+    if(!job.asset_id) {
+      const {file}=await verifiedFile(env,job.file_id);
+      // A legacy partial upload has no content revision. Never attach a new
+      // fingerprint to its old bytes: cancel it before restarting from zero.
+      if(sourceChanged(job,file) || !job.source_version?.startsWith('revision:')) {
+        const size=Number(file.size);
+        if(!Number.isSafeInteger(size)||size<=0||!sourceIdentity(file))throw new Error('The Drive source identity is unavailable. Retry later.');
+        if(job.upload_id) {
+          let upload=await muxFetch<Upload>(env,`uploads/${job.upload_id}`);
+          if(!upload)throw new Error('Mux upload unavailable.');
+          if(upload.asset_id){await finishImport(env,job,upload.asset_id);return;}
+          if(upload.status==='waiting')upload=await muxFetch<Upload>(env,`uploads/${job.upload_id}/cancel`,{method:'PUT'});
+          if(!upload || !['cancelled','timed_out','errored'].includes(upload.status))throw new Error('Could not safely restart the upload. Retry later.');
+        }
+        await env.TG_DATA.prepare("UPDATE archive_imports SET upload_id=NULL,upload_cipher=NULL,bytes_done=0,byte_size=?,source_version=? WHERE id=?").bind(size,sourceIdentity(file),job.id).run();
+      }
+    }
+    await env.TG_DATA.prepare("UPDATE archive_imports SET state=CASE WHEN asset_id IS NOT NULL THEN 'processing' WHEN upload_id IS NOT NULL THEN 'transferring' ELSE 'queued' END,failures=0,error=NULL,next_attempt_at=NULL,updated_at=? WHERE id=? AND state='failed'").bind(now(),job.id).run();
+  }finally{
+    await env.TG_DATA.prepare("UPDATE archive_state SET lease_owner=NULL,lease_until=NULL WHERE id='archive' AND lease_owner=?").bind(owner).run();
+  }
 }
 export async function archivePreview(request:Request,env:AdminEnvironment,id:string) {
   const {matches}=await archiveCatalog(env);const match=matches.find(m=>m.video.vimeo_id===id);
@@ -111,7 +149,7 @@ export async function queueArchiveImport(env:AdminEnvironment,id:string,title:st
   const {file}=await verifiedFile(env,match.file.id);
   const size=Number(file.size);if(!Number.isSafeInteger(size)||size<=0)throw new Error('The file size is unavailable. Try again after the transfer finishes.');
   const jobId=crypto.randomUUID();
-  await env.TG_DATA.prepare('INSERT INTO archive_imports(id,vimeo_id,file_id,title,client,byte_size,source_version,requested_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING').bind(jobId,id,file.id,title.trim(),client.trim(),size,file.version||null,actor,now(),now()).run();
+  await env.TG_DATA.prepare('INSERT INTO archive_imports(id,vimeo_id,file_id,title,client,byte_size,source_version,requested_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING').bind(jobId,id,file.id,title.trim(),client.trim(),size,sourceIdentity(file),actor,now(),now()).run();
   const job=await env.TG_DATA.prepare('SELECT id FROM archive_imports WHERE vimeo_id=? OR file_id=?').bind(id,file.id).first<{id:string}>();
   return job!.id;
 }
@@ -134,7 +172,7 @@ async function importStep(env:AdminEnvironment,job:Job) {
     if(existing.length>1)throw new Error('More than one Mux asset already has this Vimeo ID. Review the library before importing.');
     if(existing.length===1){await env.TG_DATA.prepare('UPDATE archive_imports SET asset_id=?,state=?,updated_at=? WHERE id=?').bind(existing[0].id,existing[0].status==='ready'?'ready':'processing',now(),job.id).run();return;}
     const {file}=await verifiedFile(env,job.file_id);
-    if(Number(file.size)!==job.byte_size || job.source_version && file.version!==job.source_version)throw new Error('The Drive file changed after import was requested. Verify the source before retrying.');
+    if(sourceChanged(job,file))throw new Error('The Drive file changed after import was requested. Verify the source before retrying.');
     const upload=await muxFetch<Upload>(env,'uploads',{method:'POST',body:JSON.stringify({timeout:604800,new_asset_settings:{playback_policies:['public'],video_quality:'plus',meta:{title:job.title,external_id:job.vimeo_id},passthrough:`archive:${job.id}`}})});
     if(!upload?.id||!upload.url)throw new Error('Mux did not return an upload.');
     await env.TG_DATA.prepare("UPDATE archive_imports SET upload_id=?,upload_cipher=?,state='transferring',updated_at=? WHERE id=?").bind(upload.id,await encryptDriveSecret(env,upload.url),now(),job.id).run();return;
@@ -144,7 +182,7 @@ async function importStep(env:AdminEnvironment,job:Job) {
   if(upload.asset_id)return finishImport(env,job,upload.asset_id);
   if(['timed_out','cancelled','errored'].includes(upload.status))throw new Error(`Mux upload ${upload.status}. Check the upload before starting a replacement.`);
   const {token,file}=await verifiedFile(env,job.file_id);
-  if(Number(file.size)!==job.byte_size || job.source_version && file.version!==job.source_version)throw new Error('The Drive file changed during transfer. Import stopped to avoid mixing versions.');
+  if(sourceChanged(job,file))throw new Error('The Drive file changed during transfer. Import stopped to avoid mixing versions.');
   const url=await decryptDriveSecret(env,job.upload_cipher!);
   const parsed=new URL(url);if(parsed.protocol!=='https:' || !(parsed.hostname.endsWith('.googleapis.com')||parsed.hostname.endsWith('.mux.com')||parsed.hostname.endsWith('.googleusercontent.com')))throw new Error('Unexpected Mux upload host.');
   // Query the receiver before each chunk, including after a lost response or worker restart.
@@ -163,6 +201,9 @@ async function importStep(env:AdminEnvironment,job:Job) {
   const reader=source.body!.getReader(), bytes=new Uint8Array(end-start+1);let count=0;
   while(true){const chunk=await reader.read();if(chunk.done)break;if(count+chunk.value.length>bytes.length){await reader.cancel();throw new Error('Drive returned too much data.');}bytes.set(chunk.value,count);count+=chunk.value.length;}
   if(count!==bytes.length)throw new Error('Incomplete Drive download.');
+  // Recheck after downloading, before committing even the final chunk to Mux.
+  const after=await verifiedFile(env,job.file_id);
+  if(sourceChanged(job,after.file))throw new Error('The Drive file changed during transfer. Import stopped to avoid mixing versions.');
   const sent=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/octet-stream','Content-Range':`bytes ${start}-${end}/${job.byte_size}`},body:bytes,redirect:'manual',signal:AbortSignal.timeout(20000)});
   const ok=sent.ok||sent.status===308;await sent.body?.cancel();if(!ok)throw new Error('Mux could not accept this chunk. Retry will check the saved position.');
   await env.TG_DATA.prepare("UPDATE archive_imports SET bytes_done=?,state=?,failures=0,error=NULL,next_attempt_at=NULL,updated_at=? WHERE id=?").bind(end+1,end+1===job.byte_size?'processing':'transferring',now(),job.id).run();

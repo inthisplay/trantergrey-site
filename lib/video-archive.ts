@@ -1,5 +1,5 @@
 export type ArchiveVideo = { vimeo_id: string; title: string; folder: string; client: string; created_at: string; release_at: string | null; duration: number; description: string; tags: string };
-export type ArchiveFile = { id: string; name: string; path: string; mimeType: string; size?: string; version?: string; videoMediaMetadata?: { durationMillis?: string }; capabilities?: { canDownload?: boolean } };
+export type ArchiveFile = { id: string; name: string; path: string; mimeType: string; size?: string; version?: string; headRevisionId?: string; videoMediaMetadata?: { durationMillis?: string }; capabilities?: { canDownload?: boolean } };
 export type ArchiveLink = { vimeo_id: string; file_id: string; manual: number };
 export type ArchiveMatch = { video: ArchiveVideo; file: ArchiveFile | null; candidates: ArchiveFile[]; status: 'available' | 'ambiguous' | 'missing' | 'restricted'; basis: string };
 
